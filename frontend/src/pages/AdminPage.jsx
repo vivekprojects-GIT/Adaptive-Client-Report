@@ -9,6 +9,7 @@ import PoliciesTab    from "./admin/PoliciesTab.jsx";
 import OffersTab     from "./admin/OffersTab.jsx";
 import SignalRulesTab from "./admin/SignalRulesTab.jsx";
 import RewardScaleTab from "./admin/RewardScaleTab.jsx";
+import BanditStateTab from "./admin/BanditStateTab.jsx";
 import AuditTab       from "./admin/AuditTab.jsx";
 import "../styles/admin.css";
 
@@ -20,6 +21,7 @@ const TABS = [
   { id: "offers",       label: "Outreach" },
   { id: "signals",      label: "Signal Routing" },
   { id: "rewards",      label: "Reward Scale" },
+  { id: "bandit",       label: "Bandit State" },
   { id: "audit",        label: "Audit Log" },
 ];
 
@@ -63,6 +65,7 @@ export default function AdminPage() {
         {active === "offers"       && <OffersTab      notify={notify} />}
         {active === "signals"      && <SignalRulesTab notify={notify} />}
         {active === "rewards"      && <RewardScaleTab notify={notify} />}
+        {active === "bandit"       && <BanditStateTab notify={notify} />}
         {active === "audit"        && <AuditTab       notify={notify} />}
       </main>
 

@@ -76,6 +76,9 @@ export const api = {
   clearAll:             ()                                 => request("DELETE", "/admin/clear-all"),
   rebuildBandit:        ()                                 => request("POST",   "/admin/rebuild-bandit"),
   dbSnapshot:           (userId, limit = 30)               => request("GET",    `/admin/db-snapshot?user_id=${encodeURIComponent(userId || "")}&limit=${limit}`),
+  banditState:          (userId = "", onlyPulled = true)   => request("GET",    `/admin/bandit-state?only_pulled=${onlyPulled}${userId ? `&user_id=${encodeURIComponent(userId)}` : ""}`),
+  resetBanditCell:      (userId, domain, intent, topic, strategy = "") =>
+                          request("DELETE", `/admin/bandit-state/cell?user_id=${encodeURIComponent(userId)}&domain=${encodeURIComponent(domain)}&intent=${encodeURIComponent(intent)}&topic=${encodeURIComponent(topic)}${strategy ? `&strategy=${encodeURIComponent(strategy)}` : ""}`),
   listAudit:            (date = "", limit = 100)           => request("GET",    `/admin/audit?${date ? `date=${date}&` : ""}limit=${limit}`),
   seed:                 ()                                 => request("POST",   "/admin/seed"),
 

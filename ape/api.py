@@ -738,6 +738,102 @@ def admin_db_snapshot(user_id: Optional[str] = None, limit: int = 30):
     return STORE.db_snapshot(user_id_hash=user_id_hash, limit=limit)
 
 
+# ============================================================================
+# Bandit state inspection (admin debug surface)
+# ============================================================================
+
+@app.get("/admin/bandit-state")
+def admin_bandit_state(user_id: Optional[str] = None, only_pulled: bool = True):
+    """List bandit_state rows. With `user_id` → only that user's cells.
+
+    Use case: debugging "why did the bandit pick X for this user?" Shows every
+    arm's count, avg_reward, cached_ucb. Rows are grouped by (domain, intent,
+    topic) on the frontend so the admin sees each cell as a unit.
+
+    `only_pulled=true` (default) filters out rows where count=0 (cold-start
+    placeholders). Set false to see every lazy-created row.
+    """
+    if STORE is None:
+        raise HTTPException(500, "Store not initialized")
+    q: Dict[str, Any] = {}
+    if user_id:
+        q["user_id_hash"] = _resolve_user_hash(user_id)
+    if only_pulled:
+        q["count"] = {"$gt": 0}
+    rows = list(STORE.bandit_state.find(q).sort([
+        ("user_id_hash", 1),
+        ("intent", 1),
+        ("topic", 1),
+        ("avg_reward", -1),
+    ]).limit(2000))
+
+    # Join display names from the directory for any user that has one
+    user_hashes = {r.get("user_id_hash") for r in rows if r.get("user_id_hash")}
+    name_map = STORE.get_display_names(user_hashes) if user_hashes else {}
+
+    return [
+        {
+            "user_id_hash":    r.get("user_id_hash"),
+            "display_name":    name_map.get(r.get("user_id_hash")),
+            "domain":          r.get("domain"),
+            "intent":          r.get("intent"),
+            "topic":           r.get("topic"),
+            "strategy":        r.get("strategy"),
+            "count":           int(r.get("count", 0)),
+            "total_reward":    round(float(r.get("total_reward", 0.0)), 4),
+            "avg_reward":      round(float(r.get("avg_reward", 0.0)), 4),
+            "cached_ucb":      round(float(r.get("cached_ucb", 0.0)), 4),
+            "policy_version":  r.get("policy_version"),
+            "ucb_algorithm":   r.get("ucb_algorithm"),
+            "last_updated_at": r.get("last_updated_at"),
+        }
+        for r in rows
+    ]
+
+
+@app.delete("/admin/bandit-state/cell")
+def admin_delete_bandit_cell(
+    user_id: str,
+    domain: str,
+    intent: str,
+    topic: str,
+    strategy: Optional[str] = None,
+):
+    """Delete bandit state for a user.
+
+    - With `strategy`  → delete one arm (one row).
+    - Without          → delete the whole (intent, topic) cell for this user.
+
+    The next /turn for this user re-lazy-creates the cell with cold-start
+    values, so this is a safe "reset" operation when a cell got corrupted
+    or an instruction was rewritten and you want fresh learning.
+    """
+    if STORE is None:
+        raise HTTPException(500, "Store not initialized")
+    user_id_hash = _resolve_user_hash(user_id)
+    q: Dict[str, Any] = {
+        "user_id_hash": user_id_hash,
+        "domain":       domain,
+        "intent":       intent,
+        "topic":        topic,
+    }
+    scope = f"{intent}#{topic}"
+    if strategy:
+        q["strategy"] = strategy
+        scope = f"{intent}#{topic}#{strategy}"
+    n = STORE.bandit_state.delete_many(q).deleted_count
+
+    STORE.log_admin_action(
+        action_type="BANDIT_RESET",
+        entity_type="bandit_state",
+        entity_id=f"{user_id_hash}/{scope}",
+        changed_by="admin_user",
+        before={"deleted_count": n},
+        after=None,
+    )
+    return {"status": "ok", "deleted": n, "scope": scope}
+
+
 @app.get("/admin/audit")
 def admin_audit(date: Optional[str] = None, limit: int = 100):
     return _guard_cfg().list_audit(date=date, limit=limit)
