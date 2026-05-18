@@ -41,12 +41,12 @@ export default function AnalyticsPage() {
   // ── Tab navigation — splits the analytics page into focused views so
   //    admins don't have to scroll through everything to find one thing.
   const TABS = [
-    { id: "overview",  label: "Overview",  icon: "📊" },
-    { id: "customers", label: "Customers", icon: "👥" },
-    { id: "cognition", label: "Cognition", icon: "🧠" },
-    { id: "signals",   label: "Signals",   icon: "📡" },
-    { id: "content",   label: "Content",   icon: "📚" },
-    { id: "health",    label: "Health",    icon: "💚" },
+    { id: "overview",  label: "Overview"  },
+    { id: "customers", label: "Customers" },
+    { id: "cognition", label: "Cognition" },
+    { id: "signals",   label: "Signals"   },
+    { id: "content",   label: "Content"   },
+    { id: "health",    label: "Health"    },
   ];
 
   const hasUser = Boolean(inspectUser && inspectUser.trim());
@@ -311,10 +311,7 @@ export default function AnalyticsPage() {
 
         {/* Row 1: brand + tabs + external nav (single line) */}
         <div className="header-row header-row-primary">
-          <div className="header-brand">
-            <span className="brand-mark" aria-hidden>📊</span>
-            <span className="brand-name">Analytics</span>
-          </div>
+          <div className="header-brand">Analytics</div>
 
           <nav className="analytics-tabs" aria-label="Analytics sections">
             {TABS.map((t) => (
@@ -322,10 +319,8 @@ export default function AnalyticsPage() {
                 key={t.id}
                 className={`analytics-tab ${activeTab === t.id ? "active" : ""}`}
                 onClick={() => setActiveTab(t.id)}
-                title={t.label}
               >
-                <span className="analytics-tab-icon" aria-hidden>{t.icon}</span>
-                <span className="analytics-tab-label">{t.label}</span>
+                {t.label}
               </button>
             ))}
           </nav>
@@ -334,21 +329,20 @@ export default function AnalyticsPage() {
             <Link to="/"      className="header-link">Chat</Link>
             <Link to="/admin" className="header-link">Admin</Link>
             <button
-              className="btn-icon"
+              className="btn-text"
               onClick={() => refresh()}
               disabled={globalLoading}
-              title="Reload aggregates from Mongo"
-              aria-label="Reload"
+              title="Re-read aggregates from MongoDB"
             >
-              {globalLoading ? "…" : "↻"}
+              {globalLoading ? "Loading" : "Reload"}
             </button>
             <button
-              className="btn-icon btn-icon-emphasis"
+              className="btn-text btn-text-emphasis"
               onClick={() => refresh({ recompute: true })}
               disabled={globalLoading}
-              title="Rebuild aggregates from raw turn_records (slow)"
+              title="Rebuild aggregates from raw turn records"
             >
-              ⟳
+              Recompute
             </button>
           </div>
         </div>
@@ -509,26 +503,14 @@ export default function AnalyticsPage() {
       {activeTab === "content" && (
         <section className="section section-content-quality">
           <div className="section-head">
-            <div>
-              <h2>
-                Content quality by topic
-                <InfoHint width={380}>
-                  Which TOPICS are producing content failures, based on
-                  <code> content_correction</code> (weight 1.0 — explicit factual
-                  rejection) and <code>reask_same_question</code> (weight 0.5 —
-                  user re-asked, signal of incomplete content) over the window.
-                  Tiers: CRITICAL ≥ 25% · HIGH ≥ 12% · MEDIUM ≥ 5%.
-                  <br/><br/>
-                  Use this to identify <strong>which topics need RAG enrichment</strong>
-                  — the sample queries on each card show the exact phrasing users
-                  typed when the knowledge base let them down.
-                </InfoHint>
-              </h2>
-              <p className="section-sub">
-                Where the knowledge base is breaking — ranked by topic so you can
-                target RAG enrichment to the topics that actually need it.
-              </p>
-            </div>
+            <h2>
+              Content quality by topic
+              <InfoHint width={320}>
+                Topics ranked by weighted failure rate from <code>content_correction</code>
+                {" "}(×1.0) and <code>reask_same_question</code> (×0.5). Tiers: CRITICAL ≥ 25%,
+                HIGH ≥ 12%, MEDIUM ≥ 5%.
+              </InfoHint>
+            </h2>
           </div>
 
           <div className="content-quality-stack">

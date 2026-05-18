@@ -182,13 +182,13 @@ function SatisfactionCard({ satisfaction }) {
 
       <div className="nps-breakdown">
         <span className="thumbs-stat thumbs-up">
-          👍 {s.thumbs_up ?? 0} <span className="muted">({pct(s.positive_rate ?? 0)})</span>
+          Positive: <strong>{s.thumbs_up ?? 0}</strong> <span className="muted">({pct(s.positive_rate ?? 0)})</span>
         </span>
         <span className="thumbs-stat thumbs-down">
-          👎 {s.thumbs_down ?? 0} <span className="muted">({pct(s.negative_rate ?? 0)})</span>
+          Negative: <strong>{s.thumbs_down ?? 0}</strong> <span className="muted">({pct(s.negative_rate ?? 0)})</span>
         </span>
         <span className="thumbs-total muted">
-          {s.total_rated ?? 0} rated turns in window
+          {s.total_rated ?? 0} rated turns
         </span>
       </div>
 
