@@ -130,6 +130,29 @@ function PerfTable({ title, rows, perUser = false }) {
   return (
     <div className="strategy-perf-block">
       <div className="strategy-perf-block-head">{title}</div>
+
+      {/* Per-column legend — readable above the table so admins don't have
+          to guess what each header means. */}
+      <ul className="col-legend">
+        <li><strong>Strategy</strong> — the response format being scored.
+            <em> e.g. decision_card, comparison_table.</em></li>
+        <li><strong>Tier</strong> — performance bucket.
+            <em> HIGH ≥ 80, MEDIUM 50–80, LOW &lt; 50, EXPLORING = fewer than {3} pulls.</em></li>
+        <li><strong>Performance</strong> — μ-reward mapped to 0–100.
+            <em> e.g. μ=0.83 → 91.6%.</em></li>
+        <li><strong>Pulls</strong> — how many times this strategy was served.
+            <em> e.g. 40 = picked 40 times in total.</em></li>
+        {!perUser && (
+          <li><strong>Users</strong> — distinct people it was served to.
+            <em> e.g. 2 = served to two different users.</em></li>
+        )}
+        <li><strong>Situations</strong> — distinct {perUser ? "(intent, topic)" : "(user, intent, topic)"} contexts it was tried in.
+            <em> e.g. 3 = used across 3 different question types{perUser ? "" : "/users"}.
+            Big spread between best and worst here = the strategy is good somewhere but bad elsewhere — tighten the instruction.</em></li>
+        <li><strong>Best / worst situation</strong> — the highest and lowest-scoring context.
+            <em> e.g. ↑ Decision · retirement_accounts μ=0.88,  ↓ Evaluation · annuity_options μ=0.55.</em></li>
+      </ul>
+
       <div className="admin-table-wrap">
         <table className="admin-table">
           <thead>
@@ -139,8 +162,8 @@ function PerfTable({ title, rows, perUser = false }) {
               <th style={{ width: "240px" }}>Performance</th>
               <th style={{ width: "70px", textAlign: "right" }}>Pulls</th>
               {!perUser && <th style={{ width: "70px", textAlign: "right" }}>Users</th>}
-              <th style={{ width: "60px", textAlign: "right" }}>Cells</th>
-              <th>Best / worst cell</th>
+              <th style={{ width: "90px", textAlign: "right" }}>Situations</th>
+              <th>Best / worst situation</th>
             </tr>
           </thead>
           <tbody>

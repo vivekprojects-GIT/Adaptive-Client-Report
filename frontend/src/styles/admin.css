@@ -1097,3 +1097,33 @@
   font-size: 14px;
   line-height: 1;
 }
+
+/* ─────────────────────────────────────────────────────────────────────
+ * Column legend — short one-line descriptions of each table column.
+ * Sits between the block title and the table itself so admins can read
+ * what each column means before they scan the rows.
+ * ──────────────────────────────────────────────────────────────────── */
+.col-legend {
+  list-style: none;
+  margin: 8px 0 12px;
+  padding: 10px 14px;
+  background: var(--accent-soft);
+  border-left: 3px solid var(--primary);
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text);
+}
+.col-legend li {
+  margin: 0;
+  padding: 2px 0;
+}
+.col-legend li strong {
+  color: var(--text);
+  font-weight: 700;
+}
+.col-legend li em {
+  font-style: italic;
+  color: var(--text-secondary);
+  font-weight: 400;
+}
