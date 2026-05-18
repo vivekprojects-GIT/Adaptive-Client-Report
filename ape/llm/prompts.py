@@ -54,6 +54,14 @@ SIGNALS (how NEW_USER_MESSAGE reacts to PREVIOUS_ASSISTANT_RESPONSE):
                             "redo as an analogy", "TL;DR?"
                           ✗ NOT for asking more content ("explain more" → deeper_question)
 
+  format_keep_request     User EXPLICITLY praises the format/shape itself.
+                          ✓ "this format is perfect, keep using it"
+                          ✓ "I love how you structured this — always use bullets like that"
+                          ✓ "the table layout was exactly what I needed"
+                          ✗ "great answer" (no format mention → it_worked_statement)
+                          ✗ "thanks" (no format mention → it_worked_statement)
+                          ✗ "this worked" without referencing shape → it_worked_statement
+
   content_correction      User asserts a SPECIFIC FACT in the answer is wrong.
                           ✓ "actually the limit is $23k, not $22k"
                           ✓ "that's outdated — the rule changed in 2024"
@@ -83,7 +91,8 @@ SIGNALS (how NEW_USER_MESSAGE reacts to PREVIOUS_ASSISTANT_RESPONSE):
 
 PRECEDENCE — when a message could plausibly match multiple signals, decide in
 this order (first match wins):
-  1. Format request beats everything else.
+  1. Explicit format praise (format_keep_request) or complaint (format_change_request)
+     beats everything else — the user named the format.
   2. Content correction beats acknowledgment.
   3. Acknowledgment + new topic-related question → deeper_question (the question
      wins; the polite intro does NOT downgrade it to it_worked_statement).

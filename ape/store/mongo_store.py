@@ -30,7 +30,7 @@ from __future__ import annotations
 import math
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from pymongo import MongoClient, ReturnDocument
@@ -510,6 +510,75 @@ class MongoStore:
                 "rewarded_at":   utcnow_iso(),
             }},
         )
+
+    # ------------------------------------------------------------------
+    # Pending-signals buffer (multi-signal resolver support)
+    # ------------------------------------------------------------------
+    def append_pending_signal(
+        self,
+        response_id: str,
+        signal_entry: Dict[str, Any],
+    ) -> bool:
+        """Append one signal record to the response's pending_signals[] array.
+
+        signal_entry shape:
+          {"signal": str, "source": "ui"|"llm"|"derived"|"composite", "ts": iso}
+
+        Only appends if the response is still PENDING. Returns True if appended,
+        False if the response is missing or already finalized.
+        """
+        result = self.turn_record.update_one(
+            {
+                "response_id":   response_id,
+                "reward_status": REWARD_STATUS_PENDING,
+            },
+            {"$push": {"pending_signals": signal_entry}},
+        )
+        return result.modified_count > 0
+
+    def find_previous_pending_response(
+        self,
+        user_id_hash: str,
+        session_id: Optional[str],
+        max_age_sec: int = 600,
+    ) -> Optional[Dict[str, Any]]:
+        """Find the most recent PENDING response for this user/session.
+
+        Used at the top of /turn to identify which prior response should
+        be finalized now that the user has moved on. Bounded by max_age_sec
+        so we don't pick up stale unfinalized rows from yesterday.
+        """
+        query: Dict[str, Any] = {
+            "user_id_hash":  user_id_hash,
+            "reward_status": REWARD_STATUS_PENDING,
+        }
+        if session_id:
+            query["session_id_optional"] = session_id
+        # Cutoff = now − max_age_sec
+        cutoff_dt = datetime.utcnow() - timedelta(seconds=max_age_sec)
+        query["ts"] = {"$gte": cutoff_dt.strftime("%Y-%m-%dT00:00:00")}
+        return self.turn_record.find_one(query, sort=[("ts", -1)])
+
+    def get_response_age_seconds(self, response_id: str) -> Optional[float]:
+        """Return seconds elapsed since the response was created. None if missing."""
+        resp = self.turn_record.find_one(
+            {"response_id": response_id},
+            projection={"ts": 1, "_id": 0},
+        )
+        if not resp or "ts" not in resp:
+            return None
+        try:
+            ts = resp["ts"]
+            if ts.endswith("Z"):
+                ts = ts[:-1] + "+00:00"
+            dt = datetime.fromisoformat(ts)
+            now = datetime.utcnow()
+            # Strip tz info for naive subtraction
+            if dt.tzinfo is not None:
+                dt = dt.replace(tzinfo=None)
+            return (now - dt).total_seconds()
+        except (ValueError, TypeError):
+            return None
 
     def list_user_responses(self, user_id_hash: str, limit: int = 50) -> List[Dict[str, Any]]:
         return list(self.turn_record.find(

@@ -24,34 +24,44 @@ from .routing import COMPOSITE_PRIORITY, SIGNAL_CATALOG
 
 
 # ---------------------------------------------------------------------------
-# The "positive" and "negative" atomic sets — used for consensus composites.
-# Derived once from SIGNAL_CATALOG so the lists stay in sync if strengths change.
+# Semantic direction sets — used for consensus composites.
+#
+# These are HARDCODED by semantic intent, not derived from reward routing.
+# Why hardcoded? Because thumbs_up/down are correctly routed to None on
+# both reward axes (they're ambiguous about cause), but they're still
+# positive/negative SEMANTICALLY — and a consensus composite like
+# "engaged_positive" should count them.
+#
+# If you add new atomic signals, list them in the appropriate set below.
+# Composite signals themselves are excluded — they never participate in
+# consensus checks (we don't want pattern_engaged_positive to recurse).
 # ---------------------------------------------------------------------------
 
-def _positive_atomics() -> Set[str]:
-    return {
-        name for name, e in SIGNAL_CATALOG.items()
-        if e["source"] in ("ui", "llm", "derived")
-        and (
-            (e["format_strength"] in ("strong_positive", "weak_positive"))
-            or (e["content_strength"] in ("strong_positive", "weak_positive"))
-        )
-    }
+POSITIVE_ATOMICS: Set[str] = {
+    # UI
+    "thumbs_up",
+    "copy_save",
+    # LLM-detected text
+    "format_keep_request",
+    "it_worked_statement",
+    "deeper_question",
+    # Derived / automatic
+    "format_compliance_pass",
+    "session_continue",
+}
 
-
-def _negative_atomics() -> Set[str]:
-    return {
-        name for name, e in SIGNAL_CATALOG.items()
-        if e["source"] in ("ui", "llm", "derived")
-        and (
-            (e["format_strength"] in ("strong_negative", "weak_negative"))
-            or (e["content_strength"] in ("strong_negative", "weak_negative"))
-        )
-    }
-
-
-POSITIVE_ATOMICS = _positive_atomics()
-NEGATIVE_ATOMICS = _negative_atomics()
+NEGATIVE_ATOMICS: Set[str] = {
+    # UI
+    "thumbs_down",
+    "regenerate_click",
+    # LLM-detected text
+    "format_change_request",
+    "content_correction",
+    "reask_same_question",
+    # Derived / automatic
+    "format_compliance_fail",
+    "session_abandon",
+}
 
 
 # ---------------------------------------------------------------------------
