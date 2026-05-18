@@ -1233,19 +1233,79 @@
 .source-default   { background: var(--secondary); color: var(--muted); }
 .source-unknown   { background: var(--secondary); color: var(--muted); }
 
-/* Reward category badges in the table */
+/* Reward category badges in the table — now show value + category name */
 .reward-badge {
-  display: inline-block;
-  padding: 2px 8px;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 3px 9px;
   border-radius: var(--radius-sm);
-  font-size: 11.5px;
-  font-weight: 600;
+  font-size: 12.5px;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+.reward-badge strong {
+  font-size: 13.5px;
+}
+.reward-badge-cat {
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.7;
+  margin-top: 1px;
 }
 .reward-strong_positive { background: #d8efd2; color: #2c5a1a; }
 .reward-weak_positive   { background: #ecf6e7; color: #4a7a3a; }
 .reward-weak_negative   { background: #f6e7e7; color: #7a3a3a; }
 .reward-strong_negative { background: #efd2d2; color: #5a1a1a; }
+
+/* "Reward magnitudes live on the Reward Scale tab" pointer block */
+.reward-scale-pointer {
+  background: var(--accent-soft);
+  border-left: 3px solid var(--primary);
+  padding: 10px 14px;
+  margin: 8px 0 14px;
+  border-radius: 4px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text);
+}
+.reward-scale-pointer code {
+  background: var(--code-bg);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 11.5px;
+}
+.reward-scale-summary {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  font-size: 12px;
+}
+.reward-scale-summary li {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.reward-scale-summary code {
+  background: rgba(0, 0, 0, 0.04);
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+.reward-scale-summary strong {
+  font-variant-numeric: tabular-nums;
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+.reward-scale-summary strong.reward-strong_positive { color: #2c5a1a; background: #d8efd2; }
+.reward-scale-summary strong.reward-weak_positive   { color: #4a7a3a; background: #ecf6e7; }
+.reward-scale-summary strong.reward-weak_negative   { color: #7a3a3a; background: #f6e7e7; }
+.reward-scale-summary strong.reward-strong_negative { color: #5a1a1a; background: #efd2d2; }
 
 /* Frequency + quality tags */
 .freq-tag, .quality-tag {

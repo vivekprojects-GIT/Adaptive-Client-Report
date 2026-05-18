@@ -3,13 +3,17 @@ import { api } from "../../api.js";
 import AdminTable from "./AdminTable.jsx";
 import StatusPill from "./StatusPill.jsx";
 
-const CATEGORIES = [
-  { value: "",                 label: "(none — NOT_RECORDED)" },
-  { value: "strong_positive",  label: "strong_positive (+1.0)" },
-  { value: "weak_positive",    label: "weak_positive (+0.5)" },
-  { value: "weak_negative",    label: "weak_negative (-0.5)" },
-  { value: "strong_negative",  label: "strong_negative (-1.0)" },
-];
+// Fallback values used only until /config/reward-scale loads. After that,
+// the dropdown labels and the table badges show LIVE values from the
+// reward_scale config, so editing a magnitude on the Reward Scale tab
+// is immediately reflected here.
+const DEFAULT_CATEGORY_VALUES = {
+  strong_positive:  +1.0,
+  weak_positive:    +0.5,
+  weak_negative:    -0.5,
+  strong_negative:  -1.0,
+};
+const CATEGORY_ORDER = ["strong_positive", "weak_positive", "weak_negative", "strong_negative"];
 
 const SOURCE_TYPES = [
   { value: "ui",        label: "UI button (user click)" },
@@ -40,6 +44,7 @@ const CONSUMER_OPTIONS = [
  */
 export default function SignalRulesTab({ notify }) {
   const [rows, setRows]     = useState([]);
+  const [rewardScale, setRewardScale] = useState([]);
   const [editing, setEditing] = useState(false);
   const [busy, setBusy]     = useState(false);
 
@@ -59,10 +64,47 @@ export default function SignalRulesTab({ notify }) {
   const [filterSource, setFilterSource] = useState("");
 
   async function refresh() {
-    try { setRows(await api.listSignalRules()); }
-    catch (err) { notify("Load failed: " + err.message, "error"); }
+    try {
+      const [sigs, rs] = await Promise.all([
+        api.listSignalRules(),
+        api.listRewardScale(),
+      ]);
+      setRows(sigs);
+      setRewardScale(Array.isArray(rs) ? rs : []);
+    } catch (err) {
+      notify("Load failed: " + err.message, "error");
+    }
   }
   useEffect(() => { refresh(); }, []);
+
+  // Build live category → normalized_reward lookup from the reward_scale config.
+  // Falls back to DEFAULT_CATEGORY_VALUES until the API returns.
+  const categoryValues = useMemo(() => {
+    const map = { ...DEFAULT_CATEGORY_VALUES };
+    for (const r of rewardScale) {
+      const cat = r.reward_category || r.entity_id;
+      if (cat && r.normalized_reward != null) {
+        map[cat] = Number(r.normalized_reward);
+      }
+    }
+    return map;
+  }, [rewardScale]);
+
+  // Render the dropdown options with the LIVE numeric values from reward_scale
+  const CATEGORIES = useMemo(() => [
+    { value: "", label: "(none — NOT_RECORDED — no bandit update)" },
+    ...CATEGORY_ORDER.map((cat) => ({
+      value: cat,
+      label: `${cat} (${fmtSigned(categoryValues[cat])})`,
+    })),
+  ], [categoryValues]);
+
+  // Used to render numeric value badges in the table
+  function rewardValue(category) {
+    if (!category) return null;
+    const v = categoryValues[category];
+    return v != null ? fmtSigned(v) : category;
+  }
 
   function resetForm() {
     setN(""); setSrc("ui"); setFc(""); setCc("");
@@ -157,11 +199,27 @@ export default function SignalRulesTab({ notify }) {
         </h2>
         <p className="admin-section-sub">
           Each signal has two reward axes — <strong>format</strong> and{" "}
-          <strong>content</strong>. Pick a strength category per axis, or leave
-          blank for <code>NOT_RECORDED</code> (no bandit update on that axis).
-          The system ships 25 signals (15 atomic + 10 composite); you can edit
-          any value, add new signals, or delete unused ones.
+          <strong>content</strong>. Pick a strength <strong>category</strong> per axis
+          (the dropdown shows the live numeric value), or leave blank for{" "}
+          <code>NOT_RECORDED</code> (no bandit update on that axis). The system
+          ships 25 signals (15 atomic + 10 composite); you can edit any value,
+          add new signals, or delete unused ones.
         </p>
+        <div className="reward-scale-pointer">
+          <strong>Reward magnitudes</strong> (the actual <code>+1.0</code> /
+          <code>+0.5</code> / <code>−0.5</code> / <code>−1.0</code> numbers) live
+          on the <strong>Reward Scale</strong> tab. The values shown here in the
+          dropdown labels and the table badges are pulled live from that config —
+          edit them there to change the numbers everywhere at once.
+          <ul className="reward-scale-summary">
+            {CATEGORY_ORDER.map((cat) => (
+              <li key={cat}>
+                <code>{cat}</code> →{" "}
+                <strong className={`reward-${cat}`}>{fmtSigned(categoryValues[cat])}</strong>
+              </li>
+            ))}
+          </ul>
+        </div>
         <ul className="col-legend">
           <li><strong>Signal name</strong> — snake_case identifier matching what the classifier, UI, or composite detector emits.
             <em> e.g. thumbs_up, format_compliance_pass, pattern_regret.</em></li>
@@ -342,13 +400,23 @@ export default function SignalRulesTab({ notify }) {
               ) },
             { key: "feature_id", label: "FeatID", width: "60px",
               render: (r) => <span className="num">{r.feature_id ?? "—"}</span> },
-            { key: "format_category", label: "Format", width: "150px",
+            { key: "format_category", label: "Format reward", width: "170px",
               render: (r) => r.format_category
-                ? <span className={`reward-badge reward-${r.format_category}`}>{rewardLabel(r.format_category)}</span>
+                ? (
+                  <span className={`reward-badge reward-${r.format_category}`} title={r.format_category}>
+                    <strong>{rewardValue(r.format_category)}</strong>
+                    <span className="reward-badge-cat">{r.format_category.replace("_", " ")}</span>
+                  </span>
+                )
                 : <span className="muted">—</span> },
-            { key: "content_category", label: "Content", width: "150px",
+            { key: "content_category", label: "Content reward", width: "170px",
               render: (r) => r.content_category
-                ? <span className={`reward-badge reward-${r.content_category}`}>{rewardLabel(r.content_category)}</span>
+                ? (
+                  <span className={`reward-badge reward-${r.content_category}`} title={r.content_category}>
+                    <strong>{rewardValue(r.content_category)}</strong>
+                    <span className="reward-badge-cat">{r.content_category.replace("_", " ")}</span>
+                  </span>
+                )
                 : <span className="muted">—</span> },
             { key: "expected_frequency", label: "Freq", width: "80px",
               render: (r) => <span className="freq-tag">{r.expected_frequency || "—"}</span> },
@@ -384,11 +452,10 @@ export default function SignalRulesTab({ notify }) {
   );
 }
 
-function rewardLabel(category) {
-  return ({
-    strong_positive:  "+1.0",
-    weak_positive:    "+0.5",
-    weak_negative:    "−0.5",
-    strong_negative:  "−1.0",
-  })[category] || category;
+// Format a numeric reward with sign + 2 decimals: 1 → "+1.00", -0.5 → "−0.50"
+function fmtSigned(v) {
+  if (v == null || Number.isNaN(Number(v))) return "—";
+  const num = Number(v);
+  const sign = num > 0 ? "+" : num < 0 ? "−" : "";
+  return `${sign}${Math.abs(num).toFixed(2)}`;
 }
