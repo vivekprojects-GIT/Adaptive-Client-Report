@@ -544,6 +544,25 @@
   letter-spacing: 0;
   margin-left: 6px;
 }
+
+/* "cumulative — window does not apply" — tells the admin that this section
+   intentionally ignores the date filter, so they don't think it's broken
+   when the cards stay identical after switching 7d/30d/today. */
+.cumulative-tag {
+  display: inline-block;
+  background: var(--bg);
+  color: var(--muted);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 1px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  font-style: italic;
+  letter-spacing: 0;
+  margin-left: 8px;
+  vertical-align: middle;
+  cursor: help;
+}
 .loading-tag {
   color: var(--muted);
   font-size: 12px;

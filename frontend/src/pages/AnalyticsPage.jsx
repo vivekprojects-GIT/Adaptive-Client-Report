@@ -245,11 +245,16 @@ export default function AnalyticsPage() {
   useEffect(() => { refresh(); /* eslint-disable-next-line */ }, []);
 
   // Re-load only the window-driven sections when the date filter changes.
-  // (Avoid touching cognitive facets / interests / offers — they're cumulative.)
+  // (Cognitive facets / interests / offers are cumulative — they intentionally
+  // ignore the window. The header on the facets section labels this explicitly
+  // so the admin knows the cards aren't broken when they don't change.)
   useEffect(() => {
     loadTrends();
     loadActiveUsers();
     loadPlatform();
+    loadPlatformSeries();   // trend chart: daily turns across platform
+    loadTopicsSeries();     // trend chart: per-topic daily counts
+    loadUserSeries();       // trend chart: per-user daily activity (USER mode)
     // eslint-disable-next-line
   }, [windowId]);
 
@@ -483,6 +488,9 @@ export default function AnalyticsPage() {
                 {hasUser
                   ? <span className="user-pill">{profile?.display_name || inspectUser}</span>
                   : <span className="window-tag">all users</span>}
+                <span className="cumulative-tag" title="The bandit learns over time — these cards don't get reset by the date window. Use 'Recompute now' to refresh.">
+                  cumulative · window does not apply
+                </span>
                 <InfoHint width={400}>
                   Per-<code>(intent, topic)</code> bandit cells.
                   The runtime uses <strong>UCB</strong> — selection is
@@ -580,6 +588,9 @@ export default function AnalyticsPage() {
           <div className="section-head">
             <h2>
               Topic interest for <code className="user-pill">{profile?.display_name || inspectUser}</code>
+              <span className="cumulative-tag" title="Interest scores are computed from all historical activity, with recency built in via exp-decay. The window selector doesn't apply.">
+                cumulative · window does not apply
+              </span>
               <InfoHint width={340}>
                 Per-topic interest score for this user, with the four contributing sub-scores visible.
                 <strong> Frequency</strong> = how often vs their top topic.
