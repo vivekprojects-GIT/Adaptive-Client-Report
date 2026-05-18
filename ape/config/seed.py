@@ -130,6 +130,8 @@ def seed_all(store: MongoStore, domain: str = DEFAULT_DOMAIN, default_topic: str
         counts["signal_rules"] += 1
 
     # ---- 6. Reward scale -----------------------------------------------
+    # Single field per category: normalized_reward in [-1.0, +1.0].
+    # The bandit consumes this directly; no companion raw_reward field.
     for category, value in REWARD_SCALE.items():
         if category is None:
             # NOT_RECORDED isn't a stored row — it's the absence of category
@@ -139,9 +141,7 @@ def seed_all(store: MongoStore, domain: str = DEFAULT_DOMAIN, default_topic: str
             entity_id=category,
             fields={
                 "reward_category":   category,
-                "raw_reward":        value,
-                # Normalize to [-1.0, 1.0] for UCB math
-                "normalized_reward": float(value) / 2.0 if isinstance(value, (int, float)) else None,
+                "normalized_reward": float(value) if isinstance(value, (int, float)) else None,
             },
         )
         counts["reward_rules"] += 1

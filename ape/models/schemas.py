@@ -112,8 +112,7 @@ class SignalRuleUpdate(BaseModel):
 
 class RewardScaleUpdate(BaseModel):
     category:          str
-    raw_reward:        float
-    normalized_reward: Optional[float] = None
+    normalized_reward: float
     changed_by:        str = "admin_user"
 
 

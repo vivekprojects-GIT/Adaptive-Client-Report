@@ -47,14 +47,14 @@ def main():
     print(f"✓ Seed: {counts}")
 
     # ---- 2. Read signal routing and reward scale -----------------------
-    routing = store.get_signal_routing("thumbs_up")
-    assert routing["format_relevant"]  is True
-    assert routing["content_relevant"] is True
-    assert routing["format_category"]  == "strong_positive"
-    print("✓ Signal routing for thumbs_up resolves correctly")
+    # Use format_change_request — it's bandit-relevant in the new catalog.
+    # (thumbs_up was intentionally moved to None routing to remove its bias.)
+    routing = store.get_signal_routing("format_change_request")
+    assert routing["format_relevant"] is True
+    assert routing["format_category"] == "strong_negative"
+    print("✓ Signal routing for format_change_request resolves correctly")
 
     scale = store.get_reward_scale("strong_positive")
-    assert scale["raw_reward"]        == 2
     assert scale["normalized_reward"] == 1.0
     print("✓ Reward scale for strong_positive resolves correctly")
 

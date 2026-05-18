@@ -4,11 +4,10 @@ import AdminTable from "./AdminTable.jsx";
 import StatusPill from "./StatusPill.jsx";
 
 export default function RewardScaleTab({ notify }) {
-  const [rows, setRows]   = useState([]);
-  const [cat, setCat]     = useState("");
-  const [raw, setRaw]     = useState("");
-  const [norm, setNorm]   = useState("");
-  const [busy, setBusy]   = useState(false);
+  const [rows, setRows] = useState([]);
+  const [cat, setCat]   = useState("");
+  const [norm, setNorm] = useState("");
+  const [busy, setBusy] = useState(false);
 
   async function refresh() {
     try { setRows(await api.listRewardScale()); }
@@ -18,17 +17,15 @@ export default function RewardScaleTab({ notify }) {
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!cat.trim() || raw === "") return;
+    if (!cat.trim() || norm === "") return;
     setBusy(true);
     try {
-      const payload = {
-        category:    cat.trim(),
-        raw_reward:  parseFloat(raw),
-      };
-      if (norm !== "") payload.normalized_reward = parseFloat(norm);
-      await api.upsertRewardValue(payload);
+      await api.upsertRewardValue({
+        category:          cat.trim(),
+        normalized_reward: parseFloat(norm),
+      });
       notify(`Reward category "${cat}" saved`);
-      setCat(""); setRaw(""); setNorm("");
+      setCat(""); setNorm("");
       refresh();
     } catch (err) {
       notify("Save failed: " + err.message, "error");
@@ -39,7 +36,6 @@ export default function RewardScaleTab({ notify }) {
 
   function loadIntoForm(row) {
     setCat(row.reward_category || row.entity_id);
-    setRaw(String(row.raw_reward ?? ""));
     setNorm(row.normalized_reward != null ? String(row.normalized_reward) : "");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -59,18 +55,15 @@ export default function RewardScaleTab({ notify }) {
       <div className="admin-section">
         <h2 className="admin-section-title">Add or update reward value</h2>
         <p className="admin-section-sub">
-          Maps a category name (e.g. <code>strong_positive</code>) to a
-          raw reward and the normalized value used by the bandit math.
-          Leave <strong>Normalized</strong> blank to default to{" "}
-          <code>raw / 2.0</code>.
+          Maps a category name (e.g. <code>strong_positive</code>) to the
+          normalized reward value applied to the bandit. UCB requires values
+          in the range <code>[-1.0, +1.0]</code>.
         </p>
         <ul className="col-legend">
           <li><strong>Category</strong> — snake_case name referenced by signal-routing rules. Must match exactly what those rules emit.
             <em> e.g. strong_positive, weak_positive, weak_negative, strong_negative.</em></li>
-          <li><strong>Raw reward</strong> — the human-readable points value. Defaults you'd recognize: +2 / +1 / -1 / -2.
-            <em> e.g. 2 for strong_positive (a thumbs_up is "worth" +2), -1 for weak_negative (a reask is mildly bad).</em></li>
-          <li><strong>Normalized (optional)</strong> — what the bandit actually adds to <code>total_reward</code>. Must land in [-1, +1] for UCB math to stay sane. Blank = auto-compute as <code>raw / 2.0</code>.
-            <em> e.g. raw=2 with normalized blank → 1.0 (caps at +1). Override only if you want a non-linear scale, e.g. raw=3 → normalized=1.0 to soft-cap a "rave" signal.</em></li>
+          <li><strong>Reward</strong> — the normalized value the bandit adds to <code>total_reward</code> when this category fires. Must be in <code>[-1.0, +1.0]</code>.
+            <em> Defaults: strong = ±1.0, weak = ±0.5. Adjust if you want a tighter or looser learning rate.</em></li>
         </ul>
         <form className="admin-form" onSubmit={handleSubmit}>
           <div className="form-row">
@@ -85,24 +78,16 @@ export default function RewardScaleTab({ notify }) {
               />
             </label>
             <label>
-              Raw reward
-              <input
-                type="number"
-                step="0.5"
-                placeholder="e.g. 2"
-                value={raw}
-                onChange={(e) => setRaw(e.target.value)}
-                required
-              />
-            </label>
-            <label>
-              Normalized (optional)
+              Reward
               <input
                 type="number"
                 step="0.1"
-                placeholder="raw / 2 by default"
+                min="-1"
+                max="1"
+                placeholder="e.g. 1.0"
                 value={norm}
                 onChange={(e) => setNorm(e.target.value)}
+                required
               />
             </label>
             <button type="submit" className="btn-primary" disabled={busy}>
@@ -116,12 +101,13 @@ export default function RewardScaleTab({ notify }) {
         <h2 className="admin-section-title">Active reward categories ({rows.length})</h2>
         <AdminTable
           columns={[
-            { key: "reward_category",   label: "Category",
+            { key: "reward_category", label: "Category",
               render: (r) => <code className="code-pill">{r.reward_category}</code> },
-            { key: "raw_reward",        label: "Raw",        width: "100px" },
-            { key: "normalized_reward", label: "Normalized", width: "120px",
-              render: (r) => r.normalized_reward != null ? r.normalized_reward.toFixed(2) : "—" },
-            { key: "status",            label: "Status",     width: "130px",
+            { key: "normalized_reward", label: "Reward", width: "120px",
+              render: (r) => r.normalized_reward != null
+                ? <span className="num"><strong>{fmtSigned(r.normalized_reward)}</strong></span>
+                : "—" },
+            { key: "status", label: "Status", width: "130px",
               render: (r) => (
                 <StatusPill
                   entityType="reward_scale"
@@ -141,4 +127,11 @@ export default function RewardScaleTab({ notify }) {
       </div>
     </div>
   );
+}
+
+function fmtSigned(v) {
+  if (v == null || Number.isNaN(Number(v))) return "—";
+  const num = Number(v);
+  const sign = num > 0 ? "+" : num < 0 ? "−" : "";
+  return `${sign}${Math.abs(num).toFixed(2)}`;
 }

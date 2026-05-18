@@ -270,20 +270,16 @@ class ConfigManager:
     def update_reward_value(
         self,
         category: str,
-        raw_reward: float,
-        normalized_reward: Optional[float] = None,
+        normalized_reward: float,
         changed_by: str = "system",
     ) -> None:
         before = self.store.get_reward_scale(category)
-        if normalized_reward is None:
-            normalized_reward = float(raw_reward) / 2.0
         self.store.upsert_config(
             entity_type=ENTITY_REWARD_RULE,
             entity_id=category,
             fields={
                 "reward_category":   category,
-                "raw_reward":        raw_reward,
-                "normalized_reward": normalized_reward,
+                "normalized_reward": float(normalized_reward),
             },
         )
         after = self.store.get_reward_scale(category)

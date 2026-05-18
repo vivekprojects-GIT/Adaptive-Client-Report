@@ -389,7 +389,6 @@ def upsert_signal_rule(req: SignalRuleUpdate):
 def upsert_reward_value(req: RewardScaleUpdate):
     _guard_cfg().update_reward_value(
         category=req.category,
-        raw_reward=req.raw_reward,
         normalized_reward=req.normalized_reward,
         changed_by=req.changed_by,
     )
