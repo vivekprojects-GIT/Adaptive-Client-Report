@@ -514,14 +514,14 @@ export default function AnalyticsPage() {
           </div>
 
           <div className="content-quality-stack">
-            <RagQualityPanel notify={() => {}} />
+            <RagQualityPanel notify={() => {}} daysOverride={Math.max(1, daysForFilter(windowId))} />
           </div>
         </section>
       )}
 
       {/* ════════════════ HEALTH TAB ════════════════ */}
       {activeTab === "health" && (
-        <CustomerHealthSection windowLabel={windowLabel} />
+        <CustomerHealthSection windowLabel={windowLabel} days={Math.max(1, daysForFilter(windowId))} />
       )}
 
       {/* ════════════════ CUSTOMERS TAB ════════════════ */}

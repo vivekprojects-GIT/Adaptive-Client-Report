@@ -16,12 +16,18 @@ import { api } from "../../api.js";
  *   content_correction    × 1.0   (strong — user explicitly corrected a fact)
  *   reask_same_question   × 0.5   (moderate — answer didn't land; mixed cause)
  */
-export default function RagQualityPanel({ notify }) {
+export default function RagQualityPanel({ notify, daysOverride = null }) {
   const [data, setData]   = useState(null);
   const [err, setErr]     = useState(null);
   const [busy, setBusy]   = useState(false);
-  const [days, setDays]   = useState(14);
+  const [days, setDays]   = useState(daysOverride ?? 14);
   const [expanded, setEx] = useState(null);
+
+  // If the parent passes a daysOverride (analytics-tab usage), sync our
+  // internal state when the parent's window changes.
+  useEffect(() => {
+    if (daysOverride != null) setDays(daysOverride);
+  }, [daysOverride]);
 
   async function load() {
     setBusy(true);
@@ -36,7 +42,9 @@ export default function RagQualityPanel({ notify }) {
       setBusy(false);
     }
   }
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
+  // Refetch on mount AND whenever days changes (either via parent override
+  // or local input).
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [days]);
 
   return (
     <div className="iq-panel">

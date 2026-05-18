@@ -14,7 +14,7 @@ import MiniLineChart from "./MiniLineChart.jsx";
  * in nature — they describe long-running product health metrics. The date
  * window selector applies via the `days` parameter.
  */
-export default function CustomerHealthSection({ windowLabel = "" }) {
+export default function CustomerHealthSection({ windowLabel = "", days = 30 }) {
   const [data, setData] = useState(null);
   const [err, setErr]   = useState(null);
   const [busy, setBusy] = useState(false);
@@ -23,7 +23,7 @@ export default function CustomerHealthSection({ windowLabel = "" }) {
     setBusy(true);
     setErr(null);
     try {
-      const d = await api.customerHealth(30, 4);
+      const d = await api.customerHealth(days, 4);
       setData(d);
     } catch (e) {
       setErr(e.message);
@@ -32,7 +32,8 @@ export default function CustomerHealthSection({ windowLabel = "" }) {
       setBusy(false);
     }
   }
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
+  // Refetch on mount AND whenever the parent's window changes.
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [days]);
 
   if (err) {
     return (
