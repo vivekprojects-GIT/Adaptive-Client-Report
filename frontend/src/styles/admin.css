@@ -987,3 +987,113 @@
   border-color: var(--primary);
   color: var(--primary);
 }
+
+/* ─────────────────────────────────────────────────────────────────────
+ * UserAutocomplete — reusable user-search input with live dropdown.
+ * Used in BanditStateTab, StrategyPerformancePanel, and anywhere
+ * else the admin needs to pick a real user_id_hash by display name.
+ * ──────────────────────────────────────────────────────────────────── */
+.user-autocomplete {
+  position: relative;
+  display: inline-block;
+  width: 100%;
+}
+.user-autocomplete > input[type="text"] {
+  width: 100%;
+  padding-right: 28px;        /* room for the × clear button */
+}
+.user-autocomplete .ua-clear {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: background 0.15s, color 0.15s;
+}
+.user-autocomplete .ua-clear:hover {
+  background: var(--secondary);
+  color: var(--danger);
+}
+
+.ua-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+  max-height: 320px;
+  overflow-y: auto;
+  z-index: 200;
+}
+.ua-option {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: background 0.1s;
+}
+.ua-option.active,
+.ua-option:hover {
+  background: var(--accent-soft);
+}
+.ua-option.ua-empty {
+  color: var(--muted);
+  cursor: default;
+  font-style: italic;
+}
+.ua-option.ua-empty:hover {
+  background: transparent;
+}
+.ua-option-empty {
+  border-bottom: 1px dashed var(--border);
+  margin-bottom: 4px;
+  padding-bottom: 8px;
+}
+.ua-option .opt-name {
+  color: var(--text);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ua-option .opt-hash {
+  background: var(--code-bg);
+  color: var(--muted);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10.5px;
+  font-weight: 400;
+  white-space: nowrap;
+}
+.ua-option .opt-topic {
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+.ua-option .opt-ready {
+  color: var(--pos);
+  font-size: 14px;
+  line-height: 1;
+}

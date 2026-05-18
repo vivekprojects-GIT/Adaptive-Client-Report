@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../../api.js";
+import UserAutocomplete from "../../components/UserAutocomplete.jsx";
 
 /**
  * BanditStateTab — read-only inspection of `ape_user_bandit_state` rows.
@@ -29,11 +30,12 @@ export default function BanditStateTab({ notify }) {
 
   const hasUser = Boolean(userQuery && userQuery.trim());
 
-  async function load() {
+  async function load(overrideUser = null) {
     setBusy(true);
     setErr(null);
     try {
-      const r = await api.banditState(userQuery.trim(), onlyPulled);
+      const u = (overrideUser !== null ? overrideUser : userQuery).trim();
+      const r = await api.banditState(u, onlyPulled);
       setRows(Array.isArray(r) ? r : []);
     } catch (e) {
       setErr(e.message);
@@ -44,6 +46,9 @@ export default function BanditStateTab({ notify }) {
   }
 
   useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
+
+  // Re-load whenever the onlyPulled toggle flips, so the toggle is live.
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [onlyPulled]);
 
   // Group rows by (user, intent, topic) → cells
   const cells = useMemo(() => {
@@ -115,13 +120,17 @@ export default function BanditStateTab({ notify }) {
         <div className="admin-form">
           <div className="form-row">
             <label className="grow">
-              Filter to user (raw user_id or u_&lt;hash&gt;)
-              <input
-                type="text"
-                placeholder="empty = all users"
+              Filter to user (start typing a name)
+              <UserAutocomplete
                 value={userQuery}
-                onChange={(e) => setUserQuery(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") load(); }}
+                onApply={(picked) => {
+                  setUserQuery(picked);
+                  // Reload immediately with the picked hash — don't wait
+                  // for React state to flush, otherwise the click feels dead.
+                  load(picked);
+                }}
+                placeholder="empty = all users"
+                allowEmpty
               />
             </label>
             <label className="check-inline">
@@ -132,7 +141,7 @@ export default function BanditStateTab({ notify }) {
               />
               <span>Only pulled cells (hide count=0 cold-start rows)</span>
             </label>
-            <button className="btn-primary" onClick={load} disabled={busy}>
+            <button className="btn-primary" onClick={() => load()} disabled={busy}>
               {busy ? "Loading…" : "Reload"}
             </button>
           </div>

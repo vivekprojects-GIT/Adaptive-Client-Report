@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../../api.js";
+import UserAutocomplete from "../../components/UserAutocomplete.jsx";
 
 /**
  * StrategyPerformancePanel — shows which strategies are paying off, both
@@ -25,11 +26,12 @@ export default function StrategyPerformancePanel({ notify }) {
   const [userId, setUserId] = useState("");
   const [minPulls, setMinPulls] = useState(3);
 
-  async function load() {
+  async function load(overrideUser = null) {
     setBusy(true);
     setErr(null);
     try {
-      const d = await api.strategyPerformance(userId.trim(), minPulls);
+      const u = (overrideUser !== null ? overrideUser : userId).trim();
+      const d = await api.strategyPerformance(u, minPulls);
       setData(d);
     } catch (e) {
       setErr(e.message);
@@ -63,11 +65,14 @@ export default function StrategyPerformancePanel({ notify }) {
         <div className="strategy-perf-controls">
           <label>
             Filter to user (optional)
-            <input
-              type="text"
+            <UserAutocomplete
               value={userId}
-              onChange={(e) => setUserId(e.target.value)}
-              placeholder="user_id or u_<hash>"
+              onApply={(picked) => {
+                setUserId(picked);
+                load(picked);
+              }}
+              placeholder="empty = all users"
+              allowEmpty
             />
           </label>
           <label>
@@ -80,7 +85,7 @@ export default function StrategyPerformancePanel({ notify }) {
               onChange={(e) => setMinPulls(parseInt(e.target.value) || 3)}
             />
           </label>
-          <button className="btn-primary" onClick={load} disabled={busy}>
+          <button className="btn-primary" onClick={() => load()} disabled={busy}>
             {busy ? "Loading…" : "Refresh"}
           </button>
         </div>
