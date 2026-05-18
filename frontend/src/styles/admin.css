@@ -1331,3 +1331,200 @@
   border-radius: var(--radius-pill);
   white-space: nowrap;
 }
+
+/* ─────────────────────────────────────────────────────────────────────
+ * InstructionQualityPanel — surface problem-signal incidence per
+ * (strategy, instruction_version) so admins know what to rewrite.
+ * ──────────────────────────────────────────────────────────────────── */
+.iq-panel {
+  background: var(--surface);
+  border-left: 3px solid var(--primary);
+  border-radius: 4px;
+  padding: 12px 16px;
+}
+.iq-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 6px;
+}
+.iq-head h2 {
+  margin: 0 0 4px 0;
+}
+.iq-controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+.iq-controls label {
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.iq-summary {
+  font-size: 13px;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 0 12px;
+  border-bottom: 1px dashed var(--border);
+  margin-bottom: 12px;
+}
+.iq-summary .dot-sep {
+  color: var(--muted);
+}
+
+.iq-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.iq-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--surface);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.iq-card:hover {
+  border-color: var(--border-strong);
+}
+.iq-card.open {
+  border-color: var(--primary);
+  box-shadow: var(--shadow-sm);
+}
+.iq-card-head {
+  display: grid;
+  grid-template-columns: auto auto auto auto auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+  user-select: none;
+}
+.iq-card-head:hover {
+  background: var(--bg);
+}
+.version-chip {
+  background: var(--code-bg);
+  color: var(--muted);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 11.5px;
+}
+.iq-rate {
+  font-size: 13.5px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.iq-totals {
+  color: var(--muted);
+  font-size: 12px;
+}
+.iq-dominant {
+  font-size: 11.5px;
+  color: var(--text-secondary);
+}
+.iq-dominant code {
+  background: var(--code-bg);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+}
+.iq-expand {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.iq-card-body {
+  padding: 0 14px 14px;
+  border-top: 1px dashed var(--border);
+}
+.iq-failures-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 10px 0 14px;
+}
+.iq-failure-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--bg);
+  font-size: 11.5px;
+  cursor: help;
+}
+.iq-failure-chip.active {
+  background: #fdf3da;
+  border-color: #e8c879;
+}
+.iq-failure-count {
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.problem-signal {
+  background: var(--code-bg);
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+  color: var(--text);
+  margin-right: 3px;
+}
+
+.iq-samples {
+  margin-top: 8px;
+}
+.iq-samples-head {
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.iq-samples-tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.iq-samples-tbl th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--text-secondary);
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.iq-samples-tbl td {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+.iq-query {
+  color: var(--text);
+  font-style: italic;
+}
+.iq-action-hint {
+  background: var(--accent-soft);
+  border-left: 3px solid var(--primary);
+  padding: 8px 12px;
+  margin-top: 14px;
+  border-radius: 4px;
+  font-size: 12.5px;
+  color: var(--text);
+  line-height: 1.55;
+}
+
+/* Tier accent strip on the left of each card */
+.iq-tier-critical { border-left: 4px solid #b03a3a; }
+.iq-tier-high     { border-left: 4px solid #d4862a; }
+.iq-tier-medium   { border-left: 4px solid #d4a017; }
+.iq-tier-low      { border-left: 4px solid #5fa86b; }
+.iq-tier-exploring { border-left: 4px solid var(--muted); }

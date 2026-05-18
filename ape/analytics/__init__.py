@@ -23,6 +23,9 @@ from .platform import (
 from .strategy_performance import (
     compute_strategy_performance,
 )
+from .instruction_quality import (
+    compute_instruction_quality,
+)
 
 __all__ = [
     "compute_user_topic_interest",
@@ -34,4 +37,5 @@ __all__ = [
     "compute_user_cognitive_profile",
     "compute_platform_overview",
     "compute_strategy_performance",
+    "compute_instruction_quality",
 ]

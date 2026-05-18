@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../../api.js";
 import AdminTable from "./AdminTable.jsx";
+import InstructionQualityPanel from "./InstructionQualityPanel.jsx";
 
 /**
  * InstructionsTab — full lifecycle for per-strategy instruction text.
@@ -116,6 +117,11 @@ export default function InstructionsTab({ notify }) {
 
   return (
     <div className="admin-tab-content">
+      {/* Instruction quality panel — tells admin which instructions need fixing */}
+      <div className="admin-section">
+        <InstructionQualityPanel notify={notify} />
+      </div>
+
       {/* Coverage banner */}
       <div className={`admin-coverage ${missing.length === 0 ? "ok" : "warn"}`}>
         <strong>

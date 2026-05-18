@@ -52,6 +52,7 @@ from fastapi.staticfiles import StaticFiles
 from .analytics import (
     active_users_in_window,
     compute_cognitive_facets,
+    compute_instruction_quality,
     compute_platform_overview,
     compute_strategy_performance,
     compute_topic_trends,
@@ -1215,6 +1216,30 @@ def analytics_offers(user_id: str, domain: Optional[str] = None):
         STORE,
         user_id_hash=user_id_hash,
         domain=domain,
+    )
+
+
+@app.get("/analytics/instruction-quality")
+def analytics_instruction_quality(days: int = 14, min_turns: int = 5, sample_limit: int = 5):
+    """Surface (strategy, instruction_version) pairs producing problem signals.
+
+    Reads format_compliance_fail / content_correction / reask_same_question
+    incidence from ape_turn_record in the window. Groups by strategy +
+    instruction version, computes failure rate, assigns tier
+    (CRITICAL/HIGH/MEDIUM/LOW/EXPLORING), and attaches up to N sample
+    failing turns per pair for admin inspection.
+
+    The admin uses this to know which instructions to rewrite — and which
+    signal type is dominating each pair's failures, so they can target
+    the fix (format clarity vs factual accuracy vs comprehension).
+    """
+    if STORE is None:
+        raise HTTPException(500, "Store not initialized")
+    return compute_instruction_quality(
+        STORE,
+        days=days,
+        min_turns=min_turns,
+        sample_limit=sample_limit,
     )
 
 

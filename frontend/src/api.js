@@ -113,4 +113,6 @@ export const api = {
                           request("GET", `/analytics/platform-overview?days=${days}&top_n=${topN}${domain ? `&domain=${encodeURIComponent(domain)}` : ""}`),
   strategyPerformance:  (userId = "", minPulls = 3, domain = "") =>
                           request("GET", `/analytics/strategy-performance?min_pulls=${minPulls}${userId ? `&user_id=${encodeURIComponent(userId)}` : ""}${domain ? `&domain=${encodeURIComponent(domain)}` : ""}`),
+  instructionQuality:   (days = 14, minTurns = 5, sampleLimit = 5) =>
+                          request("GET", `/analytics/instruction-quality?days=${days}&min_turns=${minTurns}&sample_limit=${sampleLimit}`),
 };
