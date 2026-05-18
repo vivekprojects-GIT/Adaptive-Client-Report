@@ -90,6 +90,24 @@
   cursor: not-allowed;
 }
 
+/* ---------- Content quality section (Content tab) ---------- */
+
+.section-content-quality .content-quality-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin-top: 10px;
+}
+/* Add a subtle visual differentiator between the two stacked panels */
+.section-content-quality .content-quality-stack > div {
+  background: var(--surface);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+.section-content-quality .iq-panel {
+  border-left-width: 4px;
+}
+
 /* ---------- Analytics tab navigation ---------- */
 
 .analytics-tabs {

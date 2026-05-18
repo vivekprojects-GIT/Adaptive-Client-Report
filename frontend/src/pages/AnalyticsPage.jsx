@@ -10,7 +10,12 @@ import PlatformOverviewCard from "../components/analytics/PlatformOverviewCard.j
 import CorrelationHeatmap from "../components/analytics/CorrelationHeatmap.jsx";
 import CustomerHealthSection from "../components/analytics/CustomerHealthSection.jsx";
 import InfoHint from "../components/analytics/InfoHint.jsx";
+import RagQualityPanel from "./admin/RagQualityPanel.jsx";
+import InstructionQualityPanel from "./admin/InstructionQualityPanel.jsx";
 import "../styles/analytics.css";
+// Admin panels reuse styles from admin.css — pull them in so the content
+// tab renders correctly even though we're not on the admin page.
+import "../styles/admin.css";
 
 /**
  * AnalyticsPage — cognitive facets + admin outreach view.
@@ -41,6 +46,7 @@ export default function AnalyticsPage() {
     { id: "customers", label: "Customers", icon: "👥" },
     { id: "cognition", label: "Cognition", icon: "🧠" },
     { id: "signals",   label: "Signals",   icon: "📡" },
+    { id: "content",   label: "Content",   icon: "📚" },
     { id: "health",    label: "Health",    icon: "💚" },
   ];
 
@@ -499,6 +505,42 @@ export default function AnalyticsPage() {
           <CorrelationHeatmap data={signalCorr} />
         </section>
       </>)}
+
+      {/* ════════════════ CONTENT TAB ════════════════ */}
+      {activeTab === "content" && (
+        <section className="section section-content-quality">
+          <div className="section-head">
+            <div>
+              <h2>
+                Content quality
+                <InfoHint width={400}>
+                  Two complementary lenses on the same problem signals
+                  (<code>content_correction</code>, <code>reask_same_question</code>,
+                  <code> format_compliance_fail</code>):
+                  <br/><br/>
+                  <strong>RAG quality by topic</strong> — answers "which topic's knowledge
+                  base needs enriching?" Useful when one subject (e.g. <code>wash_sale_rules</code>)
+                  produces errors across multiple strategies.
+                  <br/><br/>
+                  <strong>Instruction quality by (strategy, version)</strong> — answers
+                  "which instruction needs rewriting?" Useful when one strategy
+                  produces errors across many topics.
+                </InfoHint>
+              </h2>
+              <p className="section-sub">
+                Where is content actually breaking? Two grouped views of the same
+                problem signals — one by <strong>topic</strong> (RAG gaps) and one by
+                <strong> strategy version</strong> (instruction issues).
+              </p>
+            </div>
+          </div>
+
+          <div className="content-quality-stack">
+            <RagQualityPanel notify={() => {}} />
+            <InstructionQualityPanel notify={() => {}} />
+          </div>
+        </section>
+      )}
 
       {/* ════════════════ HEALTH TAB ════════════════ */}
       {activeTab === "health" && (
