@@ -10,17 +10,16 @@
  *   "all"   → 3650    (10 years — effectively unbounded)
  */
 const OPTIONS = [
-  { id: "today", label: "Today",  days: 0,    title: "Activity since 00:00 today" },
-  { id: "7d",    label: "7 days", days: 7,    title: "Last 7 days" },
-  { id: "30d",   label: "30 days", days: 30,  title: "Last 30 days" },
-  { id: "90d",   label: "90 days", days: 90,  title: "Last 90 days" },
-  { id: "all",   label: "All",    days: 3650, title: "All-time" },
+  { id: "today", label: "Today", days: 0,    title: "Activity since 00:00 today" },
+  { id: "7d",    label: "7d",    days: 7,    title: "Last 7 days" },
+  { id: "30d",   label: "30d",   days: 30,   title: "Last 30 days" },
+  { id: "90d",   label: "90d",   days: 90,   title: "Last 90 days" },
+  { id: "all",   label: "All",   days: 3650, title: "All-time" },
 ];
 
 export default function DateFilter({ value = "30d", onChange }) {
   return (
     <div className="date-filter" role="tablist" aria-label="Date window">
-      <span className="date-filter-label">Window:</span>
       {OPTIONS.map((opt) => (
         <button
           key={opt.id}

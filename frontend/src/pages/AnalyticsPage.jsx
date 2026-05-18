@@ -307,44 +307,58 @@ export default function AnalyticsPage() {
 
   return (
     <div className="analytics-body">
-      <header className="analytics-header">
-        <div className="brand-row">
-          <div>
-            <h1>Cognitive Analytics</h1>
-            <span className="brand-sub">
-              Per-(intent, topic) bandit cells · Beta(α,β) approximations · outreach-ready customer list
-            </span>
+      <header className="analytics-header analytics-header-compact">
+
+        {/* Row 1: brand + tabs + external nav (single line) */}
+        <div className="header-row header-row-primary">
+          <div className="header-brand">
+            <span className="brand-mark" aria-hidden>📊</span>
+            <span className="brand-name">Analytics</span>
           </div>
-          <nav className="header-nav">
-            <Link to="/">Chat</Link>
-            <Link to="/admin">Admin / Config</Link>
+
+          <nav className="analytics-tabs" aria-label="Analytics sections">
+            {TABS.map((t) => (
+              <button
+                key={t.id}
+                className={`analytics-tab ${activeTab === t.id ? "active" : ""}`}
+                onClick={() => setActiveTab(t.id)}
+                title={t.label}
+              >
+                <span className="analytics-tab-icon" aria-hidden>{t.icon}</span>
+                <span className="analytics-tab-label">{t.label}</span>
+              </button>
+            ))}
+          </nav>
+
+          <div className="header-actions">
+            <Link to="/"      className="header-link">Chat</Link>
+            <Link to="/admin" className="header-link">Admin</Link>
             <button
-              className="btn-secondary btn-tiny"
+              className="btn-icon"
               onClick={() => refresh()}
               disabled={globalLoading}
-              title="Re-read the precomputed aggregates from Mongo (fast)"
+              title="Reload aggregates from Mongo"
+              aria-label="Reload"
             >
-              {globalLoading ? "Loading…" : "Reload"}
+              {globalLoading ? "…" : "↻"}
             </button>
             <button
-              className="btn-secondary btn-tiny"
+              className="btn-icon btn-icon-emphasis"
               onClick={() => refresh({ recompute: true })}
               disabled={globalLoading}
-              title="Rebuild ape_user_topic_interest + ape_topic_trend_daily from raw turn_records (slow)"
+              title="Rebuild aggregates from raw turn_records (slow)"
             >
-              Recompute now
+              ⟳
             </button>
-          </nav>
+          </div>
         </div>
 
-        <div className="filter-row">
+        {/* Row 2: toolbar — date window + user search + freshness */}
+        <div className="header-row header-row-toolbar">
           <DateFilter
             value={windowId}
             onChange={(id) => setWindowId(id)}
           />
-        </div>
-
-        <div className="inspect-row">
           <UserSearchInput
             value={inspectUser}
             onApply={applyUser}
@@ -353,33 +367,19 @@ export default function AnalyticsPage() {
             hasUser={hasUser}
             suggestions={activeUsers}
           />
-          <span className="freshness-row">
+          <span className="header-meta">
             {lastRefresh && (
-              <span className="last-refresh" title="When the page last fetched aggregates from Mongo">
-                Reloaded {lastRefresh.toLocaleTimeString()}
+              <span className="last-refresh" title="When aggregates were last fetched">
+                {lastRefresh.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
               </span>
             )}
             {lastRecompute && (
-              <span className="last-recompute" title="When the analytics aggregates were last rebuilt from raw turn_records">
-                · Recomputed {lastRecompute.toLocaleTimeString()}
+              <span className="last-recompute" title="When aggregates were last rebuilt">
+                · rebuilt {lastRecompute.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
               </span>
             )}
           </span>
         </div>
-
-        {/* Tab navigation — splits the page into focused views */}
-        <nav className="analytics-tabs">
-          {TABS.map((t) => (
-            <button
-              key={t.id}
-              className={`analytics-tab ${activeTab === t.id ? "active" : ""}`}
-              onClick={() => setActiveTab(t.id)}
-            >
-              <span className="analytics-tab-icon">{t.icon}</span>
-              <span className="analytics-tab-label">{t.label}</span>
-            </button>
-          ))}
-        </nav>
       </header>
 
       <main className="analytics-main">
