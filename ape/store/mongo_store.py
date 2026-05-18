@@ -101,8 +101,22 @@ class MongoStore:
         db_name: Optional[str] = None,
         ucb_c: float = 1.0,
     ) -> None:
-        uri = uri or os.getenv("APE_MONGO_URI", "mongodb://localhost:27017")
+        env_uri = os.getenv("APE_MONGO_URI")
+        uri = uri or env_uri or "mongodb://localhost:27017"
         db_name = db_name or os.getenv("APE_MONGO_DB", "ape")
+
+        # Log the URI we're about to use, with credentials masked. If this
+        # says "localhost:27017" in a container, the APE_MONGO_URI secret
+        # isn't being read — set it in your environment / Space settings.
+        masked = _mask_mongo_uri(uri)
+        print(f"[MongoStore] connecting to: {masked}  db={db_name}", flush=True)
+        if env_uri is None and not uri.startswith("mongodb+srv://"):
+            print(
+                "[MongoStore] WARNING: APE_MONGO_URI is not set — falling back "
+                "to localhost. In a container/Space this will fail with "
+                "'Connection refused'. Set APE_MONGO_URI in your environment.",
+                flush=True,
+            )
 
         # Atlas connection strings start with "mongodb+srv://" and benefit from
         # the stable Server API. Local mongod doesn't need it.
@@ -115,6 +129,13 @@ class MongoStore:
         self.db = self.client[db_name]
         self.ucb_c = float(os.getenv("APE_UCB_C", ucb_c))
         apply_indexes(self.db)
+
+
+def _mask_mongo_uri(uri: str) -> str:
+    """Return a log-safe version of a Mongo URI with credentials redacted."""
+    import re
+    # Pattern: scheme://user:password@host  →  scheme://user:***@host
+    return re.sub(r"://([^:/@]+):([^@]+)@", r"://\1:***@", uri)
 
     # ------------------------------------------------------------------
     # Convenience accessors
