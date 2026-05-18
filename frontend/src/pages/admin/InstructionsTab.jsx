@@ -144,6 +144,18 @@ export default function InstructionsTab({ notify }) {
           version; activating it deactivates the previous version and makes
           the new one ACTIVE — used by the synthesizer from the next turn onward.
         </p>
+        <ul className="col-legend">
+          <li><strong>Strategy</strong> — which arm this instruction belongs to. Strategies with no instruction yet show "(no instruction)" — those are the ones to prioritize.
+            <em> e.g. decision_card, comparison_table.</em></li>
+          <li><strong>Version</strong> — free-form tag for this revision. Convention is v1, v2, v3. Pick the next number after the current ACTIVE version; old versions stay browsable so you can revert.
+            <em> e.g. v1 (first draft), v2 (tightened on retirement examples), v3 (fixed tax_implications regression).</em></li>
+          <li><strong>URI (optional)</strong> — external link to the source of truth, e.g. a Notion doc or S3 object the instruction was authored in. Stored alongside the text; not used at runtime.
+            <em> e.g. s3://ape/instructions/decision_card/v2.md or https://notion.so/page-id.</em></li>
+          <li><strong>Instruction text</strong> — the actual system-prompt fragment the synthesizer sees when this strategy is picked. Be concrete about structure, length, and tone.
+            <em> e.g. "Format the answer as a 3-row decision card with sections Recommendation, Why, Caveats. Keep each under 40 words."</em></li>
+          <li><strong>Activate immediately</strong> — if checked, this version becomes ACTIVE on save and the previous ACTIVE flips to INACTIVE. If unchecked, version is saved as DRAFT and you activate it later from the table.
+            <em> e.g. check it for safe edits, leave unchecked for risky rewrites you want to review first.</em></li>
+        </ul>
         <form className="admin-form" onSubmit={handleSubmit}>
           <div className="form-row">
             <label>

@@ -153,6 +153,17 @@ export default function PoliciesTab({ notify }) {
           special topic <code>_default</code> applies to all topics under that intent
           unless overridden by a topic-specific mapping.
         </p>
+        <ul className="col-legend">
+          <li><strong>Intent</strong> — the question type this policy governs. Must already exist on the Intents tab.
+            <em> e.g. Decision, Comparison, Definitional.</em></li>
+          <li><strong>Topic</strong> — the subject the policy applies to. Use <code>_default</code> as a catch-all for the intent; use a real topic to override the default for that specific subject.
+            <em> e.g. _default (applies to all topics under this intent), retirement_accounts (overrides for retirement questions only).</em></li>
+          <li><strong>Strategy</strong> — the candidate response format the bandit may consider in this situation. Add multiple strategies per row to give the bandit choices.
+            <em> e.g. for Decision · retirement_accounts you might whitelist decision_card, pros_cons_table, and analogy_explanation.</em></li>
+          <li><strong>Chip color</strong> — strategy's tier from the global performance table. Green = HIGH, amber = MEDIUM, red = LOW, gray = EXPLORING (not enough data).
+            <em> e.g. a green decision_card chip means "this is a proven winner platform-wide".</em></li>
+          <li><strong>× on a chip</strong> — removes the strategy from this situation only. The bandit stops considering it here on the next /turn (existing pulls stay in history).</li>
+        </ul>
 
         {/* ---- Add a brand-new cell + strategy ---- */}
         <div className="policy-add-row">

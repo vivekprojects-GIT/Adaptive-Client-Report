@@ -74,6 +74,12 @@ export default function StrategiesTab({ notify }) {
           expected to render. After creating a strategy here, publish an
           instruction for it under the <strong>Instructions</strong> tab.
         </p>
+        <ul className="col-legend">
+          <li><strong>Strategy ID</strong> — snake_case identifier for this answer-shape. Used as a bandit arm key, so it can never change after first use.
+            <em> e.g. decision_card, comparison_table, analogy_explanation, one_liner, numbered_steps.</em></li>
+          <li><strong>Format type</strong> — the structural shape the synthesizer should produce. Used by compute_format_compliance() to score how well the output matched.
+            <em> e.g. paragraph (prose), bulleted_list (bullets), comparison_table (side-by-side), decision_recommendation (verdict + reasons), analogy_explainer (story-driven).</em></li>
+        </ul>
         <form className="admin-form" onSubmit={handleSubmit}>
           <div className="form-row">
             <label>

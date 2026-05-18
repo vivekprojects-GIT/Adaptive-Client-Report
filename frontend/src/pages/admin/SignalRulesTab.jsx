@@ -87,6 +87,18 @@ export default function SignalRulesTab({ notify }) {
           a reward category. <code>NOT_RECORDED</code> means the axis isn't
           updated at all (the bandit counter stays frozen).
         </p>
+        <ul className="col-legend">
+          <li><strong>Signal name</strong> — snake_case identifier matching what the classifier or UI emits. Must be exact — typos silently break the rule.
+            <em> e.g. thumbs_up, thumbs_down, copy_save, format_change_request, it_worked_statement, deeper_question.</em></li>
+          <li><strong>format_relevant</strong> — does this signal tell us anything about the SHAPE of the answer? Check this only if the user is reacting to format specifically.
+            <em> e.g. ✓ for thumbs_up (button rates whole answer including shape) and format_change_request ("use bullets"). ✗ for content_correction ("that fact is wrong" says nothing about format).</em></li>
+          <li><strong>content_relevant</strong> — does this signal tell us anything about the ACCURACY/usefulness of the answer's content?
+            <em> e.g. ✓ for thumbs_up, content_correction, it_worked_statement. ✗ for format_change_request (a shape complaint isn't a content complaint).</em></li>
+          <li><strong>Format reward category</strong> — how strongly this updates the format axis when relevant.
+            <em> e.g. strong_positive (+2) for thumbs_up, strong_negative (-2) for format_change_request, weak_positive (+1) for it_worked_statement.</em></li>
+          <li><strong>Content reward category</strong> — same scale, applied to the content axis.
+            <em> e.g. strong_negative (-2) for content_correction, weak_negative (-1) for reask_same_question, weak_positive (+1) for deeper_question.</em></li>
+        </ul>
         <form className="admin-form" onSubmit={handleSubmit}>
           <div className="form-row">
             <label>

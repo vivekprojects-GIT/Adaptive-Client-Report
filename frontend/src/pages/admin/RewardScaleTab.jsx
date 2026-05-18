@@ -64,6 +64,14 @@ export default function RewardScaleTab({ notify }) {
           Leave <strong>Normalized</strong> blank to default to{" "}
           <code>raw / 2.0</code>.
         </p>
+        <ul className="col-legend">
+          <li><strong>Category</strong> — snake_case name referenced by signal-routing rules. Must match exactly what those rules emit.
+            <em> e.g. strong_positive, weak_positive, weak_negative, strong_negative.</em></li>
+          <li><strong>Raw reward</strong> — the human-readable points value. Defaults you'd recognize: +2 / +1 / -1 / -2.
+            <em> e.g. 2 for strong_positive (a thumbs_up is "worth" +2), -1 for weak_negative (a reask is mildly bad).</em></li>
+          <li><strong>Normalized (optional)</strong> — what the bandit actually adds to <code>total_reward</code>. Must land in [-1, +1] for UCB math to stay sane. Blank = auto-compute as <code>raw / 2.0</code>.
+            <em> e.g. raw=2 with normalized blank → 1.0 (caps at +1). Override only if you want a non-linear scale, e.g. raw=3 → normalized=1.0 to soft-cap a "rave" signal.</em></li>
+        </ul>
         <form className="admin-form" onSubmit={handleSubmit}>
           <div className="form-row">
             <label>
