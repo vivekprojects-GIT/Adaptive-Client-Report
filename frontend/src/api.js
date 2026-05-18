@@ -117,4 +117,6 @@ export const api = {
                           request("GET", `/analytics/instruction-quality?days=${days}&min_turns=${minTurns}&sample_limit=${sampleLimit}`),
   customerHealth:       (days = 30, cohortWeeks = 4) =>
                           request("GET", `/analytics/customer-health?days=${days}&cohort_weeks=${cohortWeeks}`),
+  ragQuality:           (days = 14, minTurns = 5, sampleLimit = 5) =>
+                          request("GET", `/analytics/rag-quality?days=${days}&min_turns=${minTurns}&sample_limit=${sampleLimit}`),
 };

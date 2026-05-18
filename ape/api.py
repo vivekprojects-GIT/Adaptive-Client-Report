@@ -55,6 +55,7 @@ from .analytics import (
     compute_customer_health,
     compute_instruction_quality,
     compute_platform_overview,
+    compute_rag_quality,
     compute_strategy_performance,
     compute_topic_trends,
     compute_user_cognitive_profile,
@@ -1234,6 +1235,29 @@ def analytics_customer_health(days: int = 30, cohort_weeks: int = 4):
         STORE,
         days=days,
         cohort_weeks=cohort_weeks,
+    )
+
+
+@app.get("/analytics/rag-quality")
+def analytics_rag_quality(days: int = 14, min_turns: int = 5, sample_limit: int = 5):
+    """Surface TOPICS where RAG / knowledge-base content is failing.
+
+    Different lens on the same problem signals as instruction-quality:
+    - instruction_quality groups by (strategy, instruction_version)
+      → "which instruction needs rewriting?"
+    - rag_quality groups by topic
+      → "which topic's knowledge base needs enriching?"
+
+    Uses content_correction (weight 1.0) and reask_same_question
+    (weight 0.5) to compute a weighted RAG failure rate per topic.
+    """
+    if STORE is None:
+        raise HTTPException(500, "Store not initialized")
+    return compute_rag_quality(
+        STORE,
+        days=days,
+        min_turns=min_turns,
+        sample_limit=sample_limit,
     )
 
 

@@ -29,6 +29,9 @@ from .instruction_quality import (
 from .customer_health import (
     compute_customer_health,
 )
+from .rag_quality import (
+    compute_rag_quality,
+)
 
 __all__ = [
     "compute_user_topic_interest",
@@ -42,4 +45,5 @@ __all__ = [
     "compute_strategy_performance",
     "compute_instruction_quality",
     "compute_customer_health",
+    "compute_rag_quality",
 ]
