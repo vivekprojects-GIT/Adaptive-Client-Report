@@ -11,10 +11,9 @@ import CorrelationHeatmap from "../components/analytics/CorrelationHeatmap.jsx";
 import CustomerHealthSection from "../components/analytics/CustomerHealthSection.jsx";
 import InfoHint from "../components/analytics/InfoHint.jsx";
 import RagQualityPanel from "./admin/RagQualityPanel.jsx";
-import InstructionQualityPanel from "./admin/InstructionQualityPanel.jsx";
 import "../styles/analytics.css";
-// Admin panels reuse styles from admin.css — pull them in so the content
-// tab renders correctly even though we're not on the admin page.
+// The RAG quality panel reuses styles from admin.css — pull them in so
+// the Content tab renders correctly even though we're not on the admin page.
 import "../styles/admin.css";
 
 /**
@@ -512,32 +511,28 @@ export default function AnalyticsPage() {
           <div className="section-head">
             <div>
               <h2>
-                Content quality
-                <InfoHint width={400}>
-                  Two complementary lenses on the same problem signals
-                  (<code>content_correction</code>, <code>reask_same_question</code>,
-                  <code> format_compliance_fail</code>):
+                Content quality by topic
+                <InfoHint width={380}>
+                  Which TOPICS are producing content failures, based on
+                  <code> content_correction</code> (weight 1.0 — explicit factual
+                  rejection) and <code>reask_same_question</code> (weight 0.5 —
+                  user re-asked, signal of incomplete content) over the window.
+                  Tiers: CRITICAL ≥ 25% · HIGH ≥ 12% · MEDIUM ≥ 5%.
                   <br/><br/>
-                  <strong>RAG quality by topic</strong> — answers "which topic's knowledge
-                  base needs enriching?" Useful when one subject (e.g. <code>wash_sale_rules</code>)
-                  produces errors across multiple strategies.
-                  <br/><br/>
-                  <strong>Instruction quality by (strategy, version)</strong> — answers
-                  "which instruction needs rewriting?" Useful when one strategy
-                  produces errors across many topics.
+                  Use this to identify <strong>which topics need RAG enrichment</strong>
+                  — the sample queries on each card show the exact phrasing users
+                  typed when the knowledge base let them down.
                 </InfoHint>
               </h2>
               <p className="section-sub">
-                Where is content actually breaking? Two grouped views of the same
-                problem signals — one by <strong>topic</strong> (RAG gaps) and one by
-                <strong> strategy version</strong> (instruction issues).
+                Where the knowledge base is breaking — ranked by topic so you can
+                target RAG enrichment to the topics that actually need it.
               </p>
             </div>
           </div>
 
           <div className="content-quality-stack">
             <RagQualityPanel notify={() => {}} />
-            <InstructionQualityPanel notify={() => {}} />
           </div>
         </section>
       )}
