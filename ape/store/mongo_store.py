@@ -130,13 +130,6 @@ class MongoStore:
         self.ucb_c = float(os.getenv("APE_UCB_C", ucb_c))
         apply_indexes(self.db)
 
-
-def _mask_mongo_uri(uri: str) -> str:
-    """Return a log-safe version of a Mongo URI with credentials redacted."""
-    import re
-    # Pattern: scheme://user:password@host  →  scheme://user:***@host
-    return re.sub(r"://([^:/@]+):([^@]+)@", r"://\1:***@", uri)
-
     # ------------------------------------------------------------------
     # Convenience accessors
     # ------------------------------------------------------------------
@@ -725,6 +718,13 @@ def _clean(doc: Dict[str, Any]) -> Dict[str, Any]:
 
 def utcnow_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _mask_mongo_uri(uri: str) -> str:
+    """Return a log-safe version of a Mongo URI with credentials redacted."""
+    import re
+    # Pattern: scheme://user:password@host  →  scheme://user:***@host
+    return re.sub(r"://([^:/@]+):([^@]+)@", r"://\1:***@", uri)
 
 
 def new_response_id() -> str:
