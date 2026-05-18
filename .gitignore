@@ -1,0 +1,29 @@
+# Environment + secrets
+.env
+.env.local
+*.local
+
+# Python build / cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+.pytest_cache/
+
+# Frontend build artifacts
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local SQLite (legacy)
+*.db
+*.db-shm
+*.db-wal

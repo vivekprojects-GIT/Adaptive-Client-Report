@@ -1,0 +1,54 @@
+# Keeps the build context small + ensures secrets / build artifacts never
+# get baked into the image.
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+
+# Node / Vite
+frontend/node_modules/
+frontend/dist/           # we rebuild inside the container
+frontend/.vite/
+
+# Secrets and local state
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+credentials.json
+
+# Git + editor
+.git/
+.gitignore
+.gitattributes
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Docs and tests not needed at runtime
+docs/
+README.md
+*.md
+!README.md.docker   # if we want the docker-specific README inside the image, opt in
+tests/
+test_*.py
+*_test.py
+
+# Logs / temporary
+*.log
+logs/
+tmp/
+temp/
+
+# OS junk
+.cache/

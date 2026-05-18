@@ -1,0 +1,38 @@
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+
+// Vite proxies API routes to the FastAPI backend during `npm run dev`,
+// so the frontend at :5173 can hit /turn etc. without CORS.
+// Production: FastAPI serves the built React app from /static and routes
+// SPA paths to index.html.
+export default defineConfig({
+  plugins: [react()],
+  server: {
+    port: 5173,
+    proxy: {
+      // Exact-path API endpoints
+      "/turn":      "http://localhost:7860",
+      "/feedback":  "http://localhost:7860",
+      "/health":    "http://localhost:7860",
+
+      // Prefix endpoints — sub-paths are proxied to FastAPI
+      "/sessions":  "http://localhost:7860",
+      "/users":     "http://localhost:7860",
+      "/config":    "http://localhost:7860",
+
+      // /admin/* hits FastAPI, but /admin (exact) is a SPA route handled by React.
+      // The "^/admin/" regex prefix matches /admin/anything but NOT /admin alone.
+      "^/admin/":   "http://localhost:7860",
+
+      // Same pattern for /analytics: /analytics/* are API endpoints, but
+      // /analytics alone is the SPA page handled by React Router.
+      "^/analytics/": "http://localhost:7860",
+    },
+  },
+  build: {
+    // The FastAPI app will mount this directory at /static and serve
+    // index.html from the root.
+    outDir: "dist",
+    emptyOutDir: true,
+  },
+});
