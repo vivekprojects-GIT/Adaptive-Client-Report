@@ -146,6 +146,15 @@ def seed_all(store: MongoStore, domain: str = DEFAULT_DOMAIN, default_topic: str
         )
         counts["reward_rules"] += 1
 
+    # ---- 6a. One-time migration: drop deprecated raw_reward field --------
+    # Older deploys stored raw_reward alongside normalized_reward. The new
+    # code only reads normalized_reward, so raw_reward is orphaned. Strip
+    # it from every reward_scale row so the admin UI doesn't show stale data.
+    store.db["ape_config"].update_many(
+        {"entity_type": "reward_scale", "raw_reward": {"$exists": True}},
+        {"$unset": {"raw_reward": ""}},
+    )
+
     return counts
 
 
