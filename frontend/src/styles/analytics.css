@@ -90,6 +90,63 @@
   cursor: not-allowed;
 }
 
+/* ---------- Analytics tab navigation ---------- */
+
+.analytics-tabs {
+  display: flex;
+  gap: 4px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.analytics-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom: 3px solid transparent;
+  border-radius: 8px 8px 0 0;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+  margin-bottom: -1px;
+}
+.analytics-tab:hover {
+  background: var(--bg);
+  color: var(--text);
+}
+.analytics-tab.active {
+  background: var(--surface);
+  color: var(--primary);
+  border-color: var(--border);
+  border-bottom-color: var(--primary);
+  font-weight: 600;
+}
+.analytics-tab-icon {
+  font-size: 15px;
+  line-height: 1;
+}
+.analytics-tab-label {
+  font-variant: small-caps;
+  letter-spacing: 0.02em;
+}
+
+/* Smooth fade-in when switching tabs */
+.analytics-main > * {
+  animation: tabfade 0.18s ease-out;
+}
+@keyframes tabfade {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 /* ---------- Date filter ---------- */
 
 .filter-row { margin-top: 14px; }

@@ -30,8 +30,19 @@ export default function AnalyticsPage() {
   //                 hashed identifier (u_<hex>).
   const [inspectUser, setU] = usePersistedState("ape.user_id", "");
   const [windowId, setWindowId] = usePersistedState("ape.analytics.window", "30d");
+  const [activeTab, setActiveTab] = usePersistedState("ape.analytics.tab", "overview");
   const [lastRefresh, setLastRefresh] = useState(null);
   const [lastRecompute, setLastRecompute] = useState(null);
+
+  // ── Tab navigation — splits the analytics page into focused views so
+  //    admins don't have to scroll through everything to find one thing.
+  const TABS = [
+    { id: "overview",  label: "Overview",  icon: "📊" },
+    { id: "customers", label: "Customers", icon: "👥" },
+    { id: "cognition", label: "Cognition", icon: "🧠" },
+    { id: "signals",   label: "Signals",   icon: "📡" },
+    { id: "health",    label: "Health",    icon: "💚" },
+  ];
 
   const hasUser = Boolean(inspectUser && inspectUser.trim());
 
@@ -350,9 +361,26 @@ export default function AnalyticsPage() {
             )}
           </span>
         </div>
+
+        {/* Tab navigation — splits the page into focused views */}
+        <nav className="analytics-tabs">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              className={`analytics-tab ${activeTab === t.id ? "active" : ""}`}
+              onClick={() => setActiveTab(t.id)}
+            >
+              <span className="analytics-tab-icon">{t.icon}</span>
+              <span className="analytics-tab-label">{t.label}</span>
+            </button>
+          ))}
+        </nav>
       </header>
 
       <main className="analytics-main">
+
+      {/* ════════════════ OVERVIEW TAB ════════════════ */}
+      {activeTab === "overview" && (<>
         {/* Summary tiles */}
         <section className="summary-row">
           <Card
@@ -430,7 +458,10 @@ export default function AnalyticsPage() {
         ) : (
           <div className="empty-state">Loading platform overview…</div>
         )}
+      </>)}
 
+      {/* ════════════════ SIGNALS TAB ════════════════ */}
+      {activeTab === "signals" && (<>
         {/* ===== Signal correlation matrix (global, cumulative) ===== */}
         <section className="section">
           <div className="section-head">
@@ -467,11 +498,15 @@ export default function AnalyticsPage() {
           </div>
           <CorrelationHeatmap data={signalCorr} />
         </section>
+      </>)}
 
-        {/* ===== Customer health (retention + satisfaction + engagement) ===== */}
+      {/* ════════════════ HEALTH TAB ════════════════ */}
+      {activeTab === "health" && (
         <CustomerHealthSection windowLabel={windowLabel} />
+      )}
 
-
+      {/* ════════════════ CUSTOMERS TAB ════════════════ */}
+      {activeTab === "customers" && (<>
         {/* ===== Active customers (admin outreach) ===== */}
         <section className="section section-outreach">
           <div className="section-head">
@@ -531,7 +566,10 @@ export default function AnalyticsPage() {
             <div className="empty-state">Loading cognitive profile…</div>
           )}
         </section>
+      </>)}
 
+      {/* ════════════════ COGNITION TAB ════════════════ */}
+      {activeTab === "cognition" && (<>
         {/* ===== Cognitive Facets per (intent, topic) ===== */}
         <section className="section section-hero">
           <div className="section-head">
@@ -585,8 +623,11 @@ export default function AnalyticsPage() {
             </div>
           )}
         </section>
+      </>)}
 
-        {/* ===== Topic trends ===== */}
+      {/* ════════════════ OVERVIEW TAB (continued — trending topics table) ════════════════ */}
+      {activeTab === "overview" && (
+        /* ===== Topic trends ===== */
         <section className="section">
           <div className="section-head">
             <h2>
@@ -634,9 +675,11 @@ export default function AnalyticsPage() {
             </table>
           )}
         </section>
+      )}
 
+      {/* ════════════════ CUSTOMERS TAB (continued — per-user detail sections) ════════════════ */}
+      {activeTab === "customers" && hasUser && (<>
         {/* ===== User interests (per-user only) ===== */}
-        {hasUser && (
         <section className="section">
           <div className="section-head">
             <h2>
@@ -695,10 +738,8 @@ export default function AnalyticsPage() {
             </table>
           )}
         </section>
-        )}
 
         {/* ===== Recommended outreach (per-user only) ===== */}
-        {hasUser && (
         <section className="section">
           <div className="section-head">
             <h2>
@@ -760,7 +801,22 @@ export default function AnalyticsPage() {
             </table>
           )}
         </section>
-        )}
+      </>)}
+
+      {/* ════════════════ CUSTOMERS TAB — empty state when no user picked ════════════════ */}
+      {activeTab === "customers" && !hasUser && (
+        <section className="section section-pick-user">
+          <div className="pick-user-inner">
+            <div className="pick-user-eyebrow">Customers</div>
+            <div className="pick-user-headline">Click "Inspect" on a user above for their detail view</div>
+            <div className="pick-user-sub">
+              The Active customers table at the top is global; per-user
+              profile / topic interest / outreach matches appear here once
+              you pick someone.
+            </div>
+          </div>
+        </section>
+      )}
 
         {/* ===== Privacy footer ===== */}
         <section className="section privacy-section">
