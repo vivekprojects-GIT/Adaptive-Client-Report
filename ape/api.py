@@ -52,6 +52,7 @@ from fastapi.staticfiles import StaticFiles
 from .analytics import (
     active_users_in_window,
     compute_cognitive_facets,
+    compute_customer_health,
     compute_instruction_quality,
     compute_platform_overview,
     compute_strategy_performance,
@@ -1216,6 +1217,23 @@ def analytics_offers(user_id: str, domain: Optional[str] = None):
         STORE,
         user_id_hash=user_id_hash,
         domain=domain,
+    )
+
+
+@app.get("/analytics/customer-health")
+def analytics_customer_health(days: int = 30, cohort_weeks: int = 4):
+    """Customer-health rollup: retention cohorts + NPS satisfaction +
+    behavioral engagement segments.
+
+    All three views come from one MongoDB scan. Use for product/retention
+    dashboards and quarterly satisfaction reporting.
+    """
+    if STORE is None:
+        raise HTTPException(500, "Store not initialized")
+    return compute_customer_health(
+        STORE,
+        days=days,
+        cohort_weeks=cohort_weeks,
     )
 
 

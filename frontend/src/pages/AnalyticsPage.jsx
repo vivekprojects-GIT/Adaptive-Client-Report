@@ -8,6 +8,7 @@ import ActiveUsersTable from "../components/analytics/ActiveUsersTable.jsx";
 import UserProfileCard from "../components/analytics/UserProfileCard.jsx";
 import PlatformOverviewCard from "../components/analytics/PlatformOverviewCard.jsx";
 import CorrelationHeatmap from "../components/analytics/CorrelationHeatmap.jsx";
+import CustomerHealthSection from "../components/analytics/CustomerHealthSection.jsx";
 import InfoHint from "../components/analytics/InfoHint.jsx";
 import "../styles/analytics.css";
 
@@ -466,6 +467,9 @@ export default function AnalyticsPage() {
           </div>
           <CorrelationHeatmap data={signalCorr} />
         </section>
+
+        {/* ===== Customer health (retention + satisfaction + engagement) ===== */}
+        <CustomerHealthSection windowLabel={windowLabel} />
 
 
         {/* ===== Active customers (admin outreach) ===== */}

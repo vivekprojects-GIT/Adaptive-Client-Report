@@ -1679,6 +1679,203 @@
 }
 
 /* ─────────────────────────────────────────────────────────────────────
+ * CustomerHealthSection — retention + NPS + engagement segments
+ * (three signal consumers in one section)
+ * ──────────────────────────────────────────────────────────────────── */
+.section-health .section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+.health-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(310px, 1fr));
+  gap: 14px;
+  margin-top: 10px;
+}
+.health-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  box-shadow: var(--shadow-sm);
+}
+.health-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.health-card-head h3 {
+  margin: 0;
+  font-size: 14px;
+  letter-spacing: 0.02em;
+  font-weight: 600;
+}
+.health-empty {
+  color: var(--muted);
+  font-style: italic;
+  padding: 16px 0;
+  text-align: center;
+  font-size: 12.5px;
+}
+
+/* Retention numbers + cohort table */
+.health-numbers {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.retention-pill {
+  flex: 1;
+  text-align: center;
+  padding: 8px 6px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+}
+.retention-pill-rate {
+  font-size: 20px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.retention-pill-label {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-top: 2px;
+}
+.retention-good { background: #e7efe6; color: #2c5a1a; border-color: #c4e2c4; }
+.retention-mid  { background: #fdf3da; color: #7a5a1a; border-color: #f0d8a0; }
+.retention-low  { background: #f6e7e7; color: #7a3a3a; border-color: #e6caca; }
+
+.health-cohort-tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11.5px;
+}
+.health-cohort-tbl th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--text-secondary);
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border);
+}
+.health-cohort-tbl td {
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border);
+}
+.health-cohort-tbl td.num,
+.health-cohort-tbl th.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* NPS satisfaction card */
+.nps-display {
+  text-align: center;
+  margin: 16px 0 12px;
+}
+.nps-score {
+  font-size: 42px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.nps-score.nps-very_satisfied { color: #2c5a1a; }
+.nps-score.nps-mixed          { color: #b07a1c; }
+.nps-score.nps-concerning     { color: #b03a3a; }
+.nps-verdict {
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-top: 4px;
+}
+.nps-breakdown {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  padding: 8px 0;
+  border-top: 1px dashed var(--border);
+  border-bottom: 1px dashed var(--border);
+  margin-bottom: 10px;
+}
+.thumbs-stat {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.thumbs-up    { color: #2c5a1a; }
+.thumbs-down  { color: #7a3a3a; }
+.thumbs-total {
+  margin-left: auto;
+  font-size: 11px;
+}
+.nps-trend-head {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+}
+
+/* Engagement segments */
+.engagement-total {
+  font-size: 13px;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed var(--border);
+}
+.engagement-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.engagement-list li {
+  display: grid;
+  grid-template-columns: 130px 1fr 36px 42px;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+}
+.engagement-list li.dim {
+  opacity: 0.4;
+}
+.seg-label { color: var(--text); }
+.seg-bar-wrap {
+  height: 10px;
+  background: var(--bg);
+  border-radius: 5px;
+  overflow: hidden;
+}
+.seg-bar {
+  display: block;
+  height: 100%;
+  border-radius: 5px;
+  transition: width 0.2s;
+}
+.seg-deep_divers   { background: #6f9fd4; }
+.seg-explorers     { background: #9b85c4; }
+.seg-power_users   { background: #d4a017; }
+.seg-one_and_done  { background: #d4862a; }
+.seg-casual        { background: #94a094; }
+.seg-count {
+  text-align: right;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.seg-pct {
+  text-align: right;
+  font-size: 11px;
+}
+
+/* ─────────────────────────────────────────────────────────────────────
  * MiniLineChart — small SVG line/area chart used across analytics tiles.
  * ──────────────────────────────────────────────────────────────────── */
 .mini-chart {

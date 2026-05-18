@@ -115,4 +115,6 @@ export const api = {
                           request("GET", `/analytics/strategy-performance?min_pulls=${minPulls}${userId ? `&user_id=${encodeURIComponent(userId)}` : ""}${domain ? `&domain=${encodeURIComponent(domain)}` : ""}`),
   instructionQuality:   (days = 14, minTurns = 5, sampleLimit = 5) =>
                           request("GET", `/analytics/instruction-quality?days=${days}&min_turns=${minTurns}&sample_limit=${sampleLimit}`),
+  customerHealth:       (days = 30, cohortWeeks = 4) =>
+                          request("GET", `/analytics/customer-health?days=${days}&cohort_weeks=${cohortWeeks}`),
 };
