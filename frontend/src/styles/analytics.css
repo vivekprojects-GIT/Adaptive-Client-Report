@@ -1658,3 +1658,113 @@
   }
   .curves-row { grid-template-columns: 1fr; }
 }
+
+/* ─────────────────────────────────────────────────────────────────────
+ * MiniLineChart — small SVG line/area chart used across analytics tiles.
+ * ──────────────────────────────────────────────────────────────────── */
+.mini-chart {
+  position: relative;
+  display: inline-block;
+  line-height: 1;
+}
+.mini-chart svg {
+  display: block;
+  overflow: visible;
+}
+.mini-chart-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 11px;
+  font-style: italic;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+}
+.mini-chart-tip {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  font-size: 11px;
+  box-shadow: var(--shadow-sm);
+  pointer-events: none;
+  z-index: 5;
+  min-width: 110px;
+}
+.mini-chart-tip-date {
+  color: var(--muted);
+  font-size: 10px;
+  margin-bottom: 3px;
+}
+.mini-chart-tip-row {
+  display: grid;
+  grid-template-columns: 10px 1fr auto;
+  align-items: center;
+  gap: 5px;
+  margin-top: 2px;
+}
+.mini-chart-tip-swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+.mini-chart-tip-name {
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mini-chart-tip-val {
+  color: var(--text);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.mini-chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.mini-chart-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.mini-chart-legend-swatch {
+  width: 10px;
+  height: 3px;
+  border-radius: 2px;
+  display: inline-block;
+}
+
+/* Containers used by the trend tiles */
+.trend-tile {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
+}
+.trend-tile-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.trend-tile-totals {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 500;
+}

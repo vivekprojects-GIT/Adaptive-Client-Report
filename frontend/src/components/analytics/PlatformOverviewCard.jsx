@@ -24,8 +24,14 @@
  * Inspect view below.
  */
 import InfoHint from "./InfoHint.jsx";
+import MiniLineChart from "./MiniLineChart.jsx";
 
-export default function PlatformOverviewCard({ data, windowLabel = "" }) {
+export default function PlatformOverviewCard({
+  data,
+  windowLabel = "",
+  platformDailySeries = null,   // [{date, total_turns, unique_users}]
+  topicsDailySeries   = null,   // [{topic, series: [{date, count}]}]
+}) {
   if (!data) return null;
 
   const maxTopicUsers = Math.max(...(data.by_topic || []).map((t) => t.total_users), 1);
@@ -49,6 +55,33 @@ export default function PlatformOverviewCard({ data, windowLabel = "" }) {
           <PlatformNumber value={data.total_strategies} label="Strategies pulled" />
         </div>
       </div>
+
+      {/* Activity trend chart — daily turns across the window */}
+      {platformDailySeries && platformDailySeries.length > 0 && (
+        <div className="trend-tile">
+          <div className="trend-tile-head">
+            <span>
+              Activity trend
+              <InfoHint width={300}>
+                Total <strong>turns per day</strong> across all users in this window.
+                Hover any point to see the exact count. Rising = engagement growing;
+                falling = users dropping off. This is the simplest gut-check for product health.
+              </InfoHint>
+            </span>
+            <span className="trend-tile-totals">
+              {sum(platformDailySeries.map((d) => d.total_turns))} turns total
+            </span>
+          </div>
+          <MiniLineChart
+            data={platformDailySeries.map((d) => ({ date: d.date, value: d.total_turns }))}
+            width={640}
+            height={88}
+            color="#d76a35"
+            yLabel="turns/day"
+            formatValue={(v) => `${v} turn${v === 1 ? "" : "s"}`}
+          />
+        </div>
+      )}
 
       {/* Two-column: top topics + top strategies */}
       <div className="platform-cols-2">
@@ -85,6 +118,32 @@ export default function PlatformOverviewCard({ data, windowLabel = "" }) {
               <li className="rank-empty">No topic data in window.</li>
             )}
           </ol>
+          {/* Per-topic trend chart — one line per top-N topic */}
+          {topicsDailySeries && topicsDailySeries.length > 0 && (
+            <div className="trend-tile">
+              <div className="trend-tile-head">
+                <span>
+                  Topic trends
+                  <InfoHint width={320}>
+                    Daily turns for the top {topicsDailySeries.length} topics over this window.
+                    Hover to compare same-day counts. Use this to spot topics
+                    <strong> heating up</strong> (rising line) vs <strong>cooling off</strong>
+                    (falling line) — instruction or outreach focus often follows.
+                  </InfoHint>
+                </span>
+              </div>
+              <MiniLineChart
+                series={topicsDailySeries.map((t) => ({
+                  name:   t.topic,
+                  points: (t.series || []).map((p) => ({ date: p.date, value: p.count })),
+                }))}
+                width={640}
+                height={120}
+                showLegend
+                formatValue={(v) => `${v} turn${v === 1 ? "" : "s"}`}
+              />
+            </div>
+          )}
         </div>
 
         <div className="platform-block">
@@ -269,4 +328,10 @@ function fmt(v) {
 function prettyName(s) {
   if (!s) return "—";
   return String(s).replace(/_/g, " ");
+}
+
+function sum(arr) {
+  let s = 0;
+  for (const x of arr) s += Number(x) || 0;
+  return s;
 }

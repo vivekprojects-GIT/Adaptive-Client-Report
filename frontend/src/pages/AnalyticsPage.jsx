@@ -56,6 +56,11 @@ export default function AnalyticsPage() {
   const [platform, setPlatform]     = useState(null);
   const [platformErr, setPlatErr]   = useState(null);
 
+  // Time series — daily activity for the trend charts
+  const [platformSeries, setPlatformSeries] = useState([]);
+  const [topicsSeries, setTopicsSeries]     = useState([]);
+  const [userSeries, setUserSeries]         = useState([]);
+
   const [globalLoading, setGlobalLoading] = useState(false);
 
   // Ref to the cognitive-facets section so the "Inspect" button can scroll to it
@@ -177,6 +182,31 @@ export default function AnalyticsPage() {
     }
   }
 
+  // Time-series loaders — separate from the main aggregates so a slow
+  // aggregation pipeline can't block the headline numbers from rendering.
+  async function loadPlatformSeries() {
+    try {
+      const days = daysForFilter(windowId);
+      const s = await api.platformTimeseries(days);
+      setPlatformSeries(Array.isArray(s) ? s : []);
+    } catch { setPlatformSeries([]); }
+  }
+  async function loadTopicsSeries() {
+    try {
+      const days = daysForFilter(windowId);
+      const s = await api.topicsTimeseries(days, 5);
+      setTopicsSeries(Array.isArray(s) ? s : []);
+    } catch { setTopicsSeries([]); }
+  }
+  async function loadUserSeries() {
+    if (!hasUser) { setUserSeries([]); return; }
+    try {
+      const days = daysForFilter(windowId);
+      const s = await api.userTimeseries(inspectUser.trim(), days);
+      setUserSeries(Array.isArray(s) ? s : []);
+    } catch { setUserSeries([]); }
+  }
+
   // Load all sections. By default this is READ-ONLY — we just fetch the
   // already-computed aggregates from Mongo. Passing { recompute: true } also
   // triggers /analytics/recompute first, which rebuilds the user_topic_interest
@@ -200,6 +230,9 @@ export default function AnalyticsPage() {
         loadOffers(),
         loadActiveUsers(),
         loadPlatform(),
+        loadPlatformSeries(),
+        loadTopicsSeries(),
+        loadUserSeries(),
       ]);
       setLastRefresh(new Date());
     } finally {
@@ -371,7 +404,12 @@ export default function AnalyticsPage() {
         {platformErr ? (
           <ErrorBanner endpoint="/analytics/platform-overview" message={platformErr} />
         ) : platform ? (
-          <PlatformOverviewCard data={platform} windowLabel={windowLabel} />
+          <PlatformOverviewCard
+            data={platform}
+            windowLabel={windowLabel}
+            platformDailySeries={platformSeries}
+            topicsDailySeries={topicsSeries}
+          />
         ) : (
           <div className="empty-state">Loading platform overview…</div>
         )}
@@ -426,7 +464,11 @@ export default function AnalyticsPage() {
           ) : profileErr ? (
             <ErrorBanner endpoint="/analytics/user-profile" message={profileErr} />
           ) : profile ? (
-            <UserProfileCard profile={profile} userLabel={inspectUser} />
+            <UserProfileCard
+              profile={profile}
+              userLabel={inspectUser}
+              dailyActivity={userSeries}
+            />
           ) : (
             <div className="empty-state">Loading cognitive profile…</div>
           )}

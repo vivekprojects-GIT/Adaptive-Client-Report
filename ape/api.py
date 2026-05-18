@@ -39,6 +39,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -937,6 +938,131 @@ def analytics_topic_timeseries(topic: str, days: int = 30):
     )
     rows.reverse()
     return [_clean(r) for r in rows]
+
+
+@app.get("/analytics/platform-timeseries")
+def analytics_platform_timeseries(days: int = 30):
+    """Daily platform activity — aggregates ape_topic_trend_daily by date.
+
+    Returns one row per day with total turns and unique-user count across
+    all topics. Front-end uses this to draw the platform-overview sparkline.
+    Output shape:
+      [{"date": "2026-05-12", "total_turns": 84, "unique_users": 12}, ...]
+    sorted ascending by date.
+    """
+    if STORE is None:
+        raise HTTPException(500, "Store not initialized")
+    pipeline = [
+        {"$sort": {"date": -1}},
+        {"$group": {
+            "_id":          "$date",
+            "total_turns":  {"$sum": "$total_turns"},
+            # Across topics on the same day, the SAME user can appear in
+            # multiple topic rows, so summing unique_users over-counts. The
+            # daily roll-up doesn't store the user set per day, so we
+            # approximate with $max — the largest single-topic user count
+            # for that day. This is a conservative lower bound and good
+            # enough for a trend line; for exact unique users use the per-
+            # turn aggregation below if you ever need precise numbers.
+            "unique_users": {"$max": "$unique_users"},
+        }},
+        {"$sort": {"_id": 1}},
+        {"$limit": int(days)},
+    ]
+    rows = list(STORE.db["ape_topic_trend_daily"].aggregate(pipeline))
+    return [
+        {"date": r["_id"], "total_turns": int(r["total_turns"]), "unique_users": int(r["unique_users"])}
+        for r in rows
+    ]
+
+
+@app.get("/analytics/topics-timeseries")
+def analytics_topics_timeseries(days: int = 30, top_n: int = 5):
+    """Multi-series time chart for the top-N most active topics in the window.
+
+    Output shape:
+      [
+        {"topic": "retirement_accounts",
+         "series": [{"date": "2026-05-12", "count": 5}, ...]},
+        ...
+      ]
+    The top-N is determined by total turns across the window. Each series
+    is sorted ascending by date and zero-fills missing dates so the front-
+    end can plot evenly-spaced points without per-series x-axis math.
+    """
+    if STORE is None:
+        raise HTTPException(500, "Store not initialized")
+
+    # Step 1 — find the top-N topics by total turns over the window.
+    top_pipeline = [
+        {"$sort": {"date": -1}},
+        {"$limit": int(days) * 200},   # window cap; topics × days
+        {"$group": {"_id": "$topic", "total_turns": {"$sum": "$total_turns"}}},
+        {"$sort": {"total_turns": -1}},
+        {"$limit": int(top_n)},
+    ]
+    top_topics = [r["_id"] for r in STORE.db["ape_topic_trend_daily"].aggregate(top_pipeline)]
+    if not top_topics:
+        return []
+
+    # Step 2 — pull the date series for those topics.
+    rows = list(
+        STORE.db["ape_topic_trend_daily"].find({"topic": {"$in": top_topics}})
+                                          .sort("date", 1)
+    )
+
+    # Build the union of dates so we zero-fill consistently.
+    all_dates = sorted({r["date"] for r in rows})
+    # Keep only the last `days` calendar dates seen.
+    if len(all_dates) > days:
+        all_dates = all_dates[-days:]
+    date_set = set(all_dates)
+
+    by_topic: Dict[str, Dict[str, int]] = {t: {} for t in top_topics}
+    for r in rows:
+        if r["date"] in date_set:
+            by_topic[r["topic"]][r["date"]] = int(r.get("total_turns", 0))
+
+    out = []
+    for t in top_topics:
+        series = [{"date": d, "count": by_topic[t].get(d, 0)} for d in all_dates]
+        out.append({"topic": t, "series": series})
+    return out
+
+
+@app.get("/analytics/user-timeseries")
+def analytics_user_timeseries(user_id: str, days: int = 30):
+    """Per-user daily activity — bucket this user's turn_record by date.
+
+    Output shape:
+      [{"date": "2026-05-12", "count": 4}, ...]
+    sorted ascending by date. Zero-fills are intentionally OMITTED here —
+    the front-end fills gaps so it can render either gapped bars or a
+    continuous line as it prefers.
+    """
+    if STORE is None:
+        raise HTTPException(500, "Store not initialized")
+    user_id_hash = _resolve_user_hash(user_id)
+
+    # Cutoff = today - days. `ts` is utcnow_iso() in turn_record, so a
+    # YYYY-MM-DD prefix on $substr gives the calendar date in UTC, and a
+    # string compare against the iso cutoff works lexicographically.
+    cutoff_dt = datetime.utcnow() - timedelta(days=int(days))
+    cutoff_iso = cutoff_dt.strftime("%Y-%m-%dT00:00:00")
+
+    pipeline = [
+        {"$match": {
+            "user_id_hash": user_id_hash,
+            "ts":           {"$gte": cutoff_iso},
+        }},
+        {"$group": {
+            "_id":   {"$substr": ["$ts", 0, 10]},   # YYYY-MM-DD
+            "count": {"$sum": 1},
+        }},
+        {"$sort": {"_id": 1}},
+    ]
+    rows = list(STORE.db["ape_turn_record"].aggregate(pipeline))
+    return [{"date": r["_id"], "count": int(r["count"])} for r in rows]
 
 
 @app.get("/analytics/offers/{user_id}")

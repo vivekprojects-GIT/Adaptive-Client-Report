@@ -92,6 +92,12 @@ export const api = {
                           request("GET", `/analytics/trends?days=${days}&limit=${limit}&refresh=${refresh}`),
   topicTimeseries:      (topic, days = 30) =>
                           request("GET", `/analytics/topic-timeseries?topic=${encodeURIComponent(topic)}&days=${days}`),
+  platformTimeseries:   (days = 30) =>
+                          request("GET", `/analytics/platform-timeseries?days=${days}`),
+  topicsTimeseries:     (days = 30, topN = 5) =>
+                          request("GET", `/analytics/topics-timeseries?days=${days}&top_n=${topN}`),
+  userTimeseries:       (userId, days = 30) =>
+                          request("GET", `/analytics/user-timeseries?user_id=${encodeURIComponent(userId)}&days=${days}`),
   userOffers:           (userId)                            =>
                           request("GET", `/analytics/offers/${encodeURIComponent(userId)}`),
   // Pass userId="" or null to get the GLOBAL aggregate view across all users.

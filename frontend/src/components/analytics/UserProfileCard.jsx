@@ -1,4 +1,5 @@
 import InfoHint from "./InfoHint.jsx";
+import MiniLineChart from "./MiniLineChart.jsx";
 
 /**
  * UserProfileCard — hero panel showing all 12 behavioral facets for one user.
@@ -28,7 +29,7 @@ import InfoHint from "./InfoHint.jsx";
  * surfaces things like "prefers structured layouts" or "in evaluation stage",
  * never "user is anxious" or "user is risk-averse".
  */
-export default function UserProfileCard({ profile, userLabel }) {
+export default function UserProfileCard({ profile, userLabel, dailyActivity = null }) {
   if (!profile) return null;
 
   const readyTier =
@@ -61,6 +62,34 @@ export default function UserProfileCard({ profile, userLabel }) {
           </span>
         </div>
       </div>
+
+      {/* Per-user activity timeline */}
+      {dailyActivity && dailyActivity.length > 0 && (
+        <div className="trend-tile">
+          <div className="trend-tile-head">
+            <span>
+              Activity timeline
+              <InfoHint width={300}>
+                This user's <strong>turn count per day</strong> over the selected window.
+                Tall bars = an intense session; gaps = days they didn't engage.
+                Useful for spotting the cadence ("morning checker", "weekend deep-divers").
+              </InfoHint>
+            </span>
+            <span className="trend-tile-totals">
+              {dailyActivity.reduce((s, d) => s + (d.count || 0), 0)} turns in window ·{" "}
+              {dailyActivity.length} active day{dailyActivity.length === 1 ? "" : "s"}
+            </span>
+          </div>
+          <MiniLineChart
+            data={dailyActivity.map((d) => ({ date: d.date, value: d.count }))}
+            width={640}
+            height={70}
+            color="#3b82c4"
+            yLabel="turns/day"
+            formatValue={(v) => `${v} turn${v === 1 ? "" : "s"}`}
+          />
+        </div>
+      )}
 
       {/* Three hero metrics */}
       <div className="profile-hero-row">
