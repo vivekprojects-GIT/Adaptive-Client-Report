@@ -98,6 +98,8 @@ export const api = {
                           request("GET", `/analytics/topics-timeseries?days=${days}&top_n=${topN}`),
   userTimeseries:       (userId, days = 30) =>
                           request("GET", `/analytics/user-timeseries?user_id=${encodeURIComponent(userId)}&days=${days}`),
+  signalCorrelations:   ()                                =>
+                          request("GET", `/analytics/signal-correlations`),
   userOffers:           (userId)                            =>
                           request("GET", `/analytics/offers/${encodeURIComponent(userId)}`),
   // Pass userId="" or null to get the GLOBAL aggregate view across all users.

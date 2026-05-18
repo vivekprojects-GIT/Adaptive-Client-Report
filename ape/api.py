@@ -1030,6 +1030,136 @@ def analytics_topics_timeseries(days: int = 30, top_n: int = 5):
     return out
 
 
+@app.get("/analytics/signal-correlations")
+def analytics_signal_correlations(min_users: int = 2):
+    """Pearson correlation between signal types at the per-user level.
+
+    For each user, computes the proportion of their applied-reward turns
+    that received each signal. Then Pearson-correlates the per-user
+    signal vectors across users.
+
+    Interpretation:
+      ρ > +0.3  → users who tend to fire signal X also tend to fire signal Y
+                  (e.g. thumbs_up + copy_save → "engaged-positive" pattern)
+      ρ < -0.3  → users who fire X tend NOT to fire Y
+                  (e.g. thumbs_up vs thumbs_down → opposing populations)
+      ρ ≈ 0     → no relationship at user-population level
+
+    Output:
+      {
+        "signals":     ["thumbs_up", ...],
+        "matrix":      [[1.0, -0.4, ...], ...],          # NxN Pearson correlation
+        "frequencies": {"thumbs_up": 0.32, ...},          # marginal share of turns
+        "n_users":     23,
+        "n_turns":     412,
+        "small_sample_warning": true|false
+      }
+    """
+    if STORE is None:
+        raise HTTPException(500, "Store not initialized")
+
+    # Pull every applied-reward turn from history. The collection is small
+    # enough that scanning in Python is cheaper than a complex aggregation.
+    rows = list(
+        STORE.db["ape_turn_record"].find(
+            {"signal": {"$ne": None}, "reward_status": "APPLIED"},
+            projection={"user_id_hash": 1, "signal": 1, "_id": 0},
+        )
+    )
+
+    # Build per-user signal counts: {user_hash: {signal: count}}
+    from collections import defaultdict
+    user_counts: Dict[str, Dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    signal_totals: Dict[str, int] = defaultdict(int)
+    for r in rows:
+        u = r.get("user_id_hash")
+        s = r.get("signal")
+        if u and s:
+            user_counts[u][s] += 1
+            signal_totals[s] += 1
+
+    if not user_counts:
+        return {
+            "signals":               [],
+            "matrix":                [],
+            "frequencies":           {},
+            "n_users":               0,
+            "n_turns":               0,
+            "small_sample_warning":  True,
+        }
+
+    # Lock in a stable signal order — alphabetical, but with UI signals
+    # (button clicks) grouped before LLM-detected signals so the heatmap
+    # reads naturally.
+    UI_ORDER  = ["thumbs_up", "thumbs_down", "copy_save", "regenerate_click", "session_abandon"]
+    LLM_ORDER = ["format_change_request", "content_correction", "reask_same_question",
+                 "it_worked_statement", "deeper_question", "no_signal"]
+    signals_seen = set(signal_totals.keys())
+    ordered: List[str] = (
+        [s for s in UI_ORDER  if s in signals_seen] +
+        [s for s in LLM_ORDER if s in signals_seen]
+    )
+    # Catch any custom signals admins added that aren't in either canonical list
+    for s in sorted(signals_seen):
+        if s not in ordered:
+            ordered.append(s)
+
+    # Build per-user proportion vectors: each user's row is their signal mix
+    # normalized by their total signal count, so heavy users don't dominate.
+    matrix_rows: List[List[float]] = []
+    eligible_users = 0
+    for u, counts in user_counts.items():
+        total = sum(counts.values())
+        if total < 1:
+            continue
+        eligible_users += 1
+        vec = [counts.get(s, 0) / total for s in ordered]
+        matrix_rows.append(vec)
+
+    # Pearson correlation between each pair of signal columns
+    def pearson(xs: List[float], ys: List[float]) -> float:
+        n = len(xs)
+        if n < 2:
+            return 0.0
+        mx = sum(xs) / n
+        my = sum(ys) / n
+        num = sum((x - mx) * (y - my) for x, y in zip(xs, ys))
+        dx2 = sum((x - mx) ** 2 for x in xs)
+        dy2 = sum((y - my) ** 2 for y in ys)
+        denom = (dx2 * dy2) ** 0.5
+        if denom == 0:
+            return 0.0
+        return num / denom
+
+    n_signals = len(ordered)
+    matrix: List[List[float]] = [[0.0] * n_signals for _ in range(n_signals)]
+    for i in range(n_signals):
+        col_i = [row[i] for row in matrix_rows]
+        for j in range(n_signals):
+            if i == j:
+                matrix[i][j] = 1.0
+                continue
+            if j < i:
+                matrix[i][j] = matrix[j][i]   # symmetric, already computed
+                continue
+            col_j = [row[j] for row in matrix_rows]
+            matrix[i][j] = round(pearson(col_i, col_j), 3)
+
+    total_turns = sum(signal_totals.values())
+    frequencies = {s: round(signal_totals[s] / total_turns, 3) for s in ordered}
+
+    return {
+        "signals":               ordered,
+        "matrix":                matrix,
+        "frequencies":           frequencies,
+        "n_users":               eligible_users,
+        "n_turns":               total_turns,
+        # Pearson correlations on small N are noisy — flag if fewer than
+        # 10 users contributed. Below that, ρ values shouldn't drive decisions.
+        "small_sample_warning":  eligible_users < 10,
+    }
+
+
 @app.get("/analytics/user-timeseries")
 def analytics_user_timeseries(user_id: str, days: int = 30):
     """Per-user daily activity — bucket this user's turn_record by date.
