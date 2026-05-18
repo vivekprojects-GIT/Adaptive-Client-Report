@@ -165,6 +165,28 @@ export default function OffersTab({ notify }) {
           than total volume. Leave weights blank to use the global defaults
           (40/25/25/10).
         </p>
+
+        {/* Per-field legend — one line each so admins know exactly what to type. */}
+        <ul className="col-legend">
+          <li><strong>Topic</strong> — the snake_case topic the outreach targets. Must match topics in <code>ape_user_topic_interest</code>.
+            <em> e.g. retirement_accounts, roth_ira, tax_planning.</em></li>
+          <li><strong>Outreach type</strong> — short identifier for the action. Shown to the user-facing channel that fires it.
+            <em> e.g. retirement_planning_consultation, follow_up_email, account_review_call.</em></li>
+          <li><strong>Domain</strong> — vertical bucket. Lets you run the same engine for multiple verticals later.
+            <em> e.g. finance (default).</em></li>
+          <li><strong>Description</strong> — admin-facing note explaining what this outreach does. Never shown to end users.
+            <em> e.g. "Schedule a 30-min planning call with an advisor".</em></li>
+          <li><strong>Min interest score</strong> — the threshold the user must clear. Higher = stricter = fewer matches.
+            <em> e.g. 0.7 = only users in the top tier of interest qualify. 0.4 is a "warm lead" threshold.</em></li>
+          <li><strong>Frequency weight</strong> — how much "how often is this their top topic?" counts.
+            <em> e.g. 0.4 = 40% of the score is volume-driven. Raise this for evergreen topics.</em></li>
+          <li><strong>Recency weight</strong> — how much "how recently did they touch it?" counts.
+            <em> e.g. 0.25 = 25% is recency. Raise for time-sensitive outreach (tax season, year-end planning).</em></li>
+          <li><strong>Engagement weight</strong> — how much "did our answers actually land?" (μ-reward on the topic) counts.
+            <em> e.g. 0.25 = 25%. Raise this if you only want to reach out to users who've had good experiences so far.</em></li>
+          <li><strong>Followup depth weight</strong> — how much "are they getting more curious lately?" (recent-week vs 30-day ratio) counts.
+            <em> e.g. 0.10 = 10%. Raise for outreach that targets users in active research mode.</em></li>
+        </ul>
         <form className="admin-form" onSubmit={handleSubmit}>
           <div className="form-row">
             <label>
