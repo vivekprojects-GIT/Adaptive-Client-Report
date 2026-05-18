@@ -200,19 +200,59 @@ class ConfigManager:
         content_relevant: bool,
         format_category: Optional[str],
         content_category: Optional[str],
+        source: Optional[str] = None,
+        feature_id: Optional[int] = None,
+        expected_frequency: Optional[str] = None,
+        evidence_quality: Optional[str] = None,
+        consumers: Optional[list] = None,
+        trigger_pattern: Optional[str] = None,
+        time_window_sec: Optional[int] = None,
         changed_by: str = "system",
     ) -> None:
         before = self.store.get_signal_routing(signal_name)
+        # Preserve existing extended fields if the caller didn't supply them
+        # (so edits from the basic form don't clobber feature_id, etc.).
+        fields = {
+            "signal_name":      signal_name,
+            "format_relevant":  format_relevant,
+            "content_relevant": content_relevant,
+            "format_category":  format_category,
+            "content_category": content_category,
+        }
+        if source is not None:
+            fields["source"] = source
+        elif before is not None:
+            fields["source"] = before.get("source")
+        if feature_id is not None:
+            fields["feature_id"] = feature_id
+        elif before is not None:
+            fields["feature_id"] = before.get("feature_id")
+        if expected_frequency is not None:
+            fields["expected_frequency"] = expected_frequency
+        elif before is not None:
+            fields["expected_frequency"] = before.get("expected_frequency")
+        if evidence_quality is not None:
+            fields["evidence_quality"] = evidence_quality
+        elif before is not None:
+            fields["evidence_quality"] = before.get("evidence_quality")
+        if consumers is not None:
+            fields["consumers"] = consumers
+        elif before is not None:
+            fields["consumers"] = before.get("consumers")
+        # Composite-only fields
+        if trigger_pattern is not None:
+            fields["trigger_pattern"] = trigger_pattern
+        elif before is not None and before.get("trigger_pattern") is not None:
+            fields["trigger_pattern"] = before.get("trigger_pattern")
+        if time_window_sec is not None:
+            fields["time_window_sec"] = time_window_sec
+        elif before is not None and before.get("time_window_sec") is not None:
+            fields["time_window_sec"] = before.get("time_window_sec")
+
         self.store.upsert_config(
             entity_type=ENTITY_SIGNAL_RULE,
             entity_id=signal_name,
-            fields={
-                "signal_name":      signal_name,
-                "format_relevant":  format_relevant,
-                "content_relevant": content_relevant,
-                "format_category":  format_category,
-                "content_category": content_category,
-            },
+            fields=fields,
         )
         after = self.store.get_signal_routing(signal_name)
         self.store.log_admin_action(

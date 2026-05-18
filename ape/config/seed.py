@@ -99,17 +99,33 @@ def seed_all(store: MongoStore, domain: str = DEFAULT_DOMAIN, default_topic: str
             counts["policies"] += 1
 
     # ---- 5. Signal routing ---------------------------------------------
-    for signal_name, (fmt_strength, ctn_strength) in SIGNAL_ROUTING.items():
+    # Seeds all signals from SIGNAL_CATALOG with full metadata (source,
+    # feature_id, expected_frequency, evidence_quality, consumers, plus
+    # composite-only fields like trigger_pattern and time_window_sec).
+    from ..signals import SIGNAL_CATALOG
+    for signal_name, entry in SIGNAL_CATALOG.items():
+        fmt_strength = entry["format_strength"]
+        ctn_strength = entry["content_strength"]
+        fields = {
+            "signal_name":         signal_name,
+            "source":              entry["source"],
+            "format_relevant":     fmt_strength is not None,
+            "content_relevant":    ctn_strength is not None,
+            "format_category":     fmt_strength,
+            "content_category":    ctn_strength,
+            "feature_id":          entry["feature_id"],
+            "expected_frequency":  entry["expected_frequency"],
+            "evidence_quality":    entry["evidence_quality"],
+            "consumers":           entry["consumers"],
+        }
+        # Composite-only metadata
+        if entry["source"] == "composite":
+            fields["trigger_pattern"] = entry.get("trigger_pattern")
+            fields["time_window_sec"] = entry.get("time_window_sec")
         store.upsert_config(
             entity_type="signal_routing",
             entity_id=signal_name,
-            fields={
-                "signal_name":      signal_name,
-                "format_relevant":  fmt_strength is not None,
-                "content_relevant": ctn_strength is not None,
-                "format_category":  fmt_strength,
-                "content_category": ctn_strength,
-            },
+            fields=fields,
         )
         counts["signal_rules"] += 1
 

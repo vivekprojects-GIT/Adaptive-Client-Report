@@ -94,12 +94,20 @@ class FeedbackResponse(BaseModel):
 # ----------------------------------------------------------------------------
 
 class SignalRuleUpdate(BaseModel):
-    signal_name:      str
-    format_relevant:  bool
-    content_relevant: bool
-    format_category:  Optional[str] = None
-    content_category: Optional[str] = None
-    changed_by:       str = "admin_user"
+    signal_name:        str
+    format_relevant:    bool
+    content_relevant:   bool
+    format_category:    Optional[str] = None
+    content_category:   Optional[str] = None
+    # Extended catalog fields (Stage 1+). All optional for back-compat.
+    source:             Optional[str] = None              # ui | llm | derived | composite | default
+    feature_id:         Optional[int] = None              # stable ML-feature integer
+    expected_frequency: Optional[str] = None              # common | moderate | rare
+    evidence_quality:   Optional[str] = None              # high | medium | low
+    consumers:          Optional[List[str]] = None        # bandit | analytics | ...
+    trigger_pattern:    Optional[str] = None              # composite-only, free text
+    time_window_sec:    Optional[int] = None              # composite-only, None=same response
+    changed_by:         str = "admin_user"
 
 
 class RewardScaleUpdate(BaseModel):

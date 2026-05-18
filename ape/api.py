@@ -370,6 +370,13 @@ def upsert_signal_rule(req: SignalRuleUpdate):
         content_relevant=req.content_relevant,
         format_category=req.format_category,
         content_category=req.content_category,
+        source=req.source,
+        feature_id=req.feature_id,
+        expected_frequency=req.expected_frequency,
+        evidence_quality=req.evidence_quality,
+        consumers=req.consumers,
+        trigger_pattern=req.trigger_pattern,
+        time_window_sec=req.time_window_sec,
         changed_by=req.changed_by,
     )
     return {"status": "ok", "signal_name": req.signal_name}
