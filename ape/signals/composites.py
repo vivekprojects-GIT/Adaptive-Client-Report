@@ -168,9 +168,23 @@ def trig_engaged_positive(pending: List[Dict], age: float) -> bool:
 
 
 def trig_silent_acceptance(pending: List[Dict], age: float) -> bool:
-    """ONLY session_continue fired — no UI clicks, no LLM signals"""
-    names = set(_names(pending))
-    return names == {"session_continue"} and age <= 120
+    """Only session_continue and (optionally) auto-derived signals fired.
+
+    Allows format_compliance_pass alongside session_continue, because the
+    auto-fired compliance signal is always present and shouldn't disqualify
+    the "user did nothing but continue" pattern. What we're really gating
+    on is "no UI clicks AND no LLM-detected user text signals."
+    """
+    if age > 120:
+        return False
+    if not _has(pending, "session_continue"):
+        return False
+    # Must NOT have any UI or LLM-driven signals
+    has_user_signal = any(
+        p.get("source") in ("ui", "llm")
+        for p in pending
+    )
+    return not has_user_signal
 
 
 # Dispatch table — keep in same order as COMPOSITE_PRIORITY

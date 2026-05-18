@@ -638,68 +638,77 @@ class ApeOrchestrator:
                 winner = resolve_signal(ui_signals, llm_signal)
                 winner_source = "resolver"
 
-        # Look up routing for the winner
-        routing = self.store.get_signal_routing(winner)
-        if routing is None:
-            # Unknown winner — mark APPLIED with no reward so the row doesn't stay PENDING
-            self.store.mark_response_rewarded(
-                response_id=response_id,
-                user_id_hash=user_id_hash,
-                signal=winner,
-                reward_category=None,
-                normalized_reward=None,
-            )
-            return {"status": "applied_unknown_signal", "winner": winner, "response_id": response_id}
+        # ── DECOUPLED LABEL vs BANDIT REWARD ─────────────────────────────
+        # The `winner` from composite/atomic resolution is the LABEL we
+        # record on the row (for analytics, audit trail, dashboards).
+        # The BANDIT reward is a separate determination: scan ALL signals
+        # in the pool — buffered atomics + the winner — and pick the one
+        # with the highest-magnitude format reward. This way a bandit-
+        # irrelevant winner (e.g. `thumbs_up` which routes to None)
+        # doesn't suppress a perfectly valid +0.5 from a co-fired
+        # `format_compliance_pass`.
+        # ────────────────────────────────────────────────────────────────
 
-        format_relevant  = bool(routing.get("format_relevant", False))
-        format_category  = routing.get("format_category")
+        # Collect every unique signal name in scope (buffered + winner)
+        signal_set = set(p["signal"] for p in pending if p.get("signal"))
+        if winner:
+            signal_set.add(winner)
 
-        # Read the reward scale for the format axis (bandit is single-axis today)
-        normalized_reward: Optional[float] = None
-        if format_relevant and format_category:
-            scale = self.store.get_reward_scale(format_category)
-            if scale is None:
-                # Reward category misconfigured — mark APPLIED with no reward
-                self.store.mark_response_rewarded(
-                    response_id=response_id,
-                    user_id_hash=user_id_hash,
-                    signal=winner,
-                    reward_category=None,
-                    normalized_reward=None,
-                )
-                return {"status": "applied_no_reward_scale", "winner": winner,
-                        "missing_category": format_category}
-            normalized_reward = float(scale["normalized_reward"])
+        # Find the signal with the highest |format_reward|
+        best_bandit_signal: Optional[str] = None
+        best_bandit_category: Optional[str] = None
+        best_bandit_reward: Optional[float] = None
+        best_abs = -1.0
+        for sig in signal_set:
+            r = self.store.get_signal_routing(sig)
+            if r is None or not r.get("format_relevant"):
+                continue
+            cat = r.get("format_category")
+            if not cat:
+                continue
+            scale = self.store.get_reward_scale(cat)
+            if scale is None or scale.get("normalized_reward") is None:
+                continue
+            normalized = float(scale["normalized_reward"])
+            if abs(normalized) > best_abs:
+                best_abs = abs(normalized)
+                best_bandit_signal = sig
+                best_bandit_category = cat
+                best_bandit_reward = normalized
 
-        # Atomic CAS: PENDING → APPLIED with the winning signal + reward
+        # Atomic CAS: PENDING → APPLIED. Record the LABEL (`winner`) but
+        # the REWARD CATEGORY + VALUE come from the bandit-best signal.
+        # If no signal in the pool was bandit-eligible, store None and
+        # the bandit doesn't get updated (correct — there's no evidence).
         rewarded = self.store.mark_response_rewarded(
             response_id=response_id,
             user_id_hash=user_id_hash,
             signal=winner,
-            reward_category=format_category if format_relevant else None,
-            normalized_reward=normalized_reward,
+            reward_category=best_bandit_category,
+            normalized_reward=best_bandit_reward,
         )
         if rewarded is None:
             return {"status": "rejected", "reason": "race_already_applied", "response_id": response_id}
 
-        # Apply reward to the bandit cell (format axis only)
+        # Apply the bandit reward, if we found one
         updated_row = None
-        if format_relevant and normalized_reward is not None:
+        if best_bandit_reward is not None:
             updated_row = self.store.update_strategy_reward(
                 attribution_pk=resp["attribution_bandit_pk"],
                 attribution_sk=resp["attribution_bandit_sk"],
-                normalized_reward=normalized_reward,
+                normalized_reward=best_bandit_reward,
             )
             self.store.refresh_cell_ucb_cache(resp["attribution_bandit_pk"])
 
         return {
-            "status":             "applied" if format_relevant else "applied_no_format_update",
+            "status":             "applied" if best_bandit_reward is not None else "applied_no_bandit_update",
             "response_id":        response_id,
             "winner":             winner,
             "winner_source":      winner_source,
+            "bandit_signal":      best_bandit_signal,
             "n_signals_pooled":   len(pending),
-            "reward_category":    format_category if format_relevant else None,
-            "normalized_reward":  normalized_reward,
+            "reward_category":    best_bandit_category,
+            "normalized_reward":  best_bandit_reward,
             "strategy_row_after": _clean(updated_row),
         }
 
