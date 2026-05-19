@@ -89,6 +89,7 @@ export default function ChatPage() {
           messages={ape.messages}
           showMeta={showMeta}
           onFeedback={handleFeedback}
+          onRegenerate={ape.regenerate}
         />
 
         <Composer onSend={ape.sendTurn} disabled={ape.sending} sessionId={ape.sessionId} />

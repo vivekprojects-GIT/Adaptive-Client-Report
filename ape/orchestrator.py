@@ -1,26 +1,79 @@
 """
 Orchestrator — implements the production query-flow design.
 
-Per-turn flow (Path A — strategy selection for current response):
+Per-turn flow (Path A — strategy selection + auto-fired signals):
 
+  A0. (NEW) If user has a previous PENDING response in this session,
+      finalize it now:
+        • Append classifier signal (LLM source) to its pending_signals
+        • Append session_continue (derived source) if prev_age < 5min
+        • Run _finalize_response → composite detection → atomic resolver
+          → max-magnitude reward → bandit cell update
   A1. Validate intent (read APE_Config / intent entity)
   A2. Read allowed strategies for (domain, intent, topic) (policy lookup)
   A3. Read strategy metadata + active instruction version
   A4. Query the user-personalized bandit state for this cell
   A5. Pick highest cached_ucb (lazy-create cell if missing)
   A6. Synthesizer LLM call → answer text + rendered_format
-  A7. Write APE_Turn_Record with reward_status=PENDING and
-      attribution_bandit_pk/sk denormalized for fast Path B lookup
+  A7. Compute format_compliance(strategy, rendered_format). Pre-seed the
+      new response's pending_signals[] with one of:
+        • format_compliance_pass  (source: derived)  if synthesizer obeyed
+        • format_compliance_fail  (source: derived)  if synthesizer diverged
+  A8. Write APE_Turn_Record with reward_status=PENDING, attribution_pk/sk,
+      and the pre-seeded pending_signals[].
 
-Reward flow (Path B — applies to an exact response_id):
+Reward flow (Path B — buffered resolver over pending_signals):
 
-  B1. Read the response record by response_id (exact)
-  B2. Validate user_id_hash + reward_status=PENDING (prevents double rewards)
-  B3. Read signal routing rule (from config)
-  B4. Read reward scale (from config)
-  B5. Atomically mark response APPLIED with signal + reward
-  B6. Apply reward to the strategy row pointed to by attribution_bandit_pk/sk
-  B7. Refresh cached_ucb for ALL strategies in the cell
+  B1. apply_feedback validates user + PENDING status, then appends the
+      incoming signal to pending_signals[] (source: ui).
+  B2. Decide eager vs deferred finalize:
+        • Age >= 5s, or pending count >= 3, or signal is explicit/strong
+          → call _finalize_response now
+        • Otherwise → return {status: queued}, wait for next signal or
+          for Path A's next-turn flush to finalize.
+  B3. _finalize_response:
+        • Composite detector runs first (10 patterns from composites.py).
+          If a pattern matches, that name becomes the LABEL.
+        • Atomic resolver falls back (UI > LLM, priority ladder inside UI).
+          Or, if neither UI nor LLM fired, pick the first derived signal.
+        • Reward magnitude is computed SEPARATELY from the label:
+          scan every signal in the pool (atomics + composite winner),
+          look up each one's format-axis routing, pick the largest
+          absolute normalized_reward in [-1.0, +1.0].
+        • Atomic CAS PENDING → APPLIED with (label, reward_category, reward).
+        • update_strategy_reward on the attribution cell.
+        • refresh_cell_ucb_cache to recompute UCB for every arm.
+
+Signal catalog (25 signals, all wired by mid-2026):
+
+  Source: ui          (4) thumbs_up, thumbs_down, copy_save, regenerate_click
+  Source: llm         (6) format_change_request, format_keep_request,
+                          content_correction, reask_same_question,
+                          it_worked_statement, deeper_question
+  Source: derived     (4) format_compliance_pass, format_compliance_fail,
+                          session_continue, session_abandon
+  Source: composite  (10) pattern_explicit_format_consensus_neg/_pos,
+                          pattern_engaged_positive, pattern_confused_negative,
+                          pattern_regret, pattern_change_of_heart,
+                          pattern_abandoned_after_approval,
+                          pattern_content_failure_confirmed,
+                          pattern_format_endorsed_through_behavior,
+                          pattern_silent_acceptance
+  Source: default     (1) no_signal
+
+Where each signal originates:
+  - UI signals (thumbs/copy/regenerate) fire from the chat frontend on
+    explicit user clicks, posted via POST /feedback.
+  - session_abandon fires from the frontend's beforeunload handler via
+    navigator.sendBeacon (best-effort, browser-dependent).
+  - LLM signals come from the classifier reading the user's NEXT
+    message; the system appends them to the PREVIOUS response's
+    pending_signals[] at the top of handle_turn.
+  - session_continue is computed at handle_turn time: if a previous
+    PENDING response is < 5 min old when the user sends another turn,
+    we count that as continued engagement.
+  - Composite patterns are detected at finalize-time by composites.py
+    based on which atomic signals are buffered.
 
 Raw queries are NOT stored. Only classification + attribution metadata.
 """

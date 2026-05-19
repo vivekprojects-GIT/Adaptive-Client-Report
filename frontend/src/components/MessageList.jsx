@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import Message from "./Message.jsx";
 
-export default function MessageList({ messages, showMeta, onFeedback }) {
+export default function MessageList({ messages, showMeta, onFeedback, onRegenerate }) {
   const wrapRef = useRef(null);
 
   // Auto-scroll to the bottom on new messages
@@ -23,8 +23,9 @@ export default function MessageList({ messages, showMeta, onFeedback }) {
         <div className="empty-chat">
           <div className="empty-chat-title">How can I help you today?</div>
           <div>
-            Ask a finance question to get started. Click 👍/👎 on any answer —
-            the bandit learns which response formats work best for you.
+            Ask a finance question to get started. Rate, copy, or regenerate
+            any answer — the bandit learns which response formats work best
+            for you.
           </div>
         </div>
       ) : (
@@ -36,6 +37,7 @@ export default function MessageList({ messages, showMeta, onFeedback }) {
               isLastAssistant={i === lastAsstIdx}
               showMeta={showMeta}
               onFeedback={onFeedback}
+              onRegenerate={onRegenerate}
             />
           ))}
         </div>
