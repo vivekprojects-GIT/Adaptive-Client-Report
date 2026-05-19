@@ -1,90 +1,9 @@
-/* APE Admin — config management styles (Claude Desktop palette) */
-
-.admin-page {
-  min-height: 100vh;
-  background: var(--bg);
-  color: var(--text);
-}
-
-/* ===== Header ===== */
-.admin-header {
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
-  padding: 22px 36px 0;
-  position: sticky;
-  top: 0;
-  z-index: 10;
-}
-.admin-header-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  gap: 16px;
-  flex-wrap: wrap;
-  margin-bottom: 12px;
-}
-.admin-header h1 {
-  font-size: 22px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  color: var(--text);
-}
-.admin-sub {
-  font-size: 13px;
-  color: var(--muted);
-  margin-top: 2px;
-}
-.admin-nav {
-  display: flex;
-  gap: 8px;
-}
-.admin-back {
-  font-size: 13px;
-  color: var(--text-secondary);
-  padding: 7px 14px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-strong);
-  background: var(--surface);
-  transition: background 0.12s, color 0.12s, border-color 0.12s;
-}
-.admin-back:hover {
-  background: var(--accent-soft);
-  border-color: var(--primary);
-  color: var(--primary);
-}
-
-/* ===== Tabs ===== */
-.admin-tabs {
-  display: flex;
-  gap: 4px;
-  flex-wrap: wrap;
-}
-.admin-tab {
-  padding: 10px 18px;
-  background: transparent;
-  border: none;
-  border-bottom: 2px solid transparent;
-  font: inherit;
-  font-size: 13.5px;
-  font-weight: 500;
-  color: var(--text-secondary);
-  cursor: pointer;
-  margin-bottom: -1px;
-  transition: color 0.12s, border-color 0.12s;
-}
-.admin-tab:hover  { color: var(--text); }
-.admin-tab.active {
-  color: var(--primary);
-  border-bottom-color: var(--primary);
-  font-weight: 600;
-}
-
-/* ===== Main ===== */
-.admin-main {
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: 28px 36px 64px;
-}
+/* APE Admin — config management styles (Claude Desktop palette)
+ *
+ * Page chrome (.app-page, .app-header, .app-brand, .app-tabs, .app-link,
+ * .app-actions, .app-main, .btn-text) lives in app-shell.css. This file
+ * holds only admin-specific body/form/table styles.
+ */
 
 .admin-tab-content {
   display: flex;

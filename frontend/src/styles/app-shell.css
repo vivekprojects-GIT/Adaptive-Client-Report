@@ -1,0 +1,205 @@
+/* ─────────────────────────────────────────────────────────────────────
+ * app-shell.css — shared chrome for Admin and Analytics pages
+ *
+ * Both pages get the same brand mark, same nav links, same action
+ * buttons, same tab style. Page-specific content lives below in
+ * their respective stylesheets.
+ *
+ * Layout primitives:
+ *   .app-page          full-viewport page background
+ *   .app-header        sticky top chrome
+ *   .app-header-row    one 48px row inside the header
+ *   .app-brand         "APE · <page name>" wordmark
+ *   .app-brand-dot     thin divider between APE and page name
+ *   .app-tabs / .app-tab / .app-tab.active
+ *   .app-link          quiet cross-nav link (Chat / Admin / Analytics)
+ *   .app-actions       right-aligned button cluster
+ *   .btn-text          standard secondary button
+ *   .btn-text-emphasis primary-color filled button
+ *   .app-main          page content container, max-width 1200px
+ * ──────────────────────────────────────────────────────────────────── */
+
+.app-page {
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+/* ── Header ─────────────────────────────────────────────────────────── */
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.02);
+}
+.app-header-row {
+  display: flex;
+  align-items: center;
+  padding: 0 24px;
+  height: 48px;
+  gap: 16px;
+}
+.app-header-row + .app-header-row {
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+  height: 44px;
+  gap: 12px;
+}
+
+/* ── Brand mark ─────────────────────────────────────────────────────── */
+.app-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  color: var(--text);
+  flex-shrink: 0;
+  padding-right: 14px;
+  margin-right: 6px;
+  border-right: 1px solid var(--border);
+  height: 28px;
+  line-height: 28px;
+}
+.app-brand-name {
+  color: var(--primary);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.app-brand-dot {
+  color: var(--border-strong);
+  font-weight: 400;
+  margin: 0 2px;
+}
+.app-brand-page {
+  color: var(--text);
+  font-weight: 500;
+}
+
+/* ── Tabs ───────────────────────────────────────────────────────────── */
+.app-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  flex: 1;
+  min-width: 0;
+}
+.app-tab {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 14px;
+  height: 47px;            /* matches header row minus 1px border */
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.12s, border-color 0.12s;
+  margin-bottom: -1px;
+}
+.app-tab:hover  { color: var(--text); }
+.app-tab.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+  font-weight: 600;
+}
+
+/* ── Right-side action cluster ──────────────────────────────────────── */
+.app-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* Quiet cross-nav link */
+.app-link {
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 12.5px;
+  font-weight: 500;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  transition: color 0.12s, background 0.12s;
+}
+.app-link:hover {
+  color: var(--text);
+  background: var(--bg);
+}
+
+/* Standard action button (text, low weight) */
+.btn-text {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  font-weight: 500;
+  font-family: inherit;
+  padding: 5px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  white-space: nowrap;
+  line-height: 1.2;
+}
+.btn-text:hover:not(:disabled) {
+  background: var(--bg);
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+.btn-text:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.btn-text-emphasis {
+  background: var(--primary);
+  color: var(--primary-fg);
+  border-color: var(--primary);
+}
+.btn-text-emphasis:hover:not(:disabled) {
+  background: var(--primary-hover);
+  border-color: var(--primary-hover);
+  color: var(--primary-fg);
+}
+
+/* ── Main content container ─────────────────────────────────────────── */
+.app-main {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px 24px 64px;
+}
+
+/* ── Responsive: stack tabs below brand on narrow screens ───────────── */
+@media (max-width: 900px) {
+  .app-header-row {
+    flex-wrap: wrap;
+    height: auto;
+    padding: 8px 16px;
+  }
+  .app-brand {
+    border-right: none;
+    margin-right: 0;
+    padding-right: 0;
+  }
+  .app-tabs {
+    width: 100%;
+    margin-top: 4px;
+    border-top: 1px solid var(--border);
+    padding-top: 4px;
+  }
+}

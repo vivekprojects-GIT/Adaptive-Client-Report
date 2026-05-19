@@ -11,6 +11,7 @@ import SignalRulesTab from "./admin/SignalRulesTab.jsx";
 import RewardScaleTab from "./admin/RewardScaleTab.jsx";
 import BanditStateTab from "./admin/BanditStateTab.jsx";
 import AuditTab       from "./admin/AuditTab.jsx";
+import "../styles/app-shell.css";
 import "../styles/admin.css";
 // Shared styles for quality panels (also rendered on the analytics page).
 import "../styles/quality.css";
@@ -34,32 +35,35 @@ export default function AdminPage() {
   function notify(msg, kind = "ok") { setToast({ msg, kind }); }
 
   return (
-    <div className="admin-page">
-      <header className="admin-header">
-        <div className="admin-header-row">
-          <div>
-            <h1>Configuration</h1>
-            <div className="admin-sub">Admin-managed settings for the APE engine</div>
+    <div className="app-page">
+      <header className="app-header">
+        <div className="app-header-row">
+          <div className="app-brand">
+            <span className="app-brand-name">APE</span>
+            <span className="app-brand-dot">/</span>
+            <span className="app-brand-page">Configuration</span>
           </div>
-          <nav className="admin-nav">
-            <Link to="/" className="admin-back">← Back to chat</Link>
-            <Link to="/analytics" className="admin-back">Analytics</Link>
-          </nav>
+          <div className="app-actions">
+            <Link to="/"          className="app-link">Chat</Link>
+            <Link to="/analytics" className="app-link">Analytics</Link>
+          </div>
         </div>
-        <div className="admin-tabs">
-          {TABS.map((t) => (
-            <button
-              key={t.id}
-              className={`admin-tab ${active === t.id ? "active" : ""}`}
-              onClick={() => setActive(t.id)}
-            >
-              {t.label}
-            </button>
-          ))}
+        <div className="app-header-row app-header-row-tabs">
+          <nav className="app-tabs" aria-label="Configuration sections">
+            {TABS.map((t) => (
+              <button
+                key={t.id}
+                className={`app-tab ${active === t.id ? "active" : ""}`}
+                onClick={() => setActive(t.id)}
+              >
+                {t.label}
+              </button>
+            ))}
+          </nav>
         </div>
       </header>
 
-      <main className="admin-main">
+      <main className="app-main">
         {active === "intents"      && <IntentsTab     notify={notify} />}
         {active === "strategies"   && <StrategiesTab  notify={notify} />}
         {active === "instructions" && <InstructionsTab notify={notify} />}

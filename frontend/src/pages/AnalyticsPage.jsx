@@ -11,6 +11,7 @@ import CorrelationHeatmap from "../components/analytics/CorrelationHeatmap.jsx";
 import CustomerHealthSection from "../components/analytics/CustomerHealthSection.jsx";
 import InfoHint from "../components/analytics/InfoHint.jsx";
 import RagQualityPanel from "../components/quality/RagQualityPanel.jsx";
+import "../styles/app-shell.css";
 import "../styles/analytics.css";
 import "../styles/quality.css";
 
@@ -304,18 +305,22 @@ export default function AnalyticsPage() {
   })[windowId] || windowId;
 
   return (
-    <div className="analytics-body">
-      <header className="analytics-header analytics-header-compact">
+    <div className="app-page analytics-body">
+      <header className="app-header">
 
         {/* Row 1: brand + tabs + external nav (single line) */}
-        <div className="header-row header-row-primary">
-          <div className="header-brand">Analytics</div>
+        <div className="app-header-row">
+          <div className="app-brand">
+            <span className="app-brand-name">APE</span>
+            <span className="app-brand-dot">/</span>
+            <span className="app-brand-page">Analytics</span>
+          </div>
 
-          <nav className="analytics-tabs" aria-label="Analytics sections">
+          <nav className="app-tabs" aria-label="Analytics sections">
             {TABS.map((t) => (
               <button
                 key={t.id}
-                className={`analytics-tab ${activeTab === t.id ? "active" : ""}`}
+                className={`app-tab ${activeTab === t.id ? "active" : ""}`}
                 onClick={() => setActiveTab(t.id)}
               >
                 {t.label}
@@ -323,9 +328,9 @@ export default function AnalyticsPage() {
             ))}
           </nav>
 
-          <div className="header-actions">
-            <Link to="/"      className="header-link">Chat</Link>
-            <Link to="/admin" className="header-link">Admin</Link>
+          <div className="app-actions">
+            <Link to="/"      className="app-link">Chat</Link>
+            <Link to="/admin" className="app-link">Admin</Link>
             <button
               className="btn-text"
               onClick={() => refresh()}
@@ -346,7 +351,7 @@ export default function AnalyticsPage() {
         </div>
 
         {/* Row 2: toolbar — date window + user search + freshness */}
-        <div className="header-row header-row-toolbar">
+        <div className="app-header-row analytics-toolbar">
           <DateFilter
             value={windowId}
             onChange={(id) => setWindowId(id)}
@@ -359,7 +364,7 @@ export default function AnalyticsPage() {
             hasUser={hasUser}
             suggestions={activeUsers}
           />
-          <span className="header-meta">
+          <span className="analytics-meta">
             {lastRefresh && (
               <span className="last-refresh" title="When aggregates were last fetched">
                 {lastRefresh.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
@@ -374,7 +379,7 @@ export default function AnalyticsPage() {
         </div>
       </header>
 
-      <main className="analytics-main">
+      <main className="app-main analytics-main">
 
       {/* ════════════════ OVERVIEW TAB ════════════════ */}
       {activeTab === "overview" && (<>
