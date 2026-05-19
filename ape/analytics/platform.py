@@ -223,11 +223,29 @@ def compute_platform_overview(
         "users_with_any_match": users_with_any_match,
     }
 
-    # -------- 7. Signal mix (across applied rewards) --------
-    signal_counts = Counter(
-        r["signal"] for r in turn_rows
-        if r.get("signal") and r.get("reward_status") == REWARD_STATUS_APPLIED
-    )
+    # -------- 7. Signal mix (every signal that fired across applied turns) --------
+    # Previously this counted only the final `signal` field (the resolver's
+    # chosen LABEL). That undercounts dramatically — auto-fired signals like
+    # format_compliance_pass and session_continue fire on most turns but lose
+    # the resolver tie-break, so they never showed up. Now we count every
+    # entry in pending_signals[] PLUS the winning composite label if any.
+    signal_counts: Counter = Counter()
+    for r in turn_rows:
+        if r.get("reward_status") != REWARD_STATUS_APPLIED:
+            continue
+        # Count every atomic signal that was buffered on this response
+        for s in r.get("pending_signals") or []:
+            sname = s.get("signal")
+            if sname:
+                signal_counts[sname] += 1
+        # If the final label is a composite (not in pending_signals), count it too
+        winner = r.get("signal")
+        if winner and winner.startswith("pattern_"):
+            signal_counts[winner] += 1
+        # Older rows without pending_signals: fall back to the final label
+        elif winner and not r.get("pending_signals"):
+            signal_counts[winner] += 1
+
     signal_total = sum(signal_counts.values()) or 1
     signal_mix = [
         {
@@ -235,7 +253,7 @@ def compute_platform_overview(
             "count":  v,
             "pct":    round(100 * v / signal_total, 1),
         }
-        for k, v in signal_counts.most_common(8)
+        for k, v in signal_counts.most_common(25)   # show every catalog signal
     ]
 
     return {

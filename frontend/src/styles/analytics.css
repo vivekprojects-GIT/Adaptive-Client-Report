@@ -964,6 +964,11 @@
   border-color: #e6b8b8;
 }
 .signal-neg .pct-name { color: var(--neg); }
+.signal-composite {
+  background: #f3ecf5;
+  border-color: #d9c5e0;
+}
+.signal-composite .pct-name { color: #6b3d7e; }
 
 @media (max-width: 900px) {
   .platform-cols-2 { grid-template-columns: 1fr; }

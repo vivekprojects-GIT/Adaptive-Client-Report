@@ -272,11 +272,23 @@ export default function PlatformOverviewCard({
 
         <div className="platform-block">
           <div className="platform-block-head">
-            Signal mix (rewarded turns)
-            <InfoHint width={340}>
-              The distribution of explicit feedback signals on responses that received a reward.
-              Green pills = positive (<code>thumbs_up</code>, <code>copy_save</code>, <code>it_worked</code>);
-              red = negative (<code>thumbs_down</code>, <code>regenerate</code>). A healthy ratio is &gt;80% green.
+            Signal mix (across all firings)
+            <InfoHint width={380}>
+              How often each signal fired across all rewarded turns. Includes
+              every entry in <code>pending_signals</code> — auto-fired signals
+              (compliance pass/fail, session continue) and composite patterns
+              show up here too, not just the resolver's chosen label.
+              <br/><br/>
+              Green = positive (<code>thumbs_up</code>, <code>copy_save</code>,
+              <code> compliance_pass</code>, <code>it_worked</code>,
+              <code> deeper_question</code>, <code>session_continue</code>,
+              <code> format_keep_request</code>).
+              Red = negative (<code>thumbs_down</code>, <code>regenerate</code>,
+              <code> compliance_fail</code>, <code>format_change_request</code>,
+              <code> content_correction</code>, <code>reask_same</code>,
+              <code> session_abandon</code>).
+              Purple = composite patterns. A healthy mix is mostly green +
+              compliance signals.
             </InfoHint>
           </div>
           <div className="pct-row">
@@ -284,6 +296,7 @@ export default function PlatformOverviewCard({
               <span
                 key={s.signal}
                 className={`pct-pill signal-${signalToneClass(s.signal)}`}
+                title={`${s.count} firings`}
               >
                 <span className="pct-name">{s.signal.replace(/_/g, " ")}</span>
                 <span className="pct-num">{s.pct}%</span>
@@ -304,8 +317,16 @@ const READINESS_ORDER = ["Ready", "Likely", "Nurture", "Too early"];
 
 function signalToneClass(name) {
   if (!name) return "neutral";
-  if (/thumbs_up|copy_save|it_worked|deeper_question/.test(name)) return "pos";
-  if (/thumbs_down|regenerate|abandon|correction/.test(name))     return "neg";
+  // Composite patterns get a distinct color so they stand out in the mix
+  if (name.startsWith("pattern_")) return "composite";
+  // Positive: explicit positives + auto-fired success + engagement
+  if (/^(thumbs_up|copy_save|it_worked_statement|deeper_question|format_keep_request|format_compliance_pass|session_continue)$/.test(name)) {
+    return "pos";
+  }
+  // Negative: complaints, retries, abandonment
+  if (/^(thumbs_down|regenerate_click|session_abandon|format_change_request|content_correction|reask_same_question|format_compliance_fail)$/.test(name)) {
+    return "neg";
+  }
   return "neutral";
 }
 
