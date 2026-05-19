@@ -12,6 +12,8 @@ import RewardScaleTab from "./admin/RewardScaleTab.jsx";
 import BanditStateTab from "./admin/BanditStateTab.jsx";
 import AuditTab       from "./admin/AuditTab.jsx";
 import "../styles/admin.css";
+// Shared styles for quality panels (also rendered on the analytics page).
+import "../styles/quality.css";
 
 const TABS = [
   { id: "intents",      label: "Intents" },

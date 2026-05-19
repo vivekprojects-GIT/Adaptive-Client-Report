@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../../api.js";
 import AdminTable from "./AdminTable.jsx";
-import InstructionQualityPanel from "./InstructionQualityPanel.jsx";
-import RagQualityPanel from "./RagQualityPanel.jsx";
+import InstructionQualityPanel from "../../components/quality/InstructionQualityPanel.jsx";
+import RagQualityPanel from "../../components/quality/RagQualityPanel.jsx";
 
 /**
  * InstructionsTab — full lifecycle for per-strategy instruction text.

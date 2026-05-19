@@ -10,11 +10,9 @@ import PlatformOverviewCard from "../components/analytics/PlatformOverviewCard.j
 import CorrelationHeatmap from "../components/analytics/CorrelationHeatmap.jsx";
 import CustomerHealthSection from "../components/analytics/CustomerHealthSection.jsx";
 import InfoHint from "../components/analytics/InfoHint.jsx";
-import RagQualityPanel from "./admin/RagQualityPanel.jsx";
+import RagQualityPanel from "../components/quality/RagQualityPanel.jsx";
 import "../styles/analytics.css";
-// The RAG quality panel reuses styles from admin.css — pull them in so
-// the Content tab renders correctly even though we're not on the admin page.
-import "../styles/admin.css";
+import "../styles/quality.css";
 
 /**
  * AnalyticsPage — cognitive facets + admin outreach view.
