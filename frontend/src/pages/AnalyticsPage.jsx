@@ -32,7 +32,18 @@ export default function AnalyticsPage() {
   //                 hashed identifier (u_<hex>).
   const [inspectUser, setU] = usePersistedState("ape.user_id", "");
   const [windowId, setWindowId] = usePersistedState("ape.analytics.window", "30d");
+  const [domain, setDomain] = usePersistedState("ape.analytics.domain", "");
   const [activeTab, setActiveTab] = usePersistedState("ape.analytics.tab", "overview");
+
+  // Domains for the scope selector. "" = all domains aggregated. Keep in sync
+  // with the RAG domains served by the backend.
+  const DOMAIN_OPTIONS = [
+    { id: "",        label: "All domains" },
+    { id: "cricket", label: "Cricket" },
+    { id: "it",      label: "IT" },
+    { id: "movies",  label: "Movies" },
+    { id: "travel",  label: "Travel" },
+  ];
   const [lastRefresh, setLastRefresh] = useState(null);
   const [lastRecompute, setLastRecompute] = useState(null);
 
@@ -111,7 +122,7 @@ export default function AnalyticsPage() {
     setProfileErr(null);
     if (!hasUser) { setProfile(null); return; }
     try {
-      const p = await api.userProfile(inspectUser.trim());
+      const p = await api.userProfile(inspectUser.trim(), domain);
       setProfile(p);
     } catch (e) {
       setProfileErr(e.message);
@@ -127,7 +138,7 @@ export default function AnalyticsPage() {
       // Non-empty input → that user's cells (min 1 to show everything).
       const userArg = hasUser ? inspectUser.trim() : "";
       const minInter = hasUser ? 1 : 2;
-      const f = await api.cognitiveFacets(userArg, minInter);
+      const f = await api.cognitiveFacets(userArg, minInter, domain);
       setFacets(Array.isArray(f) ? f : []);
     } catch (e) {
       setFacetsErr(e.message);
@@ -177,7 +188,7 @@ export default function AnalyticsPage() {
     setActiveErr(null);
     try {
       const days = daysForFilter(windowId);
-      const a = await api.activeUsers(days, 0, 100);
+      const a = await api.activeUsers(days, 0, 100, domain);
       setActive(Array.isArray(a) ? a : []);
     } catch (e) {
       setActiveErr(e.message);
@@ -189,7 +200,7 @@ export default function AnalyticsPage() {
     setPlatErr(null);
     try {
       const days = daysForFilter(windowId);
-      const p = await api.platformOverview(days, 8);
+      const p = await api.platformOverview(days, 8, domain);
       setPlatform(p);
     } catch (e) {
       setPlatErr(e.message);
@@ -273,6 +284,17 @@ export default function AnalyticsPage() {
     // eslint-disable-next-line
   }, [windowId]);
 
+  // Re-load the domain-scoped sections when the domain selector changes.
+  // (platform overview, cognitive facets, active customers, and the per-user
+  // profile all accept a domain filter; trends/time-series are cross-domain.)
+  useEffect(() => {
+    loadPlatform();
+    loadActiveUsers();
+    loadFacets();
+    loadProfile();
+    // eslint-disable-next-line
+  }, [domain]);
+
   // Re-load the per-user sections (and facets, which switches between
   // global/user mode) whenever the search input changes. Debounced via the
   // input's "Apply" / Enter so we don't fire on every keystroke.
@@ -344,6 +366,18 @@ export default function AnalyticsPage() {
             value={windowId}
             onChange={(id) => setWindowId(id)}
           />
+          <label className="domain-filter" title="Scope all panels to one domain">
+            <span className="domain-filter-label">Domain</span>
+            <select
+              className="domain-filter-select"
+              value={domain}
+              onChange={(e) => setDomain(e.target.value)}
+            >
+              {DOMAIN_OPTIONS.map((d) => (
+                <option key={d.id || "all"} value={d.id}>{d.label}</option>
+              ))}
+            </select>
+          </label>
           <UserSearchInput
             value={inspectUser}
             onApply={applyUser}

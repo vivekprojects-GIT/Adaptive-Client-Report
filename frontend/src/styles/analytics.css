@@ -23,6 +23,36 @@
 
 /* Toolbar row: date filter + user search + freshness */
 .analytics-toolbar .date-filter { flex-shrink: 0; }
+.analytics-toolbar .domain-filter { flex-shrink: 0; }
+
+/* Domain scope selector — mirrors the date-filter chrome */
+.domain-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 2px 6px 2px 8px;
+}
+.domain-filter-label {
+  color: var(--muted);
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+}
+.domain-filter-select {
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text);
+  cursor: pointer;
+  padding: 4px 2px;
+  outline: none;
+}
 .analytics-toolbar .user-search-wrap {
   flex: 1;
   max-width: 480px;
