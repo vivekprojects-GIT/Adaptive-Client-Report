@@ -554,8 +554,8 @@ class MongoStore:
         }
         if session_id:
             query["session_id_optional"] = session_id
-        # Cutoff = now − max_age_sec
-        cutoff_dt = datetime.utcnow() - timedelta(seconds=max_age_sec)
+        # Cutoff = now − max_age_sec (naive UTC to match stored ts strings)
+        cutoff_dt = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=max_age_sec)
         query["ts"] = {"$gte": cutoff_dt.strftime("%Y-%m-%dT00:00:00")}
         return self.turn_record.find_one(query, sort=[("ts", -1)])
 
@@ -572,7 +572,7 @@ class MongoStore:
             if ts.endswith("Z"):
                 ts = ts[:-1] + "+00:00"
             dt = datetime.fromisoformat(ts)
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc).replace(tzinfo=None)
             # Strip tz info for naive subtraction
             if dt.tzinfo is not None:
                 dt = dt.replace(tzinfo=None)

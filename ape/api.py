@@ -221,11 +221,22 @@ async def post_turn_stream(req: TurnRequest):
         )
         # Yield SSE-formatted events one at a time
         sentinel = object()
-        while True:
-            evt = await asyncio.to_thread(next, gen, sentinel)
-            if evt is sentinel:
-                break
-            yield _sse_format(evt)
+        try:
+            while True:
+                evt = await asyncio.to_thread(next, gen, sentinel)
+                if evt is sentinel:
+                    break
+                yield _sse_format(evt)
+        finally:
+            # On client disconnect Starlette closes this async generator.
+            # Explicitly close the inner blocking generator so its
+            # `with client.messages.stream(...)` context exits and the
+            # Anthropic HTTP connection is released immediately, rather
+            # than waiting for garbage collection.
+            try:
+                await asyncio.to_thread(gen.close)
+            except Exception:
+                pass
 
     return StreamingResponse(
         event_gen(),

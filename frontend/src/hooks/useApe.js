@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api.js";
 import { usePersistedState } from "./usePersistedState.js";
 
@@ -94,6 +94,19 @@ export function useApe() {
   const [sending, setSending]     = useState(false);
   const [statusOk, setStatusOk]   = useState(null);
   const [error, setError]         = useState(null);
+
+  // Lifecycle guards — prevent setState after unmount and abort any
+  // in-flight SSE stream when the component goes away (e.g. user navigates
+  // from /chat to /analytics mid-stream).
+  const mountedRef = useRef(true);
+  const abortRef   = useRef(null);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      abortRef.current?.abort();
+    };
+  }, []);
 
   // ---- Health check ------------------------------------------------------
   const checkHealth = useCallback(async () => {
@@ -192,6 +205,12 @@ export function useApe() {
       ]);
     };
 
+    // Fresh AbortController per turn; abort the previous one if somehow
+    // still open, then store this one so unmount can cancel the stream.
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     try {
       const resp = await fetch("/turn/stream", {
         method: "POST",
@@ -202,6 +221,7 @@ export function useApe() {
           query:             trimmed,
           generate_response: true,
         }),
+        signal: controller.signal,
       });
       if (!resp.ok || !resp.body) {
         throw new Error(`stream failed: ${resp.status} ${resp.statusText}`);
@@ -213,7 +233,7 @@ export function useApe() {
 
       while (true) {
         const { value, done } = await reader.read();
-        if (done) break;
+        if (done || !mountedRef.current) break;
         buffer += decoder.decode(value, { stream: true });
 
         // Parse complete SSE events: separated by blank line ("\n\n")
@@ -243,16 +263,23 @@ export function useApe() {
 
       if (!finalResult) throw new Error("stream ended without 'done' event");
 
+      if (!mountedRef.current) return;        // navigated away — don't touch state
       setPendingMessages([]);
       const rows = await api.loadSessionMessages(finalResult.session_id, userId);
+      if (!mountedRef.current) return;
       setMessages(rows || []);
       refreshSessions();
     } catch (err) {
+      // AbortError is expected when the user navigates away mid-stream.
+      if (err.name === "AbortError" || !mountedRef.current) return;
       console.error("[APE] turn failed", err);
       setError(err.message);
       setPendingMessages([]);
     } finally {
-      setSending(false);
+      if (mountedRef.current) setSending(false);
+      // This turn's controller is done; clear it so unmount doesn't abort a
+      // controller that's no longer active.
+      if (abortRef.current === controller) abortRef.current = null;
     }
   }, [sending, userId, sessionId, refreshSessions]);
 
