@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import AdminTokenPrompt from "../components/AdminTokenPrompt.jsx";
 import Toast from "../components/Toast.jsx";
 import IntentsTab     from "./admin/IntentsTab.jsx";
 import StrategiesTab  from "./admin/StrategiesTab.jsx";
@@ -29,15 +28,10 @@ const TABS = [
 ];
 
 export default function AdminPage() {
-  const [adminToken, setAdminToken] = useState(() => localStorage.getItem("ape.admin_token") || "");
   const [active, setActive] = useState("intents");
   const [toast, setToast]   = useState({ msg: null, kind: "" });
 
   function notify(msg, kind = "ok") { setToast({ msg, kind }); }
-
-  if (!adminToken) {
-    return <AdminTokenPrompt title="Configuration" onSave={setAdminToken} />;
-  }
 
   return (
     <div className="app-page">

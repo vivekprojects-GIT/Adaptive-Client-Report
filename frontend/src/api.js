@@ -4,18 +4,8 @@
  * and FastAPI serves them at the same origin in production.
  */
 
-function adminToken() {
-  try {
-    return localStorage.getItem("ape.admin_token") || "";
-  } catch {
-    return "";
-  }
-}
-
 async function request(method, path, body) {
   const headers = { "Content-Type": "application/json" };
-  const token = adminToken();
-  if (token) headers["X-APE-Admin-Token"] = token;
   const opts = { method, headers };
   if (body !== undefined) opts.body = JSON.stringify(body);
   const resp = await fetch(path, opts);

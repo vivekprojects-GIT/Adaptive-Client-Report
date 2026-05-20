@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api.js";
 import { usePersistedState } from "../hooks/usePersistedState.js";
-import AdminTokenPrompt from "../components/AdminTokenPrompt.jsx";
 import CognitiveFacetCard from "../components/analytics/CognitiveFacetCard.jsx";
 import DateFilter, { daysForFilter } from "../components/analytics/DateFilter.jsx";
 import ActiveUsersTable from "../components/analytics/ActiveUsersTable.jsx";
@@ -26,14 +25,6 @@ import "../styles/quality.css";
  * change them but they're shown for the inspected user as context.
  */
 export default function AnalyticsPage() {
-  const [adminToken, setAdminToken] = useState(() => localStorage.getItem("ape.admin_token") || "");
-  if (!adminToken) {
-    return <AdminTokenPrompt title="Analytics" onSave={setAdminToken} />;
-  }
-  return <AnalyticsPageContent />;
-}
-
-function AnalyticsPageContent() {
   // Single source of truth for the user search input:
   //   "" (empty)  → GLOBAL view — facets aggregate across all users; per-user
   //                 sections (profile / topic interest / offers) show a
