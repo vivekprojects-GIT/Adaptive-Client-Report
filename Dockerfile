@@ -53,8 +53,10 @@ RUN useradd -m -u 1000 -s /bin/bash user
 # System deps:
 #   - tini   for clean signal handling (Ctrl-C / SIGTERM propagate properly)
 #   - curl   for HEALTHCHECK probes
+#   - libgomp1  OpenMP runtime required by onnxruntime (Chroma's default
+#               embedding model). Without it RAG retrieval crashes at runtime.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends tini curl \
+ && apt-get install -y --no-install-recommends tini curl libgomp1 \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -69,7 +71,8 @@ ENV PYTHONUNBUFFERED=1 \
     APE_DOMAIN=finance \
     APE_UCB_C=1.0 \
     PORT=7860 \
-    HOME=/home/user
+    HOME=/home/user \
+    APE_RAG_DIR=/home/user/.chroma
 
 # Install Python deps before copying source so they cache independently
 COPY --chown=user:user requirements.txt ./
@@ -83,6 +86,11 @@ COPY --chown=user:user scripts/  ./scripts/
 COPY --from=frontend-build --chown=user:user /app/frontend/dist ./frontend/dist
 
 USER user
+
+# Pre-download the Chroma embedding model (all-MiniLM-L6-v2 ONNX) at build
+# time and warm the persistent store, so the first request isn't blocked on a
+# model download and RAG works even if runtime egress is restricted.
+RUN python -c "from ape.rag import RagStore; print('warm RAG:', RagStore().ingest())"
 
 EXPOSE 7860
 
