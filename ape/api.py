@@ -79,6 +79,7 @@ from .models import (
     TurnResponse,
 )
 from .orchestrator import ApeOrchestrator, hash_user_id
+from .rag import RAG_DOMAINS, RagStore
 from .store import MongoStore
 from .store.mongo_schema import (
     ENTITY_INSTRUCTION,
@@ -97,6 +98,7 @@ app = FastAPI(title="APE Modular — Production (MongoDB)", version="2.0.0")
 ORCHESTRATOR: Optional[ApeOrchestrator] = None
 STORE: Optional[MongoStore] = None
 CONFIG_MGR: Optional[ConfigManager] = None
+RAG: Optional[RagStore] = None
 
 
 # Admin-token gating was removed — admin/config/analytics surfaces are open
@@ -124,11 +126,20 @@ def _build() -> ApeOrchestrator:
     if store.config.estimated_document_count() == 0:
         seed_all(store, domain=domain)
 
-    global STORE, CONFIG_MGR
+    global STORE, CONFIG_MGR, RAG
     STORE = store
     CONFIG_MGR = ConfigManager(store)
 
-    return ApeOrchestrator(client=client, model=model, store=store, domain=domain)
+    # Multi-domain RAG knowledge base (Chroma). Idempotent ingest of the seed
+    # corpora on boot so retrieval works immediately.
+    RAG = RagStore()
+    try:
+        counts = RAG.ingest()
+        print(f"[startup] RAG ingest counts: {counts}", flush=True)
+    except Exception as e:
+        print(f"[startup] RAG ingest failed (continuing without RAG): {e}", flush=True)
+
+    return ApeOrchestrator(client=client, model=model, store=store, domain=domain, rag=RAG)
 
 
 @app.on_event("startup")
@@ -165,6 +176,39 @@ def _resolve_user_hash(user_id: str) -> str:
 @app.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
     return HealthResponse(status="ok")
+
+
+# ── RAG knowledge base — inspect + (re)load ──────────────────────────────────
+@app.get("/rag/search")
+def rag_search(q: str, domain: str, k: int = 4):
+    """Inspect retrieval live: top-k passages for a query within a domain.
+
+    Lets you verify domain isolation (e.g. q='who directed inception',
+    domain='cricket' returns far/irrelevant hits).
+    """
+    if RAG is None:
+        raise HTTPException(500, "RAG not initialized")
+    if domain not in RAG_DOMAINS:
+        raise HTTPException(400, f"Unknown domain '{domain}'. Valid: {RAG_DOMAINS}")
+    hits = RAG.retrieve(q, domain, k=k)
+    return {"query": q, "domain": domain, "k": k, "hits": hits}
+
+
+@app.get("/rag/status")
+def rag_status():
+    """Per-domain document counts in the knowledge base."""
+    if RAG is None:
+        raise HTTPException(500, "RAG not initialized")
+    return {"domains": RAG_DOMAINS, "counts": RAG._domain_counts()}
+
+
+@app.post("/admin/rag-ingest")
+def rag_ingest(force: bool = False):
+    """(Re)load the seed corpora. force=true wipes and reloads the collection."""
+    if RAG is None:
+        raise HTTPException(500, "RAG not initialized")
+    counts = RAG.ingest(force=force)
+    return {"status": "ok", "force": force, "counts": counts}
 
 
 @app.post("/turn", response_model=TurnResponse)

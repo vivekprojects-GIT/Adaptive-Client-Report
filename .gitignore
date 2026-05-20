@@ -27,3 +27,6 @@ Thumbs.db
 *.db
 *.db-shm
 *.db-wal
+
+# Chroma RAG persistent store (re-seeded on boot)
+.chroma/

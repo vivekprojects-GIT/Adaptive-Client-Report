@@ -14,7 +14,7 @@ from ..strategies import STRATEGY_INSTRUCTIONS
 
 
 CLASSIFIER_PROMPT = """\
-You classify chat messages for an adaptive financial assistant.
+You classify chat messages for an adaptive multi-domain assistant.
 Strict format compliance is required — your output is parsed and persisted.
 
 INPUT (sent inside the user message):
@@ -24,17 +24,24 @@ INPUT (sent inside the user message):
 
 OUTPUT — return ONE JSON object, exactly in this shape, nothing else:
   {"intent":"<intent>","intent_confidence":<0.0-1.0>,"unmapped_name":<null or snake_case>,
-   "topic":"<short snake_case noun phrase the question is about>",
+   "domain":"<domain>","topic":"<short snake_case noun phrase the question is about>",
    "signal":"<signal>"}
 
+DOMAINS (subject area of NEW_USER_MESSAGE — pick the single best fit):
+  cricket   the sport of cricket: players, formats, matches, rules, leagues
+  it        software/technology: programming, networking, databases, cloud, security
+  movies    films, directors, actors, genres, awards, studios
+  travel    trips, destinations, flights, visas, packing, travel tips
+  general   none of the above, or pure chit-chat/acknowledgment
+Pick "general" only when the message clearly fits no listed domain.
+
 Example outputs (byte-for-byte format you must produce):
-  {"intent":"Definitional","intent_confidence":0.95,"unmapped_name":null,"topic":"roth_ira","signal":"no_signal"}
-  {"intent":"Comparison","intent_confidence":0.88,"unmapped_name":null,"topic":"roth_vs_traditional","signal":"deeper_question"}
-  {"intent":"unmapped","intent_confidence":0.55,"unmapped_name":"challenge_thinking","topic":"general","signal":"no_signal"}
-  // "That was very helpful. What is a 401k?" after a Roth IRA answer:
-  {"intent":"Definitional","intent_confidence":0.92,"unmapped_name":null,"topic":"401k","signal":"deeper_question"}
-  // "Perfect, thanks!" with no further question:
-  {"intent":"unmapped","intent_confidence":0.40,"unmapped_name":"acknowledgment","topic":"general","signal":"it_worked_statement"}
+  {"intent":"Definitional","intent_confidence":0.95,"unmapped_name":null,"domain":"cricket","topic":"lbw_rule","signal":"no_signal"}
+  {"intent":"Explanation","intent_confidence":0.9,"unmapped_name":null,"domain":"it","topic":"tcp_handshake","signal":"no_signal"}
+  {"intent":"Comparison","intent_confidence":0.88,"unmapped_name":null,"domain":"it","topic":"sql_vs_nosql","signal":"deeper_question"}
+  {"intent":"Definitional","intent_confidence":0.92,"unmapped_name":null,"domain":"movies","topic":"inception_plot","signal":"no_signal"}
+  {"intent":"Instructional","intent_confidence":0.86,"unmapped_name":null,"domain":"travel","topic":"beat_jet_lag","signal":"no_signal"}
+  {"intent":"unmapped","intent_confidence":0.40,"unmapped_name":"acknowledgment","domain":"general","topic":"general","signal":"it_worked_statement"}
 
 INTENTS (pick based on NEW_USER_MESSAGE only):
   Decision        recommendation        e.g. "Should I X?", "Which X?"
@@ -119,14 +126,26 @@ Do not include any text outside the JSON object.\
 """
 
 
-def build_synthesizer_system_prompt(strategy: str) -> str:
-    """Compose the synthesizer's system prompt from guardrails + strategy + wrapper."""
+def build_synthesizer_system_prompt(strategy: str, context: str = "") -> str:
+    """Compose the synthesizer's system prompt from guardrails + strategy + wrapper.
+
+    When `context` is provided (retrieved RAG passages), it is injected as
+    grounding the model should prefer over its own prior knowledge.
+    """
     instruction = STRATEGY_INSTRUCTIONS.get(strategy, STRATEGY_INSTRUCTIONS["standard_llm"])
+    context_block = ""
+    if context and context.strip():
+        context_block = (
+            "\nRETRIEVED CONTEXT (authoritative — prefer these facts; if they do "
+            "not answer the question, say so rather than inventing details):\n"
+            f"{context.strip()}\n"
+        )
     return (
-        "You are a financial assistant. Use prior turns when relevant.\n"
+        "You are a knowledgeable assistant. Use prior turns when relevant.\n"
         "Write clean markdown with concise sections and bullets when useful.\n"
         "Do not use emojis, decorative symbols, or overly casual phrasing.\n"
         f"{instruction}\n"
+        f"{context_block}"
         "\n"
         f"{SYNTHESIZER_OUTPUT_CONTRACT}"
     )

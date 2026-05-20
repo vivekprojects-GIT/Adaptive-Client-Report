@@ -22,11 +22,12 @@ def test_streaming_turns_seed_and_flush_bandit_signals(monkeypatch):
         return {
             "intent": "Definitional",
             "intent_confidence": 0.99,
+            "domain": "finance",
             "topic": "roth_ira",
             "signal": "deeper_question",
         }
 
-    def fake_stream(client, model, query, strategy, history):
+    def fake_stream(client, model, query, strategy, history, context=""):
         yield {"type": "delta", "text": "hello"}
         yield {"type": "done", "rendered_format": "paragraph", "response": "hello"}
 

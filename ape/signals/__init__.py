@@ -11,7 +11,12 @@ from .routing import (
 )
 from .reward_scale import REWARD_SCALE
 from .resolver import resolve_signal, resolve_ui_signal, UI_SIGNAL_PRIORITY
-from .topic import canonicalize_topic, TOPIC_WHITELIST
+from .topic import (
+    canonicalize_topic,
+    canonicalize_topic_for_domain,
+    slugify_topic,
+    TOPIC_WHITELIST,
+)
 
 __all__ = [
     "SIGNAL_CATALOG",
@@ -26,5 +31,7 @@ __all__ = [
     "resolve_ui_signal",
     "UI_SIGNAL_PRIORITY",
     "canonicalize_topic",
+    "canonicalize_topic_for_domain",
+    "slugify_topic",
     "TOPIC_WHITELIST",
 ]

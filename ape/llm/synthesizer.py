@@ -31,11 +31,13 @@ def generate_response(
     strategy: str,
     history: List[Dict[str, str]],
     max_tokens: int = 1500,
+    context: str = "",
 ) -> Tuple[str, str]:
     """Run the synthesizer LLM call and parse its JSON wrapper.
 
     Returns (rendered_format, response_text). If parsing fails, falls back
-    to (per-strategy-default, raw_text).
+    to (per-strategy-default, raw_text). `context` carries retrieved RAG
+    passages injected into the system prompt as grounding.
     """
     messages: List[Dict[str, str]] = [dict(m) for m in history]
     messages.append({"role": "user", "content": query})
@@ -43,7 +45,7 @@ def generate_response(
     response = client.messages.create(
         model=model,
         max_tokens=max_tokens,
-        system=build_synthesizer_system_prompt(strategy),
+        system=build_synthesizer_system_prompt(strategy, context),
         messages=messages,
     )
 
@@ -58,6 +60,7 @@ def generate_response_stream(
     strategy: str,
     history: List[Dict[str, str]],
     max_tokens: int = 1500,
+    context: str = "",
 ) -> Generator[Dict[str, Any], None, None]:
     """Streaming variant of generate_response.
 
@@ -80,7 +83,7 @@ def generate_response_stream(
     with client.messages.stream(
         model=model,
         max_tokens=max_tokens,
-        system=build_synthesizer_system_prompt(strategy),
+        system=build_synthesizer_system_prompt(strategy, context),
         messages=messages,
     ) as stream:
         for text_chunk in stream.text_stream:

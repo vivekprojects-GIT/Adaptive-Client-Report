@@ -15,9 +15,23 @@ from typing import Any, Dict, List, Optional
 
 import anthropic
 
-from ..signals import canonicalize_topic, LLM_EMITTABLE_SIGNALS
+from ..rag.corpus import RAG_DOMAINS
+from ..signals import canonicalize_topic, canonicalize_topic_for_domain, LLM_EMITTABLE_SIGNALS
 from ..strategies import VALID_INTENTS
 from .prompts import CLASSIFIER_PROMPT
+
+# Closed domain vocabulary: the four RAG domains plus a "general" catch-all.
+VALID_DOMAINS = set(RAG_DOMAINS) | {"general"}
+DEFAULT_DOMAIN = "general"
+
+_DOMAIN_ALIASES = {
+    "tech": "it", "technology": "it", "software": "it", "programming": "it",
+    "computers": "it", "computing": "it", "coding": "it",
+    "film": "movies", "films": "movies", "cinema": "movies", "movie": "movies",
+    "tourism": "travel", "trips": "travel", "trip": "travel", "vacation": "travel",
+    "sport": "cricket", "sports": "cricket",
+    "none": "general", "other": "general", "unknown": "general",
+}
 
 
 # ---- Aliases for normalization ---------------------------------------------
@@ -128,8 +142,14 @@ def normalize_classifier_output(raw: Dict[str, Any]) -> Dict[str, Any]:
     if out.get("intent") != "unmapped":
         out["unmapped_name"] = None
 
-    # Canonicalize topic
-    out["topic"] = canonicalize_topic(out.get("topic"))
+    # Domain normalization → closed set (RAG domains + "general")
+    raw_domain = str(out.get("domain", "")).strip().lower()
+    norm_domain = _DOMAIN_ALIASES.get(raw_domain, raw_domain)
+    out["domain"] = norm_domain if norm_domain in VALID_DOMAINS else DEFAULT_DOMAIN
+
+    # Canonicalize topic — domain-aware (finance uses the whitelist; other
+    # domains slugify so their topics survive as their own bandit cells).
+    out["topic"] = canonicalize_topic_for_domain(out.get("topic"), out["domain"])
     out["intent_confidence"] = float(out.get("intent_confidence", 0.3))
     out.setdefault("unmapped_name", None)
     out.pop("_query", None)
@@ -175,4 +195,4 @@ def _parse_json_lenient(text: str) -> Dict[str, Any]:
         except (json.JSONDecodeError, TypeError):
             pass
     # Total failure — return a no-signal stub
-    return {"intent": "unmapped", "intent_confidence": 0.3, "topic": "general", "signal": "no_signal"}
+    return {"intent": "unmapped", "intent_confidence": 0.3, "domain": "general", "topic": "general", "signal": "no_signal"}

@@ -88,7 +88,8 @@ import anthropic
 from .bandit.selection import build_selection_payload, select_strategy_from_rows
 from .llm import classify_and_detect, generate_response
 from .llm.synthesizer import generate_response_stream
-from .signals import canonicalize_topic, resolve_signal
+from .rag import RagStore, format_context
+from .signals import canonicalize_topic, canonicalize_topic_for_domain, resolve_signal
 from .signals.composites import detect_composite
 from .store import (
     MongoStore,
@@ -115,22 +116,75 @@ _EXPLICIT_OR_STRONG_SIGNALS = {
 }
 
 
+# Synonym map for the classifier's free-form unmapped_name guesses. The LLM
+# is not deterministic — the same concept comes back as "acknowledgement" /
+# "thanks_acknowledgment" / "user_acknowledgment". Without canonicalization the
+# backlog fragments into many count-1 rows. Keys/values are post-slug form
+# (lowercase snake_case). Extend as new variants show up in the backlog.
+_SUGGESTED_INTENT_ALIASES = {
+    "acknowledgement":        "acknowledgment",
+    "thanks":                 "acknowledgment",
+    "thank_you":              "acknowledgment",
+    "thanks_acknowledgment":  "acknowledgment",
+    "user_acknowledgment":    "acknowledgment",
+    "gratitude":              "acknowledgment",
+    "greetings":              "greeting",
+    "salutation":             "greeting",
+    "hello":                  "greeting",
+    "play_music":             "music_request",
+    "request_music":          "music_request",
+    "music":                  "music_request",
+    "joke_request":           "entertainment_request",
+    "entertainment":          "entertainment_request",
+    "tell_joke":              "entertainment_request",
+    "emotional_support":      "emotional_statement",
+    "venting":                "emotional_statement",
+    "feelings":               "emotional_statement",
+    "challenge":              "challenge_thinking",
+    "challenge_assumptions":  "challenge_thinking",
+    "devils_advocate":        "challenge_thinking",
+    "small_talk":             "chitchat",
+    "smalltalk":              "chitchat",
+    "off_topic":              "uncategorized",
+    "unknown":                "uncategorized",
+    "none":                   "uncategorized",
+}
+
+
+def _slugify_label(name: str) -> str:
+    """Normalize a free-form label to lowercase snake_case so trivial casing /
+    punctuation / whitespace variants collapse to the same key.
+    """
+    import re
+    s = re.sub(r"[^a-z0-9]+", "_", str(name or "").strip().lower())
+    return re.sub(r"_+", "_", s).strip("_")
+
+
+def normalize_suggested_label(name: str) -> str:
+    """Canonicalize an LLM-generated unmapped_name: slugify, then alias-map."""
+    slug = _slugify_label(name)
+    if not slug:
+        return "uncategorized"
+    return _SUGGESTED_INTENT_ALIASES.get(slug, slug)
+
+
 def _suggested_intent_for(intent, cls, store, domain) -> "str | None":
     """Best-guess intent label for a turn that resolves to "unmapped".
 
     Two ways a turn becomes unmapped, each with a different suggestion:
       1. Classifier returned "unmapped" → use its snake_case unmapped_name
-         guess (e.g. "challenge_thinking", "acknowledgment").
+         guess (e.g. "challenge_thinking", "acknowledgment"), canonicalized
+         so non-deterministic spelling variants group together.
       2. Classifier returned a real intent that isn't an ACTIVE config
-         entity (never created, or disabled) → suggest that intent name.
+         entity (never created, or disabled) → suggest that intent name as-is
+         (config intent IDs are already canonical PascalCase).
 
     Returns None for normal mapped turns (nothing to review). The value is
     persisted on the turn record so admins can mine the unmapped backlog
     and promote frequent suggestions to real intents from the UI.
     """
     if intent == "unmapped":
-        name = (cls.get("unmapped_name") or "").strip()
-        return name or "uncategorized"
+        return normalize_suggested_label(cls.get("unmapped_name"))
     # Real intent label, but is it actually an active config entity?
     if store.get_active_config("intent", intent) is None:
         return intent
@@ -150,11 +204,17 @@ class ApeOrchestrator:
         model: str,
         store: MongoStore,
         domain: str = "finance",
+        rag: "RagStore | None" = None,
     ) -> None:
         self.client = client
         self.model = model
         self.store = store
         self.domain = domain
+        # Optional RAG knowledge base. When present, the synthesizer is given
+        # domain-scoped retrieved context. Retrieval uses the per-turn
+        # detected domain, not self.domain.
+        self.rag = rag
+        self.rag_top_k = 4
 
     # ==================================================================
     # PATH A — Strategy selection for the current response
@@ -210,10 +270,11 @@ class ApeOrchestrator:
         )
         t = _tick("append_user_msg", t)
 
-        # A2-equivalent: classifier extracts intent + topic + signal
+        # A2-equivalent: classifier extracts intent + domain + topic + signal
         cls = classify_and_detect(self.client, self.model, query, history, prev_format=None)
         intent = cls["intent"]
-        topic  = canonicalize_topic(cls.get("topic"))
+        domain = cls.get("domain") or self.domain
+        topic  = canonicalize_topic_for_domain(cls.get("topic"), domain)
         t = _tick("classifier_llm", t)
 
         # ── Buffered-resolver flush of the PREVIOUS PENDING response ──────
@@ -255,13 +316,13 @@ class ApeOrchestrator:
         # When a turn lands on "unmapped" we still record the classifier's
         # best guess as suggested_intent, so admins can later review the
         # backlog of unseen intents and promote them from the UI.
-        suggested_intent = _suggested_intent_for(intent, cls, self.store, self.domain)
+        suggested_intent = _suggested_intent_for(intent, cls, self.store, domain)
         if intent == "unmapped" or self.store.get_active_config("intent", intent) is None:
             intent = "unmapped"
         t = _tick("intent_validate", t)
 
         # A2: resolve candidate strategies for this cell
-        candidate_strategies = self._resolve_candidate_strategies(intent, topic)
+        candidate_strategies = self._resolve_candidate_strategies(intent, topic, domain)
         t = _tick("policy_lookup", t)
 
         # A3: load active instruction for each candidate (just the version
@@ -272,7 +333,7 @@ class ApeOrchestrator:
         # A4: read the user's bandit state for this cell (lazy-create rows)
         bandit_rows = self.store.get_or_create_bandit_cell(
             user_id_hash=user_id_hash,
-            domain=self.domain,
+            domain=domain,
             intent=intent,
             topic=topic,
             strategies=candidate_strategies,
@@ -306,6 +367,11 @@ class ApeOrchestrator:
             1,
         )
 
+        # A5b: RAG retrieval — domain-scoped context for the synthesizer
+        rag_hits = self._retrieve_context(query, domain)
+        rag_context = format_context(rag_hits)
+        t = _tick("rag_retrieve", t)
+
         # A6: synthesizer LLM call
         answer = ""
         rendered_format = "paragraph"
@@ -313,6 +379,7 @@ class ApeOrchestrator:
             rendered_format, answer = generate_response(
                 self.client, self.model, query,
                 selection["selected_strategy"], history,
+                context=rag_context,
             )
         t = _tick("synthesizer_llm", t)
 
@@ -323,7 +390,7 @@ class ApeOrchestrator:
 
         # A7: write the response record as PENDING with full attribution
         response_id = new_response_id()
-        attribution_pk = make_attribution_pk(user_id_hash, self.domain, intent, topic)
+        attribution_pk = make_attribution_pk(user_id_hash, domain, intent, topic)
 
         # Pre-seed pending_signals with the objective format_compliance result.
         # This is the bias-free "did the synthesizer obey the strategy" signal —
@@ -344,10 +411,12 @@ class ApeOrchestrator:
             "user_id_hash":            user_id_hash,
             "session_id_optional":     session_id,
             "ts":                      ts,
-            "domain":                  self.domain,
+            "domain":                  domain,
             "intent":                  intent,
             "intent_confidence":       float(cls.get("intent_confidence", 0.0)),
             "suggested_intent":        suggested_intent,
+            "rag_doc_ids":             [h["id"] for h in rag_hits],
+            "rag_hit_count":           len(rag_hits),
             "topic":                   topic,
             "selected_strategy":       suggested,
             "selection_method":        "ucb",
@@ -451,7 +520,8 @@ class ApeOrchestrator:
 
         cls = classify_and_detect(self.client, self.model, query, history, prev_format=None)
         intent = cls["intent"]
-        topic  = canonicalize_topic(cls.get("topic"))
+        domain = cls.get("domain") or self.domain
+        topic  = canonicalize_topic_for_domain(cls.get("topic"), domain)
         t = _tick("classifier_llm", t)
 
         prev_pending = self.store.find_previous_pending_response(
@@ -481,12 +551,12 @@ class ApeOrchestrator:
                 print(f"[orchestrator] finalize_response failed for {prev_id}: {e}", flush=True)
         t = _tick("finalize_prev_response", t)
 
-        suggested_intent = _suggested_intent_for(intent, cls, self.store, self.domain)
+        suggested_intent = _suggested_intent_for(intent, cls, self.store, domain)
         if intent == "unmapped" or self.store.get_active_config("intent", intent) is None:
             intent = "unmapped"
         t = _tick("intent_validate", t)
 
-        candidate_strategies = self._resolve_candidate_strategies(intent, topic)
+        candidate_strategies = self._resolve_candidate_strategies(intent, topic, domain)
         t = _tick("policy_lookup", t)
 
         instruction_versions = self._load_active_instructions(candidate_strategies)
@@ -494,7 +564,7 @@ class ApeOrchestrator:
 
         bandit_rows = self.store.get_or_create_bandit_cell(
             user_id_hash=user_id_hash,
-            domain=self.domain,
+            domain=domain,
             intent=intent,
             topic=topic,
             strategies=candidate_strategies,
@@ -513,6 +583,11 @@ class ApeOrchestrator:
         t = _tick("ucb_select", t)
         suggested = selection["selected_strategy"]
 
+        # RAG retrieval — domain-scoped context for the synthesizer
+        rag_hits = self._retrieve_context(query, domain)
+        rag_context = format_context(rag_hits)
+        t = _tick("rag_retrieve", t)
+
         # --- Pre-allocate the response_id so the client can store it for /feedback
         #     immediately, before any token streams ---
         response_id = new_response_id()
@@ -522,10 +597,12 @@ class ApeOrchestrator:
             "event":            "metadata",
             "response_id":      response_id,
             "session_id":       session_id,
+            "domain":           domain,
             "intent":           intent,
             "topic":            topic,
             "selected_strategy": suggested,
             "candidate_strategies": candidate_strategies,
+            "rag_doc_ids":      [h["id"] for h in rag_hits],
             "select_timings_ms": dict(timings),
         }
 
@@ -536,6 +613,7 @@ class ApeOrchestrator:
         try:
             for evt in generate_response_stream(
                 self.client, self.model, query, suggested, history,
+                context=rag_context,
             ):
                 if evt["type"] == "delta":
                     # Note: this is the RAW LLM text including the JSON wrapper.
@@ -554,7 +632,7 @@ class ApeOrchestrator:
         # ---- Compliance + writes ----
         compliance = compute_format_compliance(suggested, rendered_format)
         instr_version = instruction_versions.get(suggested, "v1")
-        attribution_pk = make_attribution_pk(user_id_hash, self.domain, intent, topic)
+        attribution_pk = make_attribution_pk(user_id_hash, domain, intent, topic)
         compliance_signal = (
             "format_compliance_pass" if compliance else "format_compliance_fail"
         )
@@ -564,10 +642,12 @@ class ApeOrchestrator:
             "user_id_hash":            user_id_hash,
             "session_id_optional":     session_id,
             "ts":                      ts,
-            "domain":                  self.domain,
+            "domain":                  domain,
             "intent":                  intent,
             "intent_confidence":       float(cls.get("intent_confidence", 0.0)),
             "suggested_intent":        suggested_intent,
+            "rag_doc_ids":             [h["id"] for h in rag_hits],
+            "rag_hit_count":           len(rag_hits),
             "topic":                   topic,
             "selected_strategy":       suggested,
             "selection_method":        "ucb",
@@ -832,21 +912,35 @@ class ApeOrchestrator:
     # Internal helpers
     # ==================================================================
 
-    def _resolve_candidate_strategies(self, intent: str, topic: str) -> List[str]:
-        """Look up the allowed strategies for (intent, topic) from policies.
+    def _resolve_candidate_strategies(
+        self, intent: str, topic: str, domain: str | None = None
+    ) -> List[str]:
+        """Look up the allowed strategies for (domain, intent, topic) from policies.
 
         Falls back to the hardcoded INTENT_STRATEGIES catalog if no policy
         rows exist (e.g. fresh DB or new intent the admin hasn't configured).
         """
+        domain = domain or self.domain
         # Try topic-specific policy first
-        rows = self.store.get_policy_strategies(self.domain, intent, topic)
+        rows = self.store.get_policy_strategies(domain, intent, topic)
         if not rows:
             # Fall back to _default topic
-            rows = self.store.get_policy_strategies(self.domain, intent, "_default")
+            rows = self.store.get_policy_strategies(domain, intent, "_default")
         if rows:
             return sorted({r["strategy_id"] for r in rows})
         # Last resort — hardcoded catalog
         return INTENT_STRATEGIES.get(intent, INTENT_STRATEGIES["unmapped"])
+
+    def _retrieve_context(self, query: str, domain: str) -> List[Dict[str, Any]]:
+        """Retrieve domain-scoped RAG passages. Safe no-op when RAG is off,
+        the domain is the catch-all "general", or retrieval errors out."""
+        if self.rag is None or not domain or domain == "general":
+            return []
+        try:
+            return self.rag.retrieve(query, domain, k=self.rag_top_k)
+        except Exception as e:
+            print(f"[orchestrator] rag retrieve failed for domain={domain}: {e}", flush=True)
+            return []
 
     def _load_active_instructions(self, strategies: List[str]) -> Dict[str, str]:
         """Return {strategy_id: active_version} for each strategy."""

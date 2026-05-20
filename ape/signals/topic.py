@@ -146,3 +146,31 @@ def canonicalize_topic(raw: str | None) -> str:
 
     # Nothing matched — catch-all
     return "general"
+
+
+def slugify_topic(raw: str | None) -> str:
+    """Lightweight topic key: lowercase snake_case, no whitelist snapping.
+
+    Used for domains that don't have a curated whitelist (cricket, it,
+    movies, travel, …). Keeps the LLM's topic phrase as its own bandit-cell
+    key instead of collapsing everything unknown to "general".
+    """
+    if not raw:
+        return "general"
+    s = _NON_ALNUM.sub("_", str(raw).strip().lower()).strip("_")
+    return s or "general"
+
+
+# Domains that use the curated finance whitelist. Everything else is slugified.
+_WHITELIST_DOMAINS = {"finance"}
+
+
+def canonicalize_topic_for_domain(raw: str | None, domain: str | None) -> str:
+    """Domain-aware topic key.
+
+    finance  → snap to the curated finance whitelist (canonicalize_topic).
+    others   → slugify only (preserve the LLM topic as its own key).
+    """
+    if (domain or "").lower() in _WHITELIST_DOMAINS:
+        return canonicalize_topic(raw)
+    return slugify_topic(raw)
