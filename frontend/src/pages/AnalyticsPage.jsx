@@ -7,6 +7,7 @@ import DateFilter, { daysForFilter } from "../components/analytics/DateFilter.js
 import ActiveUsersTable from "../components/analytics/ActiveUsersTable.jsx";
 import UserProfileCard from "../components/analytics/UserProfileCard.jsx";
 import PlatformOverviewCard from "../components/analytics/PlatformOverviewCard.jsx";
+import StrategyPerformancePanel from "../components/analytics/StrategyPerformancePanel.jsx";
 import CustomerHealthSection from "../components/analytics/CustomerHealthSection.jsx";
 import InfoHint from "../components/analytics/InfoHint.jsx";
 import RagQualityPanel from "../components/quality/RagQualityPanel.jsx";
@@ -82,6 +83,9 @@ export default function AnalyticsPage() {
   const [platform, setPlatform]     = useState(null);
   const [platformErr, setPlatErr]   = useState(null);
 
+  const [stratPerf, setStratPerf]   = useState(null);
+  const [stratErr, setStratErr]     = useState(null);
+
   // Time series — daily activity for the trend charts
   const [platformSeries, setPlatformSeries] = useState([]);
   const [topicsSeries, setTopicsSeries]     = useState([]);
@@ -152,7 +156,7 @@ export default function AnalyticsPage() {
     setTrendsErr(null);
     try {
       const days = Math.max(1, daysForFilter(windowId));
-      const t = await api.trends(days, 30);
+      const t = await api.trends(days, 30, false, domain);
       setTrends(Array.isArray(t) ? t : []);
     } catch (e) {
       setTrendsErr(e.message);
@@ -208,19 +212,31 @@ export default function AnalyticsPage() {
     }
   }
 
+  async function loadStrategyPerf() {
+    setStratErr(null);
+    try {
+      const userArg = hasUser ? inspectUser.trim() : "";
+      const sp = await api.strategyPerformance(userArg, 3, domain);
+      setStratPerf(sp);
+    } catch (e) {
+      setStratErr(e.message);
+      setStratPerf(null);
+    }
+  }
+
   // Time-series loaders — separate from the main aggregates so a slow
   // aggregation pipeline can't block the headline numbers from rendering.
   async function loadPlatformSeries() {
     try {
       const days = daysForFilter(windowId);
-      const s = await api.platformTimeseries(days);
+      const s = await api.platformTimeseries(days, domain);
       setPlatformSeries(Array.isArray(s) ? s : []);
     } catch { setPlatformSeries([]); }
   }
   async function loadTopicsSeries() {
     try {
       const days = daysForFilter(windowId);
-      const s = await api.topicsTimeseries(days, 5);
+      const s = await api.topicsTimeseries(days, 5, domain);
       setTopicsSeries(Array.isArray(s) ? s : []);
     } catch { setTopicsSeries([]); }
   }
@@ -228,7 +244,7 @@ export default function AnalyticsPage() {
     if (!hasUser) { setUserSeries([]); return; }
     try {
       const days = daysForFilter(windowId);
-      const s = await api.userTimeseries(inspectUser.trim(), days);
+      const s = await api.userTimeseries(inspectUser.trim(), days, domain);
       setUserSeries(Array.isArray(s) ? s : []);
     } catch { setUserSeries([]); }
   }
@@ -256,6 +272,7 @@ export default function AnalyticsPage() {
         loadOffers(),
         loadActiveUsers(),
         loadPlatform(),
+        loadStrategyPerf(),
         loadPlatformSeries(),
         loadTopicsSeries(),
         loadUserSeries(),
@@ -292,6 +309,11 @@ export default function AnalyticsPage() {
     loadActiveUsers();
     loadFacets();
     loadProfile();
+    loadTrends();
+    loadPlatformSeries();
+    loadTopicsSeries();
+    loadUserSeries();
+    loadStrategyPerf();
     // eslint-disable-next-line
   }, [domain]);
 
@@ -482,6 +504,13 @@ export default function AnalyticsPage() {
         ) : (
           <div className="empty-state">Loading platform overview…</div>
         )}
+
+        {/* Per-strategy bandit performance for the selected domain scope */}
+        <StrategyPerformancePanel
+          data={stratPerf}
+          error={stratErr}
+          domainLabel={(DOMAIN_OPTIONS.find((d) => d.id === domain) || {}).label}
+        />
       </>)}
 
       {/* ════════════════ CONTENT TAB ════════════════ */}

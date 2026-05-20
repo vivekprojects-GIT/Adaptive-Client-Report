@@ -981,7 +981,8 @@ def analytics_topic_users(topic: str, limit: int = 20, min_score: float = 0.5):
 
 
 @app.get("/analytics/trends")
-def analytics_trends(days: int = 7, limit: int = 30, refresh: bool = False):
+def analytics_trends(days: int = 7, limit: int = 30, refresh: bool = False,
+                     domain: Optional[str] = None):
     """Trending topics on the most recent day, sorted by trend_score."""
     if STORE is None:
         raise HTTPException(500, "Store not initialized")
@@ -990,8 +991,11 @@ def analytics_trends(days: int = 7, limit: int = 30, refresh: bool = False):
     latest = STORE.db["ape_topic_trend_daily"].find_one(sort=[("date", -1)])
     if not latest:
         return []
+    q: Dict[str, Any] = {"date": latest["date"]}
+    if domain:
+        q["domain"] = domain
     rows = list(
-        STORE.db["ape_topic_trend_daily"].find({"date": latest["date"]})
+        STORE.db["ape_topic_trend_daily"].find(q)
                                           .sort("trend_score", -1)
                                           .limit(limit)
     )
@@ -999,12 +1003,15 @@ def analytics_trends(days: int = 7, limit: int = 30, refresh: bool = False):
 
 
 @app.get("/analytics/topic-timeseries")
-def analytics_topic_timeseries(topic: str, days: int = 30):
+def analytics_topic_timeseries(topic: str, days: int = 30, domain: Optional[str] = None):
     """Daily counts for one topic — for sparkline charts."""
     if STORE is None:
         raise HTTPException(500, "Store not initialized")
+    q: Dict[str, Any] = {"topic": topic}
+    if domain:
+        q["domain"] = domain
     rows = list(
-        STORE.db["ape_topic_trend_daily"].find({"topic": topic})
+        STORE.db["ape_topic_trend_daily"].find(q)
                                           .sort("date", -1)
                                           .limit(days)
     )
@@ -1013,7 +1020,7 @@ def analytics_topic_timeseries(topic: str, days: int = 30):
 
 
 @app.get("/analytics/platform-timeseries")
-def analytics_platform_timeseries(days: int = 30):
+def analytics_platform_timeseries(days: int = 30, domain: Optional[str] = None):
     """Daily platform activity — aggregates ape_topic_trend_daily by date.
 
     Returns one row per day with total turns and unique-user count across
@@ -1024,7 +1031,10 @@ def analytics_platform_timeseries(days: int = 30):
     """
     if STORE is None:
         raise HTTPException(500, "Store not initialized")
-    pipeline = [
+    pipeline: List[Dict[str, Any]] = []
+    if domain:
+        pipeline.append({"$match": {"domain": domain}})
+    pipeline += [
         {"$sort": {"date": -1}},
         {"$group": {
             "_id":          "$date",
@@ -1049,7 +1059,7 @@ def analytics_platform_timeseries(days: int = 30):
 
 
 @app.get("/analytics/topics-timeseries")
-def analytics_topics_timeseries(days: int = 30, top_n: int = 5):
+def analytics_topics_timeseries(days: int = 30, top_n: int = 5, domain: Optional[str] = None):
     """Multi-series time chart for the top-N most active topics in the window.
 
     Output shape:
@@ -1066,7 +1076,10 @@ def analytics_topics_timeseries(days: int = 30, top_n: int = 5):
         raise HTTPException(500, "Store not initialized")
 
     # Step 1 — find the top-N topics by total turns over the window.
-    top_pipeline = [
+    top_pipeline: List[Dict[str, Any]] = []
+    if domain:
+        top_pipeline.append({"$match": {"domain": domain}})
+    top_pipeline += [
         {"$sort": {"date": -1}},
         {"$limit": int(days) * 200},   # window cap; topics × days
         {"$group": {"_id": "$topic", "total_turns": {"$sum": "$total_turns"}}},
@@ -1078,8 +1091,11 @@ def analytics_topics_timeseries(days: int = 30, top_n: int = 5):
         return []
 
     # Step 2 — pull the date series for those topics.
+    series_q: Dict[str, Any] = {"topic": {"$in": top_topics}}
+    if domain:
+        series_q["domain"] = domain
     rows = list(
-        STORE.db["ape_topic_trend_daily"].find({"topic": {"$in": top_topics}})
+        STORE.db["ape_topic_trend_daily"].find(series_q)
                                           .sort("date", 1)
     )
 
@@ -1103,7 +1119,7 @@ def analytics_topics_timeseries(days: int = 30, top_n: int = 5):
 
 
 @app.get("/analytics/user-timeseries")
-def analytics_user_timeseries(user_id: str, days: int = 30):
+def analytics_user_timeseries(user_id: str, days: int = 30, domain: Optional[str] = None):
     """Per-user daily activity — bucket this user's turn_record by date.
 
     Output shape:
@@ -1122,11 +1138,14 @@ def analytics_user_timeseries(user_id: str, days: int = 30):
     cutoff_dt = datetime.utcnow() - timedelta(days=int(days))
     cutoff_iso = cutoff_dt.strftime("%Y-%m-%dT00:00:00")
 
+    match: Dict[str, Any] = {
+        "user_id_hash": user_id_hash,
+        "ts":           {"$gte": cutoff_iso},
+    }
+    if domain:
+        match["domain"] = domain
     pipeline = [
-        {"$match": {
-            "user_id_hash": user_id_hash,
-            "ts":           {"$gte": cutoff_iso},
-        }},
+        {"$match": match},
         {"$group": {
             "_id":   {"$substr": ["$ts", 0, 10]},   # YYYY-MM-DD
             "count": {"$sum": 1},
