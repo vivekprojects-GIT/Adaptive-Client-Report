@@ -7,7 +7,6 @@ import DateFilter, { daysForFilter } from "../components/analytics/DateFilter.js
 import ActiveUsersTable from "../components/analytics/ActiveUsersTable.jsx";
 import UserProfileCard from "../components/analytics/UserProfileCard.jsx";
 import PlatformOverviewCard from "../components/analytics/PlatformOverviewCard.jsx";
-import CorrelationHeatmap from "../components/analytics/CorrelationHeatmap.jsx";
 import CustomerHealthSection from "../components/analytics/CustomerHealthSection.jsx";
 import InfoHint from "../components/analytics/InfoHint.jsx";
 import RagQualityPanel from "../components/quality/RagQualityPanel.jsx";
@@ -43,7 +42,6 @@ export default function AnalyticsPage() {
     { id: "overview",  label: "Overview"  },
     { id: "customers", label: "Customers" },
     { id: "cognition", label: "Cognition" },
-    { id: "signals",   label: "Signals"   },
     { id: "content",   label: "Content"   },
     { id: "health",    label: "Health"    },
   ];
@@ -77,9 +75,6 @@ export default function AnalyticsPage() {
   const [platformSeries, setPlatformSeries] = useState([]);
   const [topicsSeries, setTopicsSeries]     = useState([]);
   const [userSeries, setUserSeries]         = useState([]);
-
-  // Signal correlation matrix (global, not window-driven — cumulative across all turns)
-  const [signalCorr, setSignalCorr] = useState(null);
 
   const [globalLoading, setGlobalLoading] = useState(false);
 
@@ -226,12 +221,6 @@ export default function AnalyticsPage() {
       setUserSeries(Array.isArray(s) ? s : []);
     } catch { setUserSeries([]); }
   }
-  async function loadSignalCorrelations() {
-    try {
-      const d = await api.signalCorrelations();
-      setSignalCorr(d);
-    } catch { setSignalCorr(null); }
-  }
 
   // Load all sections. By default this is READ-ONLY — we just fetch the
   // already-computed aggregates from Mongo. Passing { recompute: true } also
@@ -259,7 +248,6 @@ export default function AnalyticsPage() {
         loadPlatformSeries(),
         loadTopicsSeries(),
         loadUserSeries(),
-        loadSignalCorrelations(),
       ]);
       setLastRefresh(new Date());
     } finally {
@@ -460,46 +448,6 @@ export default function AnalyticsPage() {
         ) : (
           <div className="empty-state">Loading platform overview…</div>
         )}
-      </>)}
-
-      {/* ════════════════ SIGNALS TAB ════════════════ */}
-      {activeTab === "signals" && (<>
-        {/* ===== Signal correlation matrix (global, cumulative) ===== */}
-        <section className="section">
-          <div className="section-head">
-            <div>
-              <h2>
-                Signal correlation matrix
-                <span className="cumulative-tag" title="Built from all applied-reward turns ever. Window selector does not apply.">
-                  cumulative · window does not apply
-                </span>
-                <InfoHint width={420}>
-                  Pearson correlation between each pair of signal types, computed
-                  at the per-user level. For each user, we compute the proportion
-                  of their turns that fired each signal; then we correlate those
-                  per-user proportions across users.
-                  <br/><br/>
-                  <strong>Red cells</strong> = users who fire signal X also tend
-                  to fire signal Y (cluster of behaviors).
-                  <strong> Blue cells</strong> = users who fire X tend NOT to fire Y
-                  (opposing patterns).
-                  <strong> White cells</strong> = independent at the user-population level.
-                  <br/><br/>
-                  This is the data you'd use to migrate from hand-coded routing
-                  weights to empirically-calibrated likelihood ratios (Stage 2 of
-                  the bandit reward roadmap).
-                </InfoHint>
-              </h2>
-              <p className="section-sub">
-                If <code>thumbs_up</code> and <code>copy_save</code> show high correlation,
-                they are partly redundant — winner-take-all is the right combination.
-                If they show low correlation, they carry independent evidence — consider
-                Bayesian update with separate likelihood weights.
-              </p>
-            </div>
-          </div>
-          <CorrelationHeatmap data={signalCorr} />
-        </section>
       </>)}
 
       {/* ════════════════ CONTENT TAB ════════════════ */}

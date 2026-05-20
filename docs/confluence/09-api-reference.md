@@ -445,7 +445,6 @@ All analytics endpoints require admin token.
 | `GET /analytics/topic-timeseries?topic=X&days=N` | Daily trend for one topic |
 | `GET /analytics/platform-timeseries?days=N` | Daily platform activity |
 | `GET /analytics/topics-timeseries?days=N&top_n=K` | Daily series for top topics |
-| `GET /analytics/signal-correlations?min_users=N` | Signal co-occurrence |
 | `GET /analytics/user-timeseries?user_id=X&days=N` | Daily user activity |
 | `GET /analytics/offers/{user_id}?domain=Y` | Outreach recommendations |
 | `GET /analytics/customer-health?days=N&cohort_weeks=K` | Retention/satisfaction health |

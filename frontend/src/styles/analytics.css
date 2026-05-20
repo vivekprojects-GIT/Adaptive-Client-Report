@@ -1966,113 +1966,6 @@
   display: inline-block;
 }
 
-/* ─────────────────────────────────────────────────────────────────────
- * CorrelationHeatmap — signal × signal Pearson correlation matrix.
- * ──────────────────────────────────────────────────────────────────── */
-.corr-heatmap {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 14px 18px 18px;
-  box-shadow: var(--shadow-sm);
-}
-.corr-head {
-  margin-bottom: 8px;
-}
-.corr-summary {
-  font-size: 12.5px;
-  color: var(--text-secondary);
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.corr-warning {
-  color: #b07a1c;
-  background: #fdf3da;
-  border: 1px solid #e8c879;
-  padding: 1px 8px;
-  border-radius: var(--radius-sm);
-  font-size: 11px;
-  cursor: help;
-}
-.corr-empty {
-  color: var(--muted);
-  font-style: italic;
-  text-align: center;
-  padding: 32px 16px;
-  border: 1px dashed var(--border);
-  border-radius: var(--radius-md);
-}
-.corr-svg-wrap {
-  position: relative;
-  overflow-x: auto;
-}
-.corr-detail {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  background: var(--surface);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  padding: 8px 12px;
-  font-size: 12px;
-  box-shadow: var(--shadow-md);
-  z-index: 5;
-  min-width: 220px;
-  max-width: 320px;
-}
-.corr-detail-row {
-  margin: 2px 0;
-  color: var(--text);
-}
-.corr-detail-row code {
-  background: var(--code-bg);
-  padding: 1px 5px;
-  border-radius: 3px;
-  font-size: 11px;
-}
-.corr-detail-interp {
-  color: var(--muted);
-  font-style: italic;
-  margin-left: 6px;
-}
-.corr-detail-freq {
-  color: var(--text-secondary);
-  font-size: 11.5px;
-}
-.corr-legend {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px dashed var(--border);
-  font-size: 12px;
-}
-.corr-legend-label {
-  color: var(--text-secondary);
-  font-weight: 500;
-}
-.corr-legend-bar {
-  display: flex;
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-  border: 1px solid var(--border);
-}
-.corr-legend-cell {
-  width: 36px;
-  height: 22px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 10.5px;
-  color: var(--text);
-  font-variant-numeric: tabular-nums;
-}
-.corr-legend-help {
-  margin-left: auto;
-}
-
 /* Containers used by the trend tiles */
 .trend-tile {
   margin-top: 12px;
@@ -2122,7 +2015,6 @@
 .summary-card,
 .section,
 .platform-card,
-.corr-heatmap,
 .health-card,
 .cog-card,
 .contributors {

@@ -152,7 +152,6 @@ The UI separates:
 | `GET /analytics/user-timeseries?user_id=X&days=N` | Per-user daily activity |
 | `GET /analytics/offers/{user_id}?domain=Y` | Recommended outreach actions |
 | `GET /analytics/strategy-performance?user_id=X&min_pulls=N` | Strategy ranking and tiers |
-| `GET /analytics/signal-correlations?min_users=N` | Signal co-occurrence diagnostics |
 | `GET /analytics/customer-health?days=N&cohort_weeks=K` | Satisfaction and retention style health metrics |
 | `GET /analytics/rag-quality?days=N&min_turns=K&sample_limit=S` | Content correction and answer quality signals |
 | `GET /analytics/instruction-quality?days=N&min_turns=K&sample_limit=S` | Format compliance and instruction issues |
