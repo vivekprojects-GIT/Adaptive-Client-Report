@@ -214,16 +214,16 @@
 
 .app-page {
   background:
-    linear-gradient(135deg, rgba(35, 109, 104, 0.06), transparent 36%),
+    linear-gradient(135deg, rgba(200, 122, 76, 0.06), transparent 36%),
     linear-gradient(315deg, rgba(208, 138, 40, 0.06), transparent 30%),
     var(--bg);
 }
 
 .app-header {
   background: rgba(255, 255, 255, 0.82);
-  border-bottom-color: rgba(198, 211, 220, 0.74);
+  border-bottom-color: rgba(217, 213, 204, 0.74);
   backdrop-filter: blur(14px);
-  box-shadow: 0 8px 30px rgba(31, 41, 51, 0.05);
+  box-shadow: 0 8px 30px rgba(45, 42, 38, 0.05);
 }
 
 .app-header-row {
@@ -232,7 +232,7 @@
 }
 
 .app-header-row + .app-header-row {
-  background: rgba(248, 250, 252, 0.78);
+  background: rgba(250, 248, 244, 0.78);
   min-height: 48px;
   height: auto;
 }
@@ -250,11 +250,11 @@
   width: 34px;
   height: 34px;
   border-radius: 9px;
-  background: linear-gradient(145deg, var(--primary), #2f8a82);
+  background: linear-gradient(145deg, var(--primary), #e0975f);
   color: #fff;
   font-size: 12px;
   letter-spacing: 0.04em;
-  box-shadow: 0 10px 22px rgba(35, 109, 104, 0.18);
+  box-shadow: 0 10px 22px rgba(200, 122, 76, 0.18);
 }
 
 .app-brand-page {
@@ -285,8 +285,8 @@
 }
 
 .btn-text-emphasis {
-  background: linear-gradient(145deg, var(--primary), #2f8a82);
-  box-shadow: 0 10px 22px rgba(35, 109, 104, 0.16);
+  background: linear-gradient(145deg, var(--primary), #e0975f);
+  box-shadow: 0 10px 22px rgba(200, 122, 76, 0.16);
 }
 
 .app-main {

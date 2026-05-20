@@ -510,7 +510,7 @@
 .app {
   grid-template-columns: 300px minmax(0, 1fr);
   background:
-    linear-gradient(135deg, rgba(35, 109, 104, 0.07), transparent 36%),
+    linear-gradient(135deg, rgba(200, 122, 76, 0.07), transparent 36%),
     linear-gradient(315deg, rgba(208, 138, 40, 0.07), transparent 32%),
     var(--bg);
 }
@@ -519,7 +519,7 @@
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(238, 243, 246, 0.96)),
     var(--sidebar-bg);
-  border-right-color: rgba(198, 211, 220, 0.82);
+  border-right-color: rgba(217, 213, 204, 0.82);
 }
 
 .sidebar-header {
@@ -536,11 +536,11 @@
   width: 42px;
   height: 42px;
   border-radius: 10px;
-  background: linear-gradient(145deg, var(--primary), #2f8a82);
+  background: linear-gradient(145deg, var(--primary), #e0975f);
   color: #fff;
   font-size: 17px;
   letter-spacing: 0.02em;
-  box-shadow: 0 14px 32px rgba(35, 109, 104, 0.22);
+  box-shadow: 0 14px 32px rgba(200, 122, 76, 0.22);
 }
 
 .brand-text .brand-sub {
@@ -551,7 +551,7 @@
 
 .btn-new-chat {
   min-height: 42px;
-  border: 1px solid rgba(35, 109, 104, 0.22);
+  border: 1px solid rgba(200, 122, 76, 0.22);
   background: var(--surface);
   color: var(--primary);
   box-shadow: var(--shadow-sm);
@@ -587,7 +587,7 @@
 }
 .session-row.active {
   background: var(--surface);
-  box-shadow: inset 3px 0 0 var(--primary), 0 1px 2px rgba(31, 41, 51, 0.04);
+  box-shadow: inset 3px 0 0 var(--primary), 0 1px 2px rgba(45, 42, 38, 0.04);
 }
 .session-row.active .session-link {
   color: var(--primary);
@@ -599,8 +599,8 @@
   box-shadow: var(--shadow-sm);
 }
 .identity-avatar {
-  background: linear-gradient(145deg, var(--primary), #2f8a82);
-  box-shadow: 0 8px 18px rgba(35, 109, 104, 0.18);
+  background: linear-gradient(145deg, var(--primary), #e0975f);
+  box-shadow: 0 8px 18px rgba(200, 122, 76, 0.18);
 }
 .sidebar-actions a,
 .sidebar-actions button {
@@ -617,7 +617,7 @@
   min-height: 70px;
   padding: 14px 34px;
   background: rgba(255, 255, 255, 0.74);
-  border-bottom-color: rgba(198, 211, 220, 0.7);
+  border-bottom-color: rgba(217, 213, 204, 0.7);
   backdrop-filter: blur(12px);
 }
 .chat-header h2 {
@@ -666,11 +666,11 @@
   display: grid;
   place-items: center;
   border-radius: 14px;
-  background: linear-gradient(145deg, var(--primary), #2f8a82);
+  background: linear-gradient(145deg, var(--primary), #e0975f);
   color: #fff;
   font-size: 24px;
   font-weight: 750;
-  box-shadow: 0 18px 44px rgba(35, 109, 104, 0.22);
+  box-shadow: 0 18px 44px rgba(200, 122, 76, 0.22);
 }
 .empty-chat-title {
   font-size: 32px;
@@ -695,7 +695,7 @@
   gap: 14px;
   min-height: 74px;
   padding: 16px 16px 16px 18px;
-  border: 1px solid rgba(198, 211, 220, 0.82);
+  border: 1px solid rgba(217, 213, 204, 0.82);
   border-radius: var(--radius-lg);
   background: rgba(255, 255, 255, 0.82);
   color: var(--text);
@@ -708,7 +708,7 @@
 }
 .prompt-card:hover {
   transform: translateY(-2px);
-  border-color: rgba(35, 109, 104, 0.34);
+  border-color: rgba(200, 122, 76, 0.34);
   box-shadow: var(--shadow-md);
   background: var(--surface);
 }
@@ -729,9 +729,9 @@
 }
 .msg.user .msg-content {
   background: linear-gradient(180deg, var(--user-bubble), #d8ebe8);
-  border: 1px solid rgba(35, 109, 104, 0.12);
+  border: 1px solid rgba(200, 122, 76, 0.12);
   border-radius: 18px 18px 6px 18px;
-  box-shadow: 0 8px 18px rgba(35, 109, 104, 0.08);
+  box-shadow: 0 8px 18px rgba(200, 122, 76, 0.08);
 }
 .msg.assistant {
   position: relative;
@@ -739,7 +739,7 @@
 .msg.assistant .msg-content {
   background: rgba(255, 255, 255, 0.64);
   border: 1px solid rgba(223, 231, 238, 0.88);
-  border-left: 3px solid rgba(35, 109, 104, 0.34);
+  border-left: 3px solid rgba(200, 122, 76, 0.34);
   border-radius: var(--radius-lg);
   padding: 18px 20px;
   box-shadow: var(--shadow-sm);
@@ -790,19 +790,19 @@
 }
 .composer {
   max-width: 840px;
-  border-color: rgba(198, 211, 220, 0.88);
+  border-color: rgba(217, 213, 204, 0.88);
   border-radius: 18px;
   padding: 10px 12px 10px 18px;
-  box-shadow: 0 18px 48px rgba(31, 41, 51, 0.1);
+  box-shadow: 0 18px 48px rgba(45, 42, 38, 0.1);
 }
 .composer:focus-within {
-  border-color: rgba(35, 109, 104, 0.64);
-  box-shadow: 0 0 0 4px rgba(35, 109, 104, 0.1), 0 20px 52px rgba(31, 41, 51, 0.12);
+  border-color: rgba(200, 122, 76, 0.64);
+  box-shadow: 0 0 0 4px rgba(200, 122, 76, 0.1), 0 20px 52px rgba(45, 42, 38, 0.12);
 }
 .composer-send {
   border-radius: 10px;
-  background: linear-gradient(145deg, var(--primary), #2f8a82);
-  box-shadow: 0 10px 22px rgba(35, 109, 104, 0.22);
+  background: linear-gradient(145deg, var(--primary), #e0975f);
+  box-shadow: 0 10px 22px rgba(200, 122, 76, 0.22);
 }
 .composer-send:hover {
   background: linear-gradient(145deg, var(--primary-hover), var(--primary));
