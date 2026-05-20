@@ -108,6 +108,8 @@ export const api = {
                           request("GET", `/analytics/active-users?days=${days}&min_interest=${minInterest}&limit=${limit}${domain ? `&domain=${encodeURIComponent(domain)}` : ""}`),
   userProfile:          (userId, domain = "") =>
                           request("GET", `/analytics/user-profile?user_id=${encodeURIComponent(userId)}${domain ? `&domain=${encodeURIComponent(domain)}` : ""}`),
+  unmappedIntents:      (days = 30, limit = 50, domain = "") =>
+                          request("GET", `/analytics/unmapped-intents?days=${days}&limit=${limit}${domain ? `&domain=${encodeURIComponent(domain)}` : ""}`),
   platformOverview:     (days = 30, topN = 8, domain = "") =>
                           request("GET", `/analytics/platform-overview?days=${days}&top_n=${topN}${domain ? `&domain=${encodeURIComponent(domain)}` : ""}`),
   strategyPerformance:  (userId = "", minPulls = 3, domain = "") =>

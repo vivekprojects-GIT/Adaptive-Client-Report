@@ -58,6 +58,7 @@ from .analytics import (
     compute_rag_quality,
     compute_strategy_performance,
     compute_topic_trends,
+    compute_unmapped_intents,
     compute_user_cognitive_profile,
     compute_user_topic_interest,
     eligible_offers_for_user,
@@ -1219,6 +1220,28 @@ def analytics_platform_overview(
         days=days,
         domain=domain,
         top_n=top_n,
+    )
+
+
+@app.get("/analytics/unmapped-intents")
+def analytics_unmapped_intents(
+    days: int = 30,
+    domain: Optional[str] = None,
+    limit: int = 50,
+):
+    """Backlog of intents the classifier saw but the taxonomy doesn't cover.
+
+    Groups turns that resolved to "unmapped" by the classifier's best-guess
+    label (suggested_intent), so an admin can decide which to promote to a
+    real intent. Aggregates only — no raw queries.
+    """
+    if STORE is None:
+        raise HTTPException(500, "Store not initialized")
+    return compute_unmapped_intents(
+        STORE,
+        days=days,
+        domain=domain,
+        limit=limit,
     )
 
 

@@ -25,6 +25,16 @@
   color: var(--text);
   margin-bottom: 4px;
 }
+.admin-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+.admin-section-head .admin-section-title {
+  margin-bottom: 0;
+}
 .admin-section-sub {
   font-size: 13px;
   color: var(--text-secondary);

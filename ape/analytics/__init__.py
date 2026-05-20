@@ -32,6 +32,9 @@ from .customer_health import (
 from .rag_quality import (
     compute_rag_quality,
 )
+from .unmapped_intents import (
+    compute_unmapped_intents,
+)
 
 __all__ = [
     "compute_user_topic_interest",
@@ -46,4 +49,5 @@ __all__ = [
     "compute_instruction_quality",
     "compute_customer_health",
     "compute_rag_quality",
+    "compute_unmapped_intents",
 ]

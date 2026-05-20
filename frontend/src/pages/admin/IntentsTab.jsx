@@ -3,6 +3,16 @@ import { api } from "../../api.js";
 import AdminTable from "./AdminTable.jsx";
 import StatusPill from "./StatusPill.jsx";
 
+// snake_case / lower words -> PascalCase, for prefilling the Intent ID field
+function toPascalCase(name) {
+  return String(name || "")
+    .replace(/[^a-zA-Z0-9]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join("");
+}
+
 export default function IntentsTab({ notify }) {
   const [rows, setRows]       = useState([]);
   const [intentId, setId]     = useState("");
@@ -10,12 +20,23 @@ export default function IntentsTab({ notify }) {
   const [editing, setEditing] = useState(false);
   const [busy, setBusy]       = useState(false);
 
+  // Unmapped-intent backlog (classifier saw these but the taxonomy lacks them)
+  const [suggestions, setSuggestions] = useState([]);
+  const [sugLoad, setSugLoad]         = useState(false);
+
   async function refresh() {
     try { setRows(await api.listIntents()); }
     catch (err) { notify("Load failed: " + err.message, "error"); }
   }
 
-  useEffect(() => { refresh(); }, []);
+  async function refreshSuggestions() {
+    setSugLoad(true);
+    try { setSuggestions((await api.unmappedIntents(30, 50)).suggestions || []); }
+    catch (err) { notify("Suggestions load failed: " + err.message, "error"); }
+    finally { setSugLoad(false); }
+  }
+
+  useEffect(() => { refresh(); refreshSuggestions(); }, []);
 
   function resetForm() {
     setId(""); setD(""); setEditing(false);
@@ -25,6 +46,14 @@ export default function IntentsTab({ notify }) {
     setId(row.intent_id || row.entity_id);
     setD(row.description || "");
     setEditing(true);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function loadSuggestionIntoForm(s) {
+    const topics = (s.top_topics || []).map((t) => t.topic).slice(0, 3).join(", ");
+    setId(toPascalCase(s.suggested_intent));
+    setD(topics ? `Promoted from unmapped — seen on: ${topics}` : "Promoted from unmapped backlog");
+    setEditing(false);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -40,6 +69,7 @@ export default function IntentsTab({ notify }) {
       notify(`Intent "${intentId}" ${editing ? "updated" : "saved"}`);
       resetForm();
       refresh();
+      refreshSuggestions();
     } catch (err) {
       notify("Save failed: " + err.message, "error");
     } finally {
@@ -106,6 +136,53 @@ export default function IntentsTab({ notify }) {
             )}
           </div>
         </form>
+      </div>
+
+      <div className="admin-section">
+        <div className="admin-section-head">
+          <h2 className="admin-section-title">
+            Suggested intents — unmapped backlog ({suggestions.length})
+          </h2>
+          <button type="button" className="btn-secondary" onClick={refreshSuggestions} disabled={sugLoad}>
+            {sugLoad ? "Refreshing…" : "Refresh"}
+          </button>
+        </div>
+        <p className="admin-section-sub">
+          Questions the classifier couldn't map to an existing intent over the
+          last 30 days, grouped by its best-guess label. High-volume rows are
+          good candidates to promote — click <strong>Use as new intent</strong>{" "}
+          to prefill the form above.
+        </p>
+        {suggestions.length === 0 ? (
+          <p className="admin-empty">
+            {sugLoad ? "Loading…" : "No unmapped intents in the last 30 days — your taxonomy is covering traffic."}
+          </p>
+        ) : (
+          <AdminTable
+            columns={[
+              { key: "suggested_intent", label: "Suggested intent", width: "200px",
+                render: (s) => <code>{s.suggested_intent}</code> },
+              { key: "count",        label: "Hits",  width: "80px",
+                render: (s) => <span className="ts">{s.count}</span> },
+              { key: "unique_users", label: "Users", width: "80px",
+                render: (s) => <span className="ts">{s.unique_users}</span> },
+              { key: "avg_confidence", label: "Avg conf.", width: "100px",
+                render: (s) => <span className="ts">{s.avg_confidence}</span> },
+              { key: "top_topics",   label: "Top topics",
+                render: (s) => (s.top_topics || []).map((t) => `${t.topic} (${t.count})`).join(", ") || "—" },
+              { key: "last_seen",    label: "Last seen", width: "180px",
+                render: (s) => <span className="ts">{(s.last_seen || "").slice(0, 19).replace("T", " ")}</span> },
+              { key: "_use",         label: "", width: "150px",
+                render: (s) => (
+                  <button type="button" className="btn-secondary" onClick={() => loadSuggestionIntoForm(s)}>
+                    Use as new intent
+                  </button>
+                ) },
+            ]}
+            rows={suggestions}
+            emptyText="No unmapped intents in the window."
+          />
+        )}
       </div>
 
       <div className="admin-section">

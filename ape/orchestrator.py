@@ -115,6 +115,28 @@ _EXPLICIT_OR_STRONG_SIGNALS = {
 }
 
 
+def _suggested_intent_for(intent, cls, store, domain) -> "str | None":
+    """Best-guess intent label for a turn that resolves to "unmapped".
+
+    Two ways a turn becomes unmapped, each with a different suggestion:
+      1. Classifier returned "unmapped" → use its snake_case unmapped_name
+         guess (e.g. "challenge_thinking", "acknowledgment").
+      2. Classifier returned a real intent that isn't an ACTIVE config
+         entity (never created, or disabled) → suggest that intent name.
+
+    Returns None for normal mapped turns (nothing to review). The value is
+    persisted on the turn record so admins can mine the unmapped backlog
+    and promote frequent suggestions to real intents from the UI.
+    """
+    if intent == "unmapped":
+        name = (cls.get("unmapped_name") or "").strip()
+        return name or "uncategorized"
+    # Real intent label, but is it actually an active config entity?
+    if store.get_active_config("intent", intent) is None:
+        return intent
+    return None
+
+
 # ----------------------------------------------------------------------------
 # ApeOrchestrator
 # ----------------------------------------------------------------------------
@@ -229,9 +251,12 @@ class ApeOrchestrator:
                 print(f"[orchestrator] finalize_response failed for {prev_id}: {e}", flush=True)
         t = _tick("finalize_prev_response", t)
 
-        # A1: validate intent (intent must exist as an active config entity)
-        intent_cfg = self.store.get_active_config("intent", intent)
-        if intent_cfg is None:
+        # A1: validate intent (intent must exist as an active config entity).
+        # When a turn lands on "unmapped" we still record the classifier's
+        # best guess as suggested_intent, so admins can later review the
+        # backlog of unseen intents and promote them from the UI.
+        suggested_intent = _suggested_intent_for(intent, cls, self.store, self.domain)
+        if intent == "unmapped" or self.store.get_active_config("intent", intent) is None:
             intent = "unmapped"
         t = _tick("intent_validate", t)
 
@@ -322,6 +347,7 @@ class ApeOrchestrator:
             "domain":                  self.domain,
             "intent":                  intent,
             "intent_confidence":       float(cls.get("intent_confidence", 0.0)),
+            "suggested_intent":        suggested_intent,
             "topic":                   topic,
             "selected_strategy":       suggested,
             "selection_method":        "ucb",
@@ -455,8 +481,8 @@ class ApeOrchestrator:
                 print(f"[orchestrator] finalize_response failed for {prev_id}: {e}", flush=True)
         t = _tick("finalize_prev_response", t)
 
-        intent_cfg = self.store.get_active_config("intent", intent)
-        if intent_cfg is None:
+        suggested_intent = _suggested_intent_for(intent, cls, self.store, self.domain)
+        if intent == "unmapped" or self.store.get_active_config("intent", intent) is None:
             intent = "unmapped"
         t = _tick("intent_validate", t)
 
@@ -541,6 +567,7 @@ class ApeOrchestrator:
             "domain":                  self.domain,
             "intent":                  intent,
             "intent_confidence":       float(cls.get("intent_confidence", 0.0)),
+            "suggested_intent":        suggested_intent,
             "topic":                   topic,
             "selected_strategy":       suggested,
             "selection_method":        "ucb",
