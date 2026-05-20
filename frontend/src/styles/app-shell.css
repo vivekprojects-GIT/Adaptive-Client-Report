@@ -89,11 +89,15 @@
   margin: 0;
   padding: 0;
   border: none;
+  height: 48px;              /* match the header row so no stray scrollbar */
   overflow-x: auto;
-  scrollbar-width: thin;
+  overflow-y: hidden;        /* prevent the vertical scrollbar artifact */
+  scrollbar-width: none;     /* hide the scrollbar entirely (Firefox) */
+  -ms-overflow-style: none;  /* hide (old Edge) */
   flex: 1;
   min-width: 0;
 }
+.app-tabs::-webkit-scrollbar { display: none; }  /* hide (Chrome/Safari) */
 .app-tab {
   display: inline-flex;
   align-items: center;
