@@ -1,194 +1,211 @@
-# 02 · Runtime Paths
+# 02 - Runtime Paths
 
-> Path A handles **selection + render** on every `/turn`. Path B handles **reward attribution** on every `/feedback`. They share state through `ape_turn_record` (the response ledger) and `ape_user_bandit_state` (the personalized arms).
-
----
-
-## Path A — `/turn` (generate + select)
-
-```
-USER sends query
-    │
-    ▼
-1. append user message to ape_messages
-       (so audit happens even if generation fails)
-    │
-    ▼
-2. classifier LLM call
-       input:  query + recent history
-       output: { intent, topic, signal }
-    │
-    ▼
-3. validate intent
-       get_active_config("intent", intent) — must be ACTIVE
-       if missing → coerce to "unmapped"
-    │
-    ▼
-4. resolve candidate strategies
-       _resolve_candidate_strategies(intent, topic):
-         a. policy lookup for (domain, intent, topic) AND status=ACTIVE
-         b. fallback to (domain, intent, "_default")
-         c. fallback to INTENT_STRATEGIES[intent]  (hardcoded catalog)
-    │
-    ▼
-5. load active instructions
-       for each candidate strategy:
-         get_active_config("instruction", strategy_id) → version + text
-    │
-    ▼
-6. load/create bandit cell
-       get_or_create_bandit_cell(user_hash, domain, intent, topic, strategies)
-         lazy-creates rows with cold-start values:
-           count=0, avg_reward=0.5, cached_ucb=999.0
-    │
-    ▼
-7. UCB selection
-       select_strategy_from_rows(rows) — argmax(cached_ucb)
-       Cold-start arms (cached_ucb=999.0) get picked first → exploration.
-    │
-    ▼
-8. synthesizer LLM call
-       input:  query + history + instruction_text for selected strategy
-       output: { rendered_format, answer }
-    │
-    ▼
-9. compute format_compliance
-       compute_format_compliance(selected_strategy, rendered_format)
-       → 0 or 1
-    │
-    ▼
-10. write PENDING turn_record
-        response_id (UUID), user_id_hash, session_id, ts,
-        intent, topic, selected_strategy, rendered_format, format_compliance,
-        attribution_bandit_pk = { user_hash, domain, intent, topic }
-        attribution_bandit_sk = strategy
-        ucb_at_selection, instruction_version,
-        reward_status = PENDING
-    │
-    ▼
-11. append assistant message to ape_messages
-        (with response_id for join)
-    │
-    ▼
-RETURN { response_id, answer, rendered_format, selected_strategy }
-```
-
-### What the client receives
-
-```json
-{
-  "response_id": "resp_4f1a92e8...",
-  "session_id":  "sess_e2d1...",
-  "answer":      "| Feature | Roth IRA | Traditional IRA |\n|...",
-  "rendered_format": "comparison_table",
-  "selected_strategy": "comparison_table",
-  "strategies_available": ["standard_llm", "comparison_table", "pros_cons_table", "bullet_contrast"],
-  "ucb_at_selection": 1.522,
-  "intent": "Comparison",
-  "topic":  "roth_vs_traditional_ira"
-}
-```
-
-The `response_id` is **the** key the client must echo back when sending feedback.
+> Path A generates a response and records attribution. Path B buffers feedback
+> signals and finalizes learning. The shared ledger is `ape_turn_record`; the
+> personalized learning table is `ape_user_bandit_state`.
 
 ---
 
-## Path B — `/feedback` (apply reward)
+## Path A - `/turn`
 
+`POST /turn` handles one user message end to end.
+
+```text
+1. Ensure session_id
+   If the request omits session_id, the orchestrator mints one.
+
+2. Load history
+   Read recent messages from ape_messages by session_id.
+
+3. Append user message
+   Write raw user text to ape_messages before generation.
+
+4. Classify
+   LLM returns:
+     intent
+     topic
+     signal
+
+5. Finalize previous pending response
+   If this user/session has a recent PENDING response:
+     - append classifier signal as source=llm if it is not no_signal
+     - append session_continue as source=derived if previous response age < 5 min
+     - run finalization:
+         composite detection
+         atomic resolver fallback
+         strongest format-relevant reward selection
+         CAS PENDING -> APPLIED
+         bandit update if reward exists
+         UCB cache refresh for the whole cell
+
+6. Validate intent
+   Intent must be ACTIVE in ape_config. Unknown or inactive intents become
+   unmapped.
+
+7. Resolve candidate strategies
+   Lookup order:
+     - exact policy: domain + intent + topic
+     - default topic policy: domain + intent + _default
+     - hardcoded fallback catalog
+
+8. Load active instructions
+   Each candidate strategy needs an ACTIVE instruction. Missing instructions
+   fall back to safe defaults where available.
+
+9. Load or create bandit cell
+   The cell is keyed by user_id_hash + domain + intent + topic.
+   One row exists per strategy.
+
+10. Select strategy
+    UCB selects argmax(cached_ucb).
+    Unpulled arms have cached_ucb = 999.0 for natural exploration.
+
+11. Generate answer
+    The synthesizer receives the selected strategy instruction.
+
+12. Measure format compliance
+    format_compliance = 1 if rendered_format matches selected_strategy's
+    expected format; otherwise 0.
+
+13. Write PENDING turn record
+    The row includes response_id, selected_strategy, rendered_format,
+    attribution_bandit_pk/sk, and initial pending_signals:
+      - format_compliance_pass, or
+      - format_compliance_fail
+
+14. Append assistant message
+    Assistant message stores response_id so the UI can attach feedback to the
+    exact response.
 ```
-USER clicks 👍 (or 👎, copy, regenerate, …)
-    │
-    ▼
-1. classify signal
-       signal_routing config maps the raw signal to:
-         format_category   ∈ {strong_positive, weak_positive, ...}
-         content_category  ∈ {...}
-       Each axis is independent — a signal can affect format only,
-       content only, both, or neither.
-    │
-    ▼
-2. compute normalized_reward
-       reward_scale config maps each category to a value in [-1, +1].
-       For format-axis updates we use format_category's normalized reward.
-    │
-    ▼
-3. atomic mark APPLIED
-       store.mark_response_rewarded(response_id, user_id_hash, signal,
-                                    reward_category, normalized_reward)
-       Conditional update on:
-         response_id matches AND
-         user_id_hash matches AND
-         reward_status == PENDING
-       This rejects:
-         • Wrong response_id (nothing matches)
-         • Cross-user reward injection (user_hash mismatch)
-         • Double rewards (status already APPLIED)
-    │
-    ▼
-4. read attribution
-       From the just-updated turn_record:
-         attribution_bandit_pk → (user_hash, domain, intent, topic)
-         attribution_bandit_sk → strategy
-    │
-    ▼
-5. update bandit row
-       update_strategy_reward(pk, sk, reward):
-         count       += 1
-         total_reward += reward
-         avg_reward   = total_reward / count
-       (atomic increment + recompute)
-    │
-    ▼
-6. recache UCB for the WHOLE cell
-       refresh_cell_ucb_cache(pk):
-         N = sum of count across all strategies in the cell
-         for each strategy s in cell:
-           if s.count == 0:
-             s.cached_ucb = 999.0
-           else:
-             s.cached_ucb = s.avg_reward + c * sqrt(2 * ln(N) / s.count)
-         (c is the exploration constant from the policy row)
-    │
-    ▼
-RETURN { status: "applied", reward, new_avg }
-```
 
-### Why we recache the whole cell
-
-UCB's exploration bonus depends on `N` (total pulls across all arms in the cell). When ANY arm's count changes, EVERY other arm's UCB changes. Caching the result lets selection (Path A) stay O(1) — just `argmax(cached_ucb)`.
+The response body returns `response_id`. The client must echo that id when it
+posts feedback.
 
 ---
 
-## Idempotency & safety
+## Path A Streaming - `/turn/stream`
 
-| Concern | How it's handled |
+`POST /turn/stream` has the same learning semantics as `/turn`. The difference
+is delivery: it returns Server-Sent Events while the synthesizer is producing
+tokens.
+
+Event sequence:
+
+| Event | When | Payload highlights |
+|---|---|---|
+| `metadata` | After strategy selection, before token streaming | `response_id`, `session_id`, `intent`, `topic`, `selected_strategy`, `candidate_strategies` |
+| `delta` | Many times during generation | Raw text chunk from the LLM |
+| `done` | After generation and writes complete | Final `answer`, `rendered_format`, `format_compliance`, `selection`, `classification`, timings |
+| `error` | If streaming fails | Error message |
+
+The streaming path preallocates `response_id` before token streaming so the UI
+can associate live feedback controls with the response as soon as metadata
+arrives.
+
+---
+
+## Path B - `/feedback`
+
+`POST /feedback` accepts an explicit UI signal for one `response_id`.
+
+```text
+1. Validate target
+   - response_id must exist
+   - user_id must hash to the response owner
+   - reward_status must still be PENDING
+
+2. Validate signal
+   The signal must exist in ACTIVE signal_routing config.
+
+3. Append to pending_signals
+   UI feedback is appended as:
+     { signal, source: "ui", ts }
+
+4. Decide whether to finalize now
+   Finalize immediately if:
+     - response age >= 5 seconds, or
+     - pending signal count >= 3, or
+     - signal is explicit/strong:
+         format_change_request
+         format_keep_request
+         content_correction
+         regenerate_click
+         thumbs_down
+
+   Otherwise return status=queued. The response remains PENDING until another
+   signal arrives or the next /turn finalizes it.
+
+5. Finalize response
+   - detect composite pattern first
+   - otherwise resolve atomic signals:
+       UI signals outrank LLM signals
+       LLM signals outrank derived-only signals
+   - record the winning label in ape_turn_record.signal
+   - separately scan all buffered signals plus the winner
+   - choose the highest absolute format-relevant normalized reward
+   - CAS reward_status from PENDING to APPLIED
+   - update the attributed bandit arm if a reward exists
+   - refresh cached_ucb for every arm in the cell
+```
+
+This design protects bandit learning from noisy satisfaction clicks. For
+example, `thumbs_up` can be the final analytics label, but because it has no
+format category it does not by itself update the bandit. A co-fired
+`format_compliance_pass` can still supply a +0.5 format reward.
+
+---
+
+## Feedback Statuses
+
+| Status | Meaning |
 |---|---|
-| Same response_id rewarded twice | Atomic `update_one` with `reward_status: PENDING` filter — second update modifies 0 rows |
-| User A submits feedback for User B's response | `user_id_hash` is part of the filter — mismatch → 0 rows updated |
-| User submits feedback for a fabricated response_id | No row matches → 0 rows updated → return clean error |
-| Generation fails after writing user message | User message persists; no `turn_record` is written; nothing to reward |
-| Synthesizer returns wrong format | `format_compliance=0` — bandit still gets the reward but compliance is auditable |
+| `queued` | Signal was buffered; finalization will happen later |
+| `applied` | Response finalized and bandit row updated |
+| `applied_no_bandit_update` | Response finalized, but no format-relevant reward existed |
+| `rejected` | Response missing, wrong user, already finalized, or CAS race lost |
+| `skipped` | Signal is unknown and was not buffered |
 
 ---
 
-## State machine
+## Reward State Machine
 
+```text
+PENDING
+  |
+  | queued feedback appends pending_signals
+  v
+PENDING
+  |
+  | finalizer applies a label and optional reward
+  v
+APPLIED
+
+PENDING
+  |
+  | explicit skip path for non-applicable responses
+  v
+SKIPPED
 ```
-turn_record.reward_status
 
-    PENDING ─────► APPLIED       (Path B success)
-       │
-       ├──────────► SKIPPED      (signal known but not format-relevant —
-       │                          e.g. session_abandon)
-       │
-       └──────────► PENDING       (Path B failed — never modified)
-```
-
-A response stuck in PENDING is harmless; it just means the bandit didn't learn from that turn.
+A PENDING response is safe. It means APE is waiting for more evidence or the
+next user turn. It does not corrupt the bandit.
 
 ---
 
-## See also
+## Why UCB Cache Refresh Touches the Whole Cell
 
-- [03 · Admin config](./03-admin-config.md) — what `signal_routing` and `reward_scale` look like
-- [09 · API reference](./09-api-reference.md) — `/turn` and `/feedback` request/response shapes
+The UCB exploration term depends on total pulls in the cell:
+
+```text
+ucb = avg_reward + c * sqrt(2 * ln(total_cell_pulls) / arm_count)
+```
+
+When one arm receives a reward, the total pull count changes, so every arm's
+`cached_ucb` can change. Path B refreshes the whole cell after a bandit update.
+
+---
+
+## See Also
+
+- [03 - Admin config](./03-admin-config.md)
+- [09 - API reference](./09-api-reference.md)

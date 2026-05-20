@@ -10,6 +10,7 @@
 # Required HF Space secrets (Settings → Variables and Secrets):
 #   ANTHROPIC_API_KEY   sk-ant-...           — required for /turn LLM calls
 #   APE_MONGO_URI       mongodb+srv://...    — required for state + history
+#   APE_ADMIN_TOKEN     long random secret   — required for admin/config/analytics
 #
 # Optional secrets / env:
 #   ANTHROPIC_MODEL     claude-haiku-4-5     (default in env_default below)
@@ -21,6 +22,7 @@
 #   docker build -t ape-modulor .
 #   docker run -p 7860:7860 \
 #     -e ANTHROPIC_API_KEY=sk-... -e APE_MONGO_URI=mongodb+srv://... \
+#     -e APE_ADMIN_TOKEN=replace-with-a-long-random-secret \
 #     ape-modulor
 # ─────────────────────────────────────────────────────────────────────────────
 

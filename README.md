@@ -17,6 +17,7 @@ short_description: Per-user UCB bandit picks the best response format
     Set these secrets in Space Settings → Variables and Secrets:
       ANTHROPIC_API_KEY    sk-ant-...           (required)
       APE_MONGO_URI        mongodb+srv://...    (required)
+      APE_ADMIN_TOKEN      long random secret   (required for admin/config/analytics APIs)
       ANTHROPIC_MODEL      claude-haiku-4-5     (optional, has default)
       APE_MONGO_DB         ape                  (optional, has default)
 -->
@@ -105,12 +106,14 @@ Or use **mongomock** for local development/tests without a live DB (already wire
 
 ```bash
 pip install -r requirements.txt
-cp .env.example .env   # set ANTHROPIC_API_KEY + APE_MONGO_URI
+cp .env.example .env   # set ANTHROPIC_API_KEY + APE_MONGO_URI + APE_ADMIN_TOKEN
 uvicorn ape.api:app --port 7860 --reload
 ```
 
 On startup, if `ape_config` is empty, the app seeds default intents,
 strategies, instructions, policies, signal routing, and reward scale.
+Admin/config/analytics API routes require `APE_ADMIN_TOKEN`; enter that same
+token in the Admin or Analytics page prompt.
 
 ### 3. Frontend
 
@@ -171,13 +174,13 @@ Public:
   POST   /feedback                                ← Path B (response_id-targeted)
 
 Conversation history (Mongo-backed):
-  GET    /sessions/{session_id}/messages          ← load a thread for the chat UI
+  GET    /sessions/{session_id}/messages?user_id=... ← load a user's thread
   GET    /users/{user_id}/sessions                ← list a user's recent chat threads
   GET    /users/{user_id}/latest-session          ← auto-resume the most recent one
   DELETE /sessions/{session_id}?user_id=...       ← delete one chat (bandit preserved)
 
 Legacy turn-record views (analytics):
-  GET    /sessions/{id}/turns
+  GET    /sessions/{id}/turns?user_id=...
   GET    /users/{user_id}/responses
 
 Config:
@@ -222,7 +225,7 @@ Server reads history from MongoDB via session_id, no client data needed.
 Reload / open analytics page / come back later
    │
    ▼
-GET /sessions/{session_id}/messages
+GET /sessions/{session_id}/messages?user_id=...
    → full thread back as a list of messages
 ```
 
@@ -233,7 +236,7 @@ The client persists ONLY `user_id` and the current `session_id` to localStorage.
 The sidebar now shows a list of the user's recent chats (first user message + last activity time). Click to switch between sessions; click × to delete one. Bandit state is preserved across session deletes — only the chat thread is removed.
 
 ```
-useApe() hook    →  fetches from /users/{id}/sessions and /sessions/{id}/messages
+useApe() hook    →  fetches from /users/{id}/sessions and /sessions/{id}/messages?user_id=...
 ChatPage         →  renders sidebar (session list) + chat (loaded messages) + composer
 Message.jsx      →  thumbs_up/down click → POST /feedback with response_id
 ```
@@ -305,6 +308,7 @@ Open `http://localhost:7860/`.
 3. Go to Space Settings → **Variables and secrets** and add:
    - `ANTHROPIC_API_KEY` (secret) — your Anthropic key
    - `APE_MONGO_URI` (secret) — Atlas/Mongo connection string
+   - `APE_ADMIN_TOKEN` (secret) - long random token for admin/config/analytics
    - `ANTHROPIC_MODEL` (variable, optional) — defaults to `claude-haiku-4-5`
 4. HF builds the Dockerfile automatically. Logs appear under the "Logs" tab.
 5. Once healthy (the `HEALTHCHECK` probes `/health`), the Space serves

@@ -1,4 +1,4 @@
-/* APE — global CSS variables + base reset, Claude Desktop palette */
+/* APE - shared visual system */
 
 @import url("https://rsms.me/inter/inter.css");
 
@@ -6,52 +6,59 @@
 
 :root {
   /* Surfaces */
-  --bg:               #fafaf7;     /* main chat background — warm off-white */
-  --sidebar-bg:       #f3f0eb;     /* sidebar — slightly warmer cream */
-  --surface:          #ffffff;
-  --composer-bg:      #ffffff;
-  --user-bubble:      #f0ece4;     /* user message — subtle warm gray */
+  --bg:                 #f5f7fb;
+  --bg-strong:          #e9f0f4;
+  --sidebar-bg:         #eef3f6;
+  --surface:            #ffffff;
+  --surface-raised:     #ffffff;
+  --surface-soft:       #f8fafc;
+  --composer-bg:        #ffffff;
+  --user-bubble:        #e4f1ef;
 
   /* Borders */
-  --border:           #ece9e3;
-  --border-strong:    #d9d5cc;
+  --border:             #dfe7ee;
+  --border-strong:      #c6d3dc;
 
   /* Text */
-  --text:             #2d2a26;     /* near-black with warmth */
-  --text-secondary:   #6b6760;
-  --muted:            #8c8980;
-  --sidebar-fg:       #2d2a26;
-  --sidebar-mut:      #8c8980;
+  --text:               #1f2933;
+  --text-secondary:     #5d6975;
+  --muted:              #8793a0;
+  --sidebar-fg:         #1f2933;
+  --sidebar-mut:        #7d8a95;
 
   /* Accent */
-  --primary:          #c87a4c;     /* Claude orange */
-  --primary-fg:       #ffffff;
-  --primary-hover:    #b76c40;
-  --accent-soft:      #f3e7dd;
+  --primary:            #236d68;
+  --primary-fg:         #ffffff;
+  --primary-hover:      #185a56;
+  --accent-soft:        #e2f1ef;
+  --accent-warm:        #fff3db;
+  --accent-warm-strong: #d08a28;
+  --accent-blue:        #e7f0ff;
+  --accent-violet:      #f1ecff;
 
   /* Semantic */
-  --secondary:        #ece9e3;
-  --secondary-fg:     #2d2a26;
-  --danger:           #b54141;
-  --danger-fg:        #ffffff;
-  --pos:              #4f8a4d;
-  --neg:              #b54141;
-  --neutral:          #8c8980;
+  --secondary:          #edf2f6;
+  --secondary-fg:       #1f2933;
+  --danger:             #be3f4d;
+  --danger-fg:          #ffffff;
+  --pos:                #31825f;
+  --neg:                #be3f4d;
+  --neutral:            #7b8794;
 
   /* Code */
-  --code-bg:          #f6f3ed;
-  --code-fg:          #2d2a26;
-  --code-block-bg:    #2d2a26;
-  --code-block-fg:    #e8e4dc;
+  --code-bg:            #eef3f7;
+  --code-fg:            #1f2933;
+  --code-block-bg:      #14252d;
+  --code-block-fg:      #e9f3f7;
 
   /* Effects */
-  --radius-sm:        6px;
-  --radius-md:        10px;
-  --radius-lg:        16px;
-  --radius-pill:      999px;
-  --shadow-sm:        0 1px 2px rgba(45,42,38,0.04);
-  --shadow-md:        0 4px 16px rgba(45,42,38,0.06);
-  --shadow-lg:        0 8px 24px rgba(45,42,38,0.08);
+  --radius-sm:          6px;
+  --radius-md:          8px;
+  --radius-lg:          8px;
+  --radius-pill:        999px;
+  --shadow-sm:          0 1px 2px rgba(31, 41, 51, 0.05), 0 12px 28px rgba(31, 41, 51, 0.04);
+  --shadow-md:          0 12px 28px rgba(31, 41, 51, 0.08);
+  --shadow-lg:          0 20px 48px rgba(31, 41, 51, 0.12);
 }
 
 html, body, #root { height: 100%; }
@@ -60,7 +67,10 @@ body {
   font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
                Roboto, "Helvetica Neue", Arial, sans-serif;
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
-  background: var(--bg);
+  background:
+    linear-gradient(135deg, rgba(35, 109, 104, 0.06), transparent 34%),
+    linear-gradient(315deg, rgba(208, 138, 40, 0.07), transparent 28%),
+    var(--bg);
   color: var(--text);
   font-size: 15px;
   line-height: 1.6;
@@ -71,21 +81,24 @@ body {
 a { color: inherit; text-decoration: none; }
 button { font-family: inherit; }
 
-/* Scrollbars — subtle, Claude-style */
 *::-webkit-scrollbar       { width: 10px; height: 10px; }
 *::-webkit-scrollbar-track { background: transparent; }
-*::-webkit-scrollbar-thumb { background: rgba(45,42,38,0.12); border-radius: 5px; border: 2px solid var(--bg); }
-*::-webkit-scrollbar-thumb:hover { background: rgba(45,42,38,0.22); }
+*::-webkit-scrollbar-thumb {
+  background: rgba(31, 41, 51, 0.16);
+  border-radius: 5px;
+  border: 2px solid var(--bg);
+}
+*::-webkit-scrollbar-thumb:hover { background: rgba(31, 41, 51, 0.28); }
 
-/* Toast */
 .toast {
   position: fixed;
-  bottom: 24px; left: 50%;
+  bottom: 24px;
+  left: 50%;
   transform: translateX(-50%);
   background: var(--text);
   color: #fff;
   padding: 10px 18px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   font-size: 13px;
   z-index: 200;
   box-shadow: var(--shadow-lg);

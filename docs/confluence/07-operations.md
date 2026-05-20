@@ -1,102 +1,176 @@
-# 07 · Operations
+# 07 - Operations
 
-> Run, recompute, seed, deploy.
+> How to run, seed, verify, recompute, and deploy APE.
 
 ---
 
-## Local dev
+## Required Environment
 
-### Backend
+Create `.env` from `.env.example` and set:
+
 ```bash
-cd ape_modulor_production
-python -m uvicorn ape.api:app --host 127.0.0.1 --port 7860 --log-level warning
-```
-
-Environment (from `.env`):
-```
 ANTHROPIC_API_KEY=sk-ant-...
 ANTHROPIC_MODEL=claude-haiku-4-5
 APE_MONGO_URI=mongodb+srv://...
 APE_MONGO_DB=ape
 APE_DOMAIN=finance
 APE_UCB_C=1.0
+APE_ADMIN_TOKEN=<long random secret>
+```
+
+`APE_ADMIN_TOKEN` is required for `/config*`, `/admin/*`, and `/analytics/*`.
+Without it, protected routes return `503`.
+
+---
+
+## Local Development
+
+### Backend
+
+```bash
+cd ape_modulor_production
+pip install -r requirements.txt
+python -m uvicorn ape.api:app --host 127.0.0.1 --port 7860 --log-level warning
 ```
 
 ### Frontend
+
 ```bash
 cd ape_modulor_production/frontend
-npm run dev    # serves at :5173, proxies API calls to :7860
+npm install
+npm run dev
 ```
 
-The Vite proxy in `vite.config.js` forwards: `/turn`, `/feedback`, `/health`, `/sessions/*`, `/users/*`, `/config/*`, `/admin/*` (regex `^/admin/` so the bare `/admin` SPA route is not eaten), `/analytics/*`.
+Vite serves the app at `http://127.0.0.1:5173` and proxies API calls to
+`http://127.0.0.1:7860`.
+
+Proxy families:
+
+```text
+/turn
+/turn/stream
+/feedback
+/health
+/sessions/*
+/users/*
+/config/*
+/admin/*
+/analytics/*
+```
+
+The bare SPA routes `/`, `/admin`, and `/analytics` are not API routes.
 
 ---
 
-## Seeding demo data
+## Admin Token in the UI
 
-### Five named personas with distinct cognitive signatures
+1. Set `APE_ADMIN_TOKEN` in the backend environment.
+2. Open `/admin` or `/analytics`.
+3. Enter the same token in the prompt.
+4. The frontend stores it in `localStorage["ape.admin_token"]`.
+
+To rotate the token:
+
+1. Change the server secret.
+2. Restart the backend.
+3. Clear the browser token or enter the new one when prompted.
+
+---
+
+## Verification Commands
+
+Run these after code changes:
+
+```bash
+python -m pytest -q
+python tests/test_mongo.py
+python -m compileall -q ape tests scripts
+```
+
+Run these after frontend changes:
+
+```bash
+cd frontend
+npm run build
+npm audit --omit=dev --audit-level=moderate
+```
+
+Useful security smoke checks:
+
+```bash
+# Health stays public
+curl http://127.0.0.1:7860/health
+
+# Protected API should reject missing token
+curl -i http://127.0.0.1:7860/admin/audit
+
+# Protected API should accept correct token
+curl -H "X-APE-Admin-Token: $APE_ADMIN_TOKEN" \
+  http://127.0.0.1:7860/admin/audit
+```
+
+---
+
+## Seeding Demo Data
+
 ```bash
 python scripts/seed_demo_users.py
-```
-Creates:
-- Alex Chen — Action-ready · retirement planner · decision_card lover
-- Maya Patel — Awareness · analogy / definition prefer
-- Dan Mueller — Evaluation · comparison-table loyalist
-- Riya Singh — `compliance_eligible=false` · friction on tax topics
-- Sam Rodriguez — `do_not_contact=true` · broad explorer, low pulls
-
-Each persona writes `ape_user_bandit_state` rows + matching `ape_turn_record` events + a `ape_user_directory` entry. The script then recomputes `ape_user_topic_interest` and `ape_topic_trend_daily`.
-
-### The "demo_user" deep cell set
-```bash
 python scripts/seed_demo_facets.py
 ```
-Heavier per-user activity (~70 turns over 6 cells) so the user-scoped facet view has rich data to render.
 
-Both scripts are **idempotent** — they `delete_many` the user's prior bandit + turn rows before re-seeding.
+`seed_demo_users.py` creates named demo personas, directory rows, turn records,
+and bandit state. `seed_demo_facets.py` creates a richer per-user dataset for
+the cognitive facets view.
+
+The scripts are intended to be repeatable for demo data. They clear and replace
+their target demo rows before reseeding.
 
 ---
 
-## Recompute aggregates
+## Recomputing Analytics
 
-### What recompute does
-Reads `ape_turn_record` (last N days), upserts into:
-- `ape_user_topic_interest` — per `(user, topic)` interest score + sub-scores
-- `ape_topic_trend_daily` — per `(date, topic)` trend score
+### CLI
 
-### Manual — admin UI
-Click **"Recompute now"** in the Analytics page header. Takes ~13 s on the current dataset. The next reload shows fresh aggregates.
-
-### Manual — CLI
 ```bash
-python scripts/cron_recompute.py             # default 14-day window
-python scripts/cron_recompute.py --days 30   # full 30-day backfill
-python scripts/cron_recompute.py --quiet     # one-line log-scrapeable output
+python scripts/cron_recompute.py
+python scripts/cron_recompute.py --days 30
+python scripts/cron_recompute.py --days 1 --quiet
 ```
 
-### Scheduled
+The cron script reads the database directly, so it does not need
+`APE_ADMIN_TOKEN`. It does need MongoDB environment variables.
 
-#### Linux/macOS cron
+### Admin UI
+
+Click **Recompute now** on `/analytics`. This calls:
+
+```text
+POST /analytics/recompute?days=N
+```
+
+Because it is an API call, it requires `APE_ADMIN_TOKEN`.
+
+### Linux/macOS cron
+
 ```cron
-# Hourly recompute of the last 24h (keeps dashboard near-real-time)
 0 * * * * cd /path/to/ape_modulor_production && /usr/bin/python scripts/cron_recompute.py --days 1 --quiet >> /var/log/ape_recompute.log
-
-# Nightly full rebuild over 30 days
 30 2 * * * cd /path/to/ape_modulor_production && /usr/bin/python scripts/cron_recompute.py --days 30 --quiet >> /var/log/ape_recompute.log
 ```
 
-#### Windows Task Scheduler
+### Windows Task Scheduler
+
 ```cmd
 schtasks /create /tn "APE hourly recompute" ^
-  /tr "python C:\path\to\scripts\cron_recompute.py --days 1 --quiet" ^
+  /tr "python C:\path\to\ape_modulor_production\scripts\cron_recompute.py --days 1 --quiet" ^
   /sc HOURLY
 ```
 
-#### GitHub Actions / GitLab CI (recommended)
+### GitHub Actions
+
 ```yaml
 on:
   schedule:
-    - cron: "0 * * * *"      # every hour
+    - cron: "0 * * * *"
 jobs:
   recompute:
     runs-on: ubuntu-latest
@@ -106,56 +180,54 @@ jobs:
       - run: python scripts/cron_recompute.py --days 1 --quiet
         env:
           APE_MONGO_URI: ${{ secrets.APE_MONGO_URI }}
-          APE_MONGO_DB:  ape
+          APE_MONGO_DB: ape
 ```
 
 ---
 
-## Reload vs Recompute (the two-button design)
+## Production Deploy
 
-| Button | Latency | When | Cache impact |
-|---|---|---|---|
-| **Reload** | ~2 s | Re-fetch existing aggregates | Read-only |
-| **Recompute now** | ~13 s | After lots of new chat activity | Rebuilds analytics collections |
-
-> ⚠ **Page load does NOT auto-recompute.** It used to; we changed it so the page is fast by default. Admin opts into recompute when they need fresh aggregates.
-
-The header shows:
-```
-Reloaded 4:45 AM · Recomputed 4:32 AM
-```
-in muted gray + green respectively, so the data freshness is always visible.
-
----
-
-## Production deploy notes
-
-### Single-process deploy
-The FastAPI app at `ape.api:app` serves both the API and the built React SPA:
+Single-process deployment serves both the API and built React assets:
 
 ```bash
-# 1. Build the frontend
-cd frontend && npm run build      # produces frontend/dist/
+cd frontend
+npm run build
 
-# 2. Serve everything from FastAPI
+cd ..
 python -m uvicorn ape.api:app --host 0.0.0.0 --port 7860
 ```
 
-The SPA is mounted at `/assets`, and bare paths `/`, `/analytics`, `/admin` fall through to `index.html`. Unknown paths return 404 (no SPA fallback for arbitrary URLs).
+FastAPI serves:
 
-### Mongo connection
-- Atlas URIs (`mongodb+srv://...`) auto-enable `ServerApi("1")` for forward compatibility.
-- The store creates all required indexes on startup via `apply_indexes(db)`.
-- The DB driver is connection-pooled — long-lived `MongoStore` per process is fine.
+| Route | Purpose |
+|---|---|
+| `/assets/*` | Vite build assets |
+| `/` | React SPA |
+| `/admin` | React SPA admin route |
+| `/analytics` | React SPA analytics route |
+| `/turn`, `/turn/stream`, `/feedback` | Chat APIs |
+| `/config*`, `/admin/*`, `/analytics/*` | Protected operational APIs |
 
-### LLM client
-- Uses the Anthropic Python SDK. Model from `ANTHROPIC_MODEL` env var (currently `claude-haiku-4-5`).
-- Two LLM calls per `/turn`: classifier + synthesizer.
+Deployment checklist:
 
-### Scaling considerations
-- **Reads**: classifier + synthesizer LLM calls dominate latency. Bandit selection is sub-millisecond.
-- **Writes**: every `/turn` writes 3 docs (`messages` + `bandit_state` upsert + `turn_record`). Every `/feedback` writes 1 update + cell-wide UCB recache.
-- **Recompute cost**: scales linearly with active `ape_turn_record` rows in the window. The 13 s on the current dataset (~260 turns) → roughly 1 s per 20 turns. Move to background workers (Celery / RQ / GitHub Actions cron) before the dataset crosses ~10k turns.
+- Set `ANTHROPIC_API_KEY`.
+- Set `APE_MONGO_URI`.
+- Set `APE_ADMIN_TOKEN`.
+- Build frontend assets.
+- Confirm Mongo indexes are created at startup.
+- Run the verification commands.
+- Configure scheduled analytics recompute.
+
+---
+
+## Scaling Notes
+
+- `/turn` latency is dominated by classifier and synthesizer LLM calls.
+- Bandit selection is cheap: load a small cell and choose `argmax(cached_ucb)`.
+- `/feedback` finalization updates one turn record, one bandit row, and then
+  refreshes cached UCB values for the whole cell.
+- Analytics recompute is linear in `ape_turn_record` rows for the chosen window.
+  Move it to cron or a worker before large production volumes.
 
 ---
 
@@ -163,15 +235,19 @@ The SPA is mounted at `/assets`, and bare paths `/`, `/analytics`, `/admin` fall
 
 | Symptom | Check |
 |---|---|
-| `/analytics/cognitive-facets` returns empty for a user | They have no bandit_state rows. Either no turns yet, or the user_id you passed doesn't hash to a stored hash. |
-| "Failed to load: 404 Not Found" inside dashboard | Vite proxy missing for that path. Check `vite.config.js` — `/analytics/*` and `^/admin/` should both be there. |
-| Recompute is slow | Indexes missing on `ape_turn_record`. Verify via `db.ape_turn_record.getIndexes()` — should have `by_user_time` and `by_session_time`. |
-| ObjectId serialization error in audit | Fixed (`_strip_mongo_id` in `log_admin_action`). If you see this again on a brand-new install, run a one-off `db.ape_admin_audit.updateMany({}, {$unset: {"before._id": ""}})`. |
-| Admin pause doesn't take effect | Verify the runtime read goes through `get_active_config` / `list_active_config` / `get_policy_strategies` — those filter on `status=ACTIVE`. Direct `config.find()` calls would bypass the gate. |
+| `/admin/*`, `/config*`, or `/analytics/*` returns `503` | `APE_ADMIN_TOKEN` is missing in backend environment |
+| Protected route returns `401` | UI/header token is missing or does not match |
+| `/admin` or `/analytics` page loads but data fails | Enter admin token in the UI prompt |
+| Session messages request returns `422` | Include `user_id` query param |
+| Session messages look empty | `user_id` does not match the session owner hash |
+| Cognitive facets empty for a user | User has no bandit rows yet or the id hashes differently than expected |
+| Recompute is slow | Check `ape_turn_record` indexes and reduce `days` for interactive runs |
+| Admin pause has no effect | Confirm runtime reads use ACTIVE-filtered config helpers |
+| Frontend 404 for API path | Check Vite proxy entries |
 
 ---
 
-## See also
+## See Also
 
-- [09 · API reference](./09-api-reference.md) — every admin/ops endpoint
-- [08 · Privacy & compliance](./08-privacy-and-compliance.md) — what to enforce in production
+- [08 - Privacy and compliance](./08-privacy-and-compliance.md)
+- [09 - API reference](./09-api-reference.md)

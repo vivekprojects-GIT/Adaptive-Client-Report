@@ -112,12 +112,12 @@ export function useApe() {
       return;
     }
     try {
-      const rows = await api.loadSessionMessages(sessionId);
+      const rows = await api.loadSessionMessages(sessionId, userId);
       setMessages(rows || []);
     } catch (err) {
       console.warn("[APE] loadSessionMessages failed", err);
     }
-  }, [sessionId]);
+  }, [sessionId, userId]);
 
   const refreshSessions = useCallback(async () => {
     try {
@@ -244,7 +244,7 @@ export function useApe() {
       if (!finalResult) throw new Error("stream ended without 'done' event");
 
       setPendingMessages([]);
-      const rows = await api.loadSessionMessages(finalResult.session_id);
+      const rows = await api.loadSessionMessages(finalResult.session_id, userId);
       setMessages(rows || []);
       refreshSessions();
     } catch (err) {

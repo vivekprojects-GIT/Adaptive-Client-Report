@@ -428,6 +428,33 @@ class ApeOrchestrator:
         topic  = canonicalize_topic(cls.get("topic"))
         t = _tick("classifier_llm", t)
 
+        prev_pending = self.store.find_previous_pending_response(
+            user_id_hash=user_id_hash,
+            session_id=session_id,
+            max_age_sec=600,
+        )
+        if prev_pending is not None:
+            prev_id = prev_pending["response_id"]
+            llm_sig = cls.get("signal")
+            if llm_sig and llm_sig != "no_signal":
+                self.store.append_pending_signal(prev_id, {
+                    "signal": llm_sig,
+                    "source": "llm",
+                    "ts":     utcnow_iso(),
+                })
+            prev_age = self.store.get_response_age_seconds(prev_id) or 0.0
+            if prev_age < 300:
+                self.store.append_pending_signal(prev_id, {
+                    "signal": "session_continue",
+                    "source": "derived",
+                    "ts":     utcnow_iso(),
+                })
+            try:
+                self._finalize_response(prev_id, user_id_hash)
+            except Exception as e:
+                print(f"[orchestrator] finalize_response failed for {prev_id}: {e}", flush=True)
+        t = _tick("finalize_prev_response", t)
+
         intent_cfg = self.store.get_active_config("intent", intent)
         if intent_cfg is None:
             intent = "unmapped"
@@ -502,6 +529,9 @@ class ApeOrchestrator:
         compliance = compute_format_compliance(suggested, rendered_format)
         instr_version = instruction_versions.get(suggested, "v1")
         attribution_pk = make_attribution_pk(user_id_hash, self.domain, intent, topic)
+        compliance_signal = (
+            "format_compliance_pass" if compliance else "format_compliance_fail"
+        )
 
         self.store.write_pending_response({
             "response_id":             response_id,
@@ -522,6 +552,11 @@ class ApeOrchestrator:
             "instruction_version":     instr_version,
             "attribution_bandit_pk":   attribution_pk,
             "attribution_bandit_sk":   suggested,
+            "pending_signals":         [{
+                "signal": compliance_signal,
+                "source": "derived",
+                "ts":     ts,
+            }],
         })
 
         assistant_msg_id = new_message_id()
@@ -756,6 +791,7 @@ class ApeOrchestrator:
         return {
             "status":             "applied" if best_bandit_reward is not None else "applied_no_bandit_update",
             "response_id":        response_id,
+            "signal":             winner,
             "winner":             winner,
             "winner_source":      winner_source,
             "bandit_signal":      best_bandit_signal,

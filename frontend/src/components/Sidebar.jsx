@@ -31,7 +31,7 @@ export default function Sidebar({
 
       <div className="session-section">
         {sessions.length === 0 && (
-          <div style={{padding: "16px 12px", fontSize: 12.5, color: "var(--muted)"}}>
+          <div className="session-empty">
             No conversations yet. Send a message to start.
           </div>
         )}
@@ -57,7 +57,7 @@ export default function Sidebar({
                       if (window.confirm("Delete this chat?")) onDeleteSession(s.session_id);
                     }}
                     title="Delete chat"
-                  >×</button>
+                  >x</button>
                 </li>
               ))}
             </ul>
@@ -100,7 +100,7 @@ function NewChatIcon() {
 
 function truncate(s, n) {
   if (!s) return "";
-  return s.length > n ? s.slice(0, n).trimEnd() + "…" : s;
+  return s.length > n ? s.slice(0, n).trimEnd() + "..." : s;
 }
 
 function groupSessionsByRecency(sessions) {

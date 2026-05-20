@@ -585,10 +585,16 @@ class MongoStore:
             {"user_id_hash": user_id_hash}
         ).sort("ts", -1).limit(limit))
 
-    def list_session_responses(self, session_id: str, limit: int = 100) -> List[Dict[str, Any]]:
-        return list(self.turn_record.find(
-            {"session_id_optional": session_id}
-        ).sort("ts", 1).limit(limit))
+    def list_session_responses(
+        self,
+        session_id: str,
+        limit: int = 100,
+        user_id_hash: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        q: Dict[str, Any] = {"session_id_optional": session_id}
+        if user_id_hash:
+            q["user_id_hash"] = user_id_hash
+        return list(self.turn_record.find(q).sort("ts", 1).limit(limit))
 
     # ==================================================================
     # CONVERSATION MESSAGES (raw user + assistant text)
@@ -624,9 +630,17 @@ class MongoStore:
         }
         self.messages.insert_one(doc)
 
-    def list_session_messages(self, session_id: str, limit: int = 200) -> List[Dict[str, Any]]:
+    def list_session_messages(
+        self,
+        session_id: str,
+        limit: int = 200,
+        user_id_hash: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
         """Return all messages in a session, ordered by ts ascending (chat order)."""
-        return list(self.messages.find({"session_id": session_id}).sort("ts", 1).limit(limit))
+        q: Dict[str, Any] = {"session_id": session_id}
+        if user_id_hash:
+            q["user_id_hash"] = user_id_hash
+        return list(self.messages.find(q).sort("ts", 1).limit(limit))
 
     def list_user_sessions(self, user_id_hash: str, limit: int = 20) -> List[Dict[str, Any]]:
         """List a user's distinct sessions with a short preview of the first user message.

@@ -37,6 +37,7 @@ Frontend serving:
 from __future__ import annotations
 
 import asyncio
+import hmac
 import json
 import os
 from datetime import datetime, timedelta
@@ -45,8 +46,8 @@ from typing import Any, Dict, List, Optional
 
 import anthropic
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from .analytics import (
@@ -96,6 +97,53 @@ app = FastAPI(title="APE Modular — Production (MongoDB)", version="2.0.0")
 ORCHESTRATOR: Optional[ApeOrchestrator] = None
 STORE: Optional[MongoStore] = None
 CONFIG_MGR: Optional[ConfigManager] = None
+
+
+def _extract_bearer_token(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+    scheme, _, token = value.partition(" ")
+    if scheme.lower() != "bearer" or not token:
+        return None
+    return token.strip()
+
+
+def _is_protected_api_path(path: str) -> bool:
+    """Protect admin/config/analytics APIs without blocking SPA routes."""
+    return (
+        path.startswith("/config")
+        or path.startswith("/admin/")
+        or path.startswith("/analytics/")
+    )
+
+
+@app.middleware("http")
+async def require_admin_token_for_sensitive_apis(request: Request, call_next):
+    """Require a shared admin token for sensitive operational surfaces.
+
+    Public chat endpoints stay open. Admin, config, and analytics API routes
+    can mutate or expose sensitive operational data, so they require
+    APE_ADMIN_TOKEN and a matching X-APE-Admin-Token or Bearer token header.
+    """
+    if _is_protected_api_path(request.url.path):
+        expected = os.getenv("APE_ADMIN_TOKEN")
+        if not expected:
+            return JSONResponse(
+                status_code=503,
+                content={"detail": "APE_ADMIN_TOKEN is required for this endpoint"},
+            )
+
+        supplied = (
+            request.headers.get("x-ape-admin-token")
+            or _extract_bearer_token(request.headers.get("authorization"))
+        )
+        if not supplied or not hmac.compare_digest(supplied, expected):
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Admin token required"},
+            )
+
+    return await call_next(request)
 
 
 # ============================================================================
@@ -253,13 +301,14 @@ async def post_feedback(req: FeedbackRequest) -> FeedbackResponse:
 # ============================================================================
 
 @app.get("/sessions/{session_id}/messages")
-def list_session_messages(session_id: str, limit: int = 200):
+def list_session_messages(session_id: str, user_id: str, limit: int = 200):
     """Load the full conversation history for a session — used by the chat UI
     on session open or page refresh.
     """
     if STORE is None:
         raise HTTPException(500, "Store not initialized")
-    rows = STORE.list_session_messages(session_id, limit=limit)
+    user_id_hash = hash_user_id(user_id)
+    rows = STORE.list_session_messages(session_id, limit=limit, user_id_hash=user_id_hash)
     return [_clean(r) for r in rows]
 
 
@@ -300,10 +349,11 @@ def delete_session(session_id: str, user_id: str):
 # ----- Legacy turn-record view (kept for the analytics page) ----------------
 
 @app.get("/sessions/{session_id}/turns")
-def list_session_turns(session_id: str, limit: int = 100):
+def list_session_turns(session_id: str, user_id: str, limit: int = 100):
     if STORE is None:
         raise HTTPException(500, "Store not initialized")
-    rows = STORE.list_session_responses(session_id, limit=limit)
+    user_id_hash = hash_user_id(user_id)
+    rows = STORE.list_session_responses(session_id, limit=limit, user_id_hash=user_id_hash)
     return [_clean(r) for r in rows]
 
 

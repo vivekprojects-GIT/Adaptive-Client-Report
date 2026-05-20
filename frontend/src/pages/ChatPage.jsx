@@ -26,12 +26,14 @@ export default function ChatPage() {
       setToast({ msg: "Feedback failed", kind: "error" });
       return;
     }
-    if (result.status === "applied" || result.status === "applied_no_format_update") {
+    if (result.status === "applied" || result.status === "applied_no_bandit_update") {
       const r = result.normalized_reward;
       setToast({
         msg: `${prettySignal(signal)} ${r != null ? `(${r > 0 ? "+" : ""}${r})` : ""}`,
         kind: "ok",
       });
+    } else if (result.status === "queued") {
+      setToast({ msg: `${prettySignal(signal)} saved`, kind: "ok" });
     } else if (result.reason === "already_finalized") {
       setToast({ msg: "Already rated this response", kind: "error" });
     } else {
@@ -80,7 +82,10 @@ export default function ChatPage() {
         <header className="chat-header">
           <div>
             <h2>{headerTitle}</h2>
-            <span className="muted">claude-haiku-4-5 · finance</span>
+            <div className="chat-header-meta">
+              <span>claude-haiku-4-5</span>
+              <span>finance</span>
+            </div>
           </div>
           <StatusDot ok={ape.statusOk} />
         </header>
@@ -88,6 +93,7 @@ export default function ChatPage() {
         <MessageList
           messages={ape.messages}
           showMeta={showMeta}
+          onPrompt={ape.sendTurn}
           onFeedback={handleFeedback}
           onRegenerate={ape.regenerate}
         />
@@ -106,7 +112,7 @@ export default function ChatPage() {
 
 function truncate(s, n) {
   if (!s) return "";
-  return s.length > n ? s.slice(0, n).trimEnd() + "…" : s;
+  return s.length > n ? s.slice(0, n).trimEnd() + "..." : s;
 }
 
 function prettySignal(s) {

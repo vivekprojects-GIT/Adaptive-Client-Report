@@ -114,6 +114,36 @@
   cursor: not-allowed;
 }
 
+.admin-token-panel {
+  max-width: 520px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.admin-token-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.admin-token-row .input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 9px 12px;
+}
+.field-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 .form-spacer { flex: 1; }
 
 /* ===== Buttons ===== */
@@ -1447,3 +1477,106 @@
 .iq-tier-medium   { border-left: 4px solid #d4a017; }
 .iq-tier-low      { border-left: 4px solid #5fa86b; }
 .iq-tier-exploring { border-left: 4px solid var(--muted); }
+
+/* ============================================================
+   Admin visual polish
+   ============================================================ */
+
+.admin-tab-content {
+  gap: 18px;
+}
+
+.admin-section,
+.strategy-perf-block,
+.bandit-cell,
+.policy-group,
+.weights-section,
+.admin-table-wrap {
+  background: rgba(255, 255, 255, 0.86);
+  border-color: rgba(198, 211, 220, 0.78);
+  box-shadow: var(--shadow-sm);
+}
+
+.admin-section {
+  padding: 24px;
+  position: relative;
+  overflow: hidden;
+}
+
+.admin-section::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--primary), rgba(208, 138, 40, 0.76), transparent);
+  opacity: 0.76;
+}
+
+.admin-section-title {
+  font-size: 17px;
+  letter-spacing: -0.01em;
+}
+
+.admin-section-sub {
+  max-width: 860px;
+}
+
+.admin-form input[type="text"],
+.admin-form input[type="number"],
+.admin-form select,
+.admin-form textarea,
+.strategy-perf-controls input,
+.policy-add-row label input,
+.policy-add-row label select,
+.instructions-filter select {
+  background: var(--surface);
+  border-color: var(--border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+.btn-primary {
+  background: linear-gradient(145deg, var(--primary), #2f8a82);
+  box-shadow: 0 10px 22px rgba(35, 109, 104, 0.16);
+}
+
+.btn-secondary,
+.admin-row-btn,
+.admin-form .btn-secondary {
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.admin-table-wrap {
+  box-shadow: var(--shadow-sm);
+}
+
+.admin-table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.admin-table th {
+  background: var(--surface-soft);
+  color: var(--text-secondary);
+}
+
+.admin-table tbody tr:hover td {
+  background: rgba(226, 241, 239, 0.44);
+}
+
+.status-chip,
+.code-pill,
+.intent-chip,
+.strat-chip,
+.topic-chip,
+.tier-chip,
+.consumer-pill,
+.source-badge {
+  border: 1px solid rgba(255, 255, 255, 0.44);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.58);
+}
+
+.policy-add-row,
+.strategy-perf-controls,
+.weights-section {
+  background: rgba(248, 250, 252, 0.78);
+}

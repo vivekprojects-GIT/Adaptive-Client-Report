@@ -1,130 +1,111 @@
-# 06 · Outreach Recommendation
+# 06 - Outreach Recommendation
 
-> The math behind recommended outreach — per-action scoring weights, threshold gate, and compliance gates. *(The DB-level entity_type is still `offer_policy` for backward compatibility; in the UI and docs we call these "outreach actions".)*
+> Outreach recommendation is a candidate filter. It surfaces users who may be
+> worth contacting; it does not send messages or replace compliance workflows.
+
+The database entity remains `offer_policy` for compatibility. The UI and docs
+use the clearer label "Outreach".
 
 ---
 
-## What an outreach action is
+## What an Outreach Action Is
 
-A pre-defined next-best-action tied to a topic. Examples:
+An outreach action is a topic-specific next-best-action configured by an admin.
 
 | Topic | Outreach type | Description |
 |---|---|---|
-| `retirement_accounts` | `retirement_planning_consultation` | Schedule a 30-min planning call |
+| `retirement_accounts` | `retirement_planning_consultation` | Schedule a planning call |
 | `mortgage` | `mortgage_rate_check` | Send current rate options |
-| `credit_score` | `credit_education_email` | Free educational follow-up |
-| `tax_implications` | `advisor_referral` | Hand off to a CPA |
+| `credit_score` | `credit_education_email` | Send educational follow-up |
+| `tax_implications` | `advisor_referral` | Refer to a tax professional |
 
-The recommender decides whether a given user is **eligible** for each outreach based on their interest and compliance status. It never sends anything — it just surfaces candidates for the operations layer.
-
----
-
-## The big picture
-
-```
-User's per-topic sub-scores (precomputed)         Outreach policy (admin-set)
-┌─────────────────────────┐                       ┌─────────────────────────┐
-│ frequency_score      F  │                       │ topic              T    │
-│ recency_score        R  │ ─── join on topic ──▶ │ min_interest_score      │
-│ engagement_score     E  │                       │ weight_frequency        │
-│ followup_depth       U  │                       │ weight_recency          │
-│                         │                       │ weight_engagement       │
-└─────────────────────────┘                       │ weight_followup         │
-                                                  └─────────────────────────┘
-            │                                                  │
-            └──────────────────┬───────────────────────────────┘
-                               ▼
-                    score = w_f·F + w_r·R + w_e·E + w_u·U
-                    (weights normalized so they sum to 1)
-                               │
-                               ▼
-        ┌──────────────────────┴──────────────────────┐
-        │                                              │
-        ▼                                              ▼
-   score >= min_interest_score?            compliance + DNC ok?
-        │                                              │
-        └──────────────────────┬──────────────────────┘
-                               ▼
-                          eligible = both
-```
+The recommender scores whether a user qualifies for each action based on
+precomputed topic interest and compliance flags.
 
 ---
 
-## Step 1 · Sub-scores (in `ape_user_topic_interest`)
+## Inputs
 
-For each `(user_id_hash, topic)` row, we precompute four components from the last 30 days of `ape_turn_record`:
+| Source | Used for |
+|---|---|
+| `ape_user_topic_interest` | `frequency_score`, `recency_score`, `engagement_score`, `followup_depth_score` |
+| `ape_config` with `entity_type=offer_policy` | Topic, action type, threshold, optional weights |
+| `ape_user_directory` | `do_not_contact`, `compliance_eligible` |
 
-| Component | Formula | Range |
+The recommender does not read raw chat messages.
+
+---
+
+## Base Interest Score
+
+The analytics recompute stores four sub-scores per user/topic:
+
+| Component | Meaning | Range |
 |---|---|---|
-| **frequency_score** | `count_30d / max(count_30d across this user's topics)` | 0..1 |
-| **recency_score** | `exp(-days_since_last_seen / 7)` | 0..1 |
-| **engagement_score** | average normalized_reward across rewarded turns | 0..1 |
-| **followup_depth_score** | `count_7d / count_30d` | 0..1 |
+| `frequency_score` | How often this topic appears for the user | `0..1` |
+| `recency_score` | How recently the topic appeared | `0..1` |
+| `engagement_score` | Average normalized reward | `0..1` |
+| `followup_depth_score` | Recent follow-up depth | `0..1` |
 
-> ℹ These are stored in `ape_user_topic_interest` — recomputed on `POST /analytics/recompute` or via the cron. They are computed ONCE per user-topic, then reused by every outreach action.
-
----
-
-## Step 2 · Composite interest score
-
-**Default global weights** (from `ape/analytics/compute.py`):
+Default global weights:
 
 ```python
-W_FREQ      = 0.40
-W_RECENCY   = 0.25
-W_ENGAGE    = 0.25
-W_FOLLOWUP  = 0.10
+W_FREQ = 0.40
+W_RECENCY = 0.25
+W_ENGAGE = 0.25
+W_FOLLOWUP = 0.10
 ```
 
-The composite stored in `ape_user_topic_interest.interest_score`:
+Default composite:
 
-```
-interest_score = 0.40·F + 0.25·R + 0.25·E + 0.10·U
+```text
+interest_score =
+  0.40 * frequency_score
++ 0.25 * recency_score
++ 0.25 * engagement_score
++ 0.10 * followup_depth_score
 ```
 
 ---
 
-## Step 3 · Per-action weight overrides
+## Per-Action Weight Overrides
 
-Each outreach row can override the global weights:
+Each outreach policy can override the weights:
 
 ```yaml
-entity_type: offer_policy             # legacy field name; UI says "outreach"
-entity_id:   "retirement_accounts"
-offer_type:  "retirement_planning_consultation"
+entity_type: offer_policy
+entity_id: retirement_accounts
+domain: finance
+offer_type: retirement_planning_consultation
+description: Schedule a 30-minute planning call
 min_interest_score: 0.80
-# Optional overrides — null/missing means "use globals"
-weight_frequency:  0.10
-weight_recency:    0.10
-weight_engagement: 0.70    # this outreach cares mostly about engagement
-weight_followup:   0.10
+weight_frequency: 0.10
+weight_recency: 0.10
+weight_engagement: 0.70
+weight_followup: 0.10
+status: ACTIVE
 ```
 
-The recommender resolves weights at request time:
+Weights may be fractions or raw importance values. The recommender normalizes
+them to sum to 1 before scoring.
 
-```python
-def _resolve_weights(policy):
-    raw = {
-        "frequency":  policy.get("weight_frequency",  W_FREQ),
-        "recency":    policy.get("weight_recency",    W_RECENCY),
-        "engagement": policy.get("weight_engagement", W_ENGAGE),
-        "followup":   policy.get("weight_followup",   W_FOLLOWUP),
-    }
-    total = sum(raw.values())
-    return {k: v / total for k, v in raw.items()}   # normalize to sum=1
+Example:
+
+```text
+0.40 / 0.25 / 0.25 / 0.10
 ```
 
-Admin can enter weights as **fractions** (`0.4`, `0.25`) **or** as **raw importance** (`4`, `2.5`) — both produce the same effective ratio after normalization. The form shows a live preview:
+and:
 
+```text
+4 / 2.5 / 2.5 / 1
 ```
-EFFECTIVE: [Frequency 10%] [Recency 10%] [Engagement 70%] [Followup 10%]
-```
+
+produce the same effective ratio.
 
 ---
 
-## Step 4 · Per-action score
-
-Apply the resolved weights to the user's stored sub-scores:
+## Per-Action Score
 
 ```python
 score = (
@@ -135,99 +116,128 @@ score = (
 )
 ```
 
-This is **cheap** — no aggregation, just 4 multiplications using already-stored sub-scores. The recommender returns both the score and a per-component breakdown so the UI can show *why* a number came out the way it did.
+The endpoint returns both the score and the contribution breakdown so the UI can
+show why a recommendation passed or failed.
 
 ---
 
-## Step 5 · Three-way eligibility gate
+## Eligibility Gate
 
-```python
-score_ok       = score >= threshold
-compliance_ok  = directory.compliance_eligible        # default True
-do_not_contact = directory.do_not_contact             # default False
+Three checks must pass:
 
-eligible = score_ok AND compliance_ok AND NOT do_not_contact
+```text
+score >= min_interest_score
+AND compliance_eligible
+AND NOT do_not_contact
 ```
 
-Most-specific failure reason wins:
+Failure reasons are intentionally plain:
 
-| Failure | Reason text |
+| Failure | Reason |
 |---|---|
-| `do_not_contact` is set | "user has do_not_contact set — outreach blocked" |
-| `compliance_eligible = false` | "user failed compliance check — not eligible for outreach" |
-| `score < threshold` | "interest_score 0.78 below threshold 0.80 — nurture before reaching out" |
-| All pass | "score 0.90 ≥ 0.80 threshold; engagement contributes 0.22, frequency contributes 0.32; compliance + consent gates pass" |
+| `do_not_contact` | User has `do_not_contact` set; outreach blocked |
+| `compliance_eligible = false` | User failed compliance check |
+| Score below threshold | Interest is below the action threshold |
+| All pass | Score is above threshold and compliance/consent gates pass |
 
 ---
 
-## Example — same user, two weighting profiles
+## Example
 
-**User:** maya_learner. Her sub-scores on `roth_ira`:
-```
-frequency_score      = 0.82
-recency_score        = 0.89
-engagement_score     = 0.67
+User topic sub-scores for `roth_ira`:
+
+```text
+frequency_score = 0.82
+recency_score = 0.89
+engagement_score = 0.67
 followup_depth_score = 0.67
 ```
 
-**Outreach A — default weights (40/25/25/10):**
-```
-score = 0.40·0.82 + 0.25·0.89 + 0.25·0.67 + 0.10·0.67
-      = 0.328 + 0.223 + 0.168 + 0.067
-      = 0.786
-threshold = 0.80 → NOT ELIGIBLE
+Default action weights:
+
+```text
+score =
+  0.40 * 0.82
++ 0.25 * 0.89
++ 0.25 * 0.67
++ 0.10 * 0.67
+= 0.786
 ```
 
-**Outreach B — engagement-weighted (10/10/70/10):**
-```
-score = 0.10·0.82 + 0.10·0.89 + 0.70·0.67 + 0.10·0.67
-      = 0.082 + 0.089 + 0.469 + 0.067
-      = 0.707
-threshold = 0.60 → ELIGIBLE
+If the threshold is `0.80`, the user is not eligible yet.
+
+Engagement-weighted action:
+
+```text
+score =
+  0.10 * 0.82
++ 0.10 * 0.89
++ 0.70 * 0.67
++ 0.10 * 0.67
+= 0.707
 ```
 
-Same user. Same data. Different outreach goals → different verdicts. Admin sets this profile via the form on the Outreach tab.
+If that action's threshold is `0.60`, the same user becomes eligible. Same user,
+same data, different outreach goal.
 
 ---
 
-## How the breakdown appears in the UI
+## API Output Shape
 
-Each row in the Recommended Outreach table:
+`GET /analytics/offers/{user_id}` returns rows shaped like:
 
+```json
+{
+  "offer_type": "retirement_planning_consultation",
+  "description": "Schedule a 30-minute planning call",
+  "topic": "retirement_accounts",
+  "domain": "finance",
+  "min_interest_score": 0.8,
+  "interest_score": 0.786,
+  "eligible": false,
+  "reason": "interest_score 0.79 below threshold 0.80 - nurture before offering",
+  "score_ok": false,
+  "compliance_ok": true,
+  "do_not_contact": false,
+  "weights": {
+    "frequency": 0.4,
+    "recency": 0.25,
+    "engagement": 0.25,
+    "followup": 0.1
+  },
+  "score_breakdown": {
+    "frequency": 0.328,
+    "recency": 0.2225,
+    "engagement": 0.1675,
+    "followup": 0.067
+  }
+}
 ```
-Outreach                    User score    Threshold   Status        Reason
-─────────────────────────────────────────────────────────────────────────────
-retirement_planning_consult  0.78         0.80        ○ Not eligible
-                             freq 0.33  rec 0.22  eng 0.17  foll 0.07
-                                                                    "interest_score 0.78 below
-                                                                     threshold 0.80 — nurture
-                                                                     before reaching out"
-```
-
-Hover the breakdown for per-component weights tooltip.
 
 ---
 
-## Tuning hints
+## Tuning Hints
 
-| Symptom | Likely fix |
+| Symptom | Likely action |
 |---|---|
-| Too many users get "Eligible" everywhere | Raise `min_interest_score` |
-| One outreach action never fires even when users seem qualified | Lower its threshold, or shift weights to a component the users score well on |
-| New users get outreach prematurely | Tighten weights toward `engagement` (which falls back to 0.5 when no rewards yet) |
-| Old users keep getting outreach after going dormant | Raise `weight_recency` |
-| Compliance-blocked users vanish from list | Expected — gate is multiplicative; check `ape_user_directory.compliance_eligible` |
+| Too many users qualify | Raise `min_interest_score` |
+| One action never qualifies | Lower its threshold or shift weights |
+| New users qualify too early | Increase engagement weight or threshold |
+| Dormant users still qualify | Increase recency weight |
+| Compliance-blocked users never show eligible | Expected; compliance gate is multiplicative |
 
 ---
 
-## Important boundary
+## Boundary
 
-> ⚠ **The dashboard is a candidate filter, not a decision system.** It surfaces *who could be reached out to*. Downstream outreach orchestration must still pass your full compliance pipeline (jurisdictional rules, channel preferences, time-of-day, cooldown windows). Treat the Recommended Outreach table as input, not output.
+This dashboard is not a decision system. It should feed downstream outreach
+operations that enforce jurisdictional rules, consent, channel preferences,
+cooldowns, and business approvals.
 
 ---
 
-## See also
+## See Also
 
-- [03 · Admin config](./03-admin-config.md) — the Outreach tab UI + entity schema
-- [04 · Analytics layer](./04-analytics-layer.md) — where the recommended outreach appears
-- [08 · Privacy & compliance](./08-privacy-and-compliance.md) — what the compliance gate actually checks
+- [03 - Admin config](./03-admin-config.md)
+- [04 - Analytics layer](./04-analytics-layer.md)
+- [08 - Privacy and compliance](./08-privacy-and-compliance.md)

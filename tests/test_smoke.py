@@ -39,14 +39,14 @@ def test_signal_routing_completeness():
 
 def test_compute_rewards_thumbs_up():
     c_rel, f_rel, c_rew, f_rew = compute_rewards("thumbs_up")
-    assert c_rel and f_rel
-    assert c_rew == 2 and f_rew == 2
+    assert not c_rel and not f_rel
+    assert c_rew is None and f_rew is None
 
 
 def test_compute_rewards_format_change_request():
     c_rel, f_rel, c_rew, f_rew = compute_rewards("format_change_request")
     assert f_rel and not c_rel
-    assert f_rew == -2
+    assert f_rew == -1.0
     assert c_rew is None  # NOT_RECORDED
 
 

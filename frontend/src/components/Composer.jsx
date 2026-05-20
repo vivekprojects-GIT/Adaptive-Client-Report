@@ -32,7 +32,7 @@ export default function Composer({ onSend, disabled, sessionId }) {
         <textarea
           ref={taRef}
           rows={1}
-          placeholder="Message APE…"
+          placeholder="Message APE..."
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import Message from "./Message.jsx";
 
-export default function MessageList({ messages, showMeta, onFeedback, onRegenerate }) {
+export default function MessageList({ messages, showMeta, onPrompt, onFeedback, onRegenerate }) {
   const wrapRef = useRef(null);
 
   // Auto-scroll to the bottom on new messages
@@ -21,11 +21,23 @@ export default function MessageList({ messages, showMeta, onFeedback, onRegenera
     <div className="messages" ref={wrapRef}>
       {messages.length === 0 ? (
         <div className="empty-chat">
-          <div className="empty-chat-title">How can I help you today?</div>
-          <div>
-            Ask a finance question to get started. Rate, copy, or regenerate
-            any answer — the bandit learns which response formats work best
-            for you.
+          <div className="empty-chat-mark" aria-hidden="true">A</div>
+          <div className="empty-chat-title">Ask APE about a money decision</div>
+          <div className="empty-chat-sub">
+            Start with one of these, or write your own question.
+          </div>
+          <div className="prompt-grid">
+            {PROMPTS.map((prompt) => (
+              <button
+                key={prompt}
+                className="prompt-card"
+                type="button"
+                onClick={() => onPrompt?.(prompt)}
+              >
+                <span>{prompt}</span>
+                <PromptArrow />
+              </button>
+            ))}
           </div>
         </div>
       ) : (
@@ -43,5 +55,20 @@ export default function MessageList({ messages, showMeta, onFeedback, onRegenera
         </div>
       )}
     </div>
+  );
+}
+
+const PROMPTS = [
+  "Compare Roth IRA vs Traditional IRA",
+  "Make a debt payoff plan in numbered steps",
+  "Explain expense ratios with a simple example",
+  "Help me decide between saving and investing",
+];
+
+function PromptArrow() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true">
+      <path d="M7 4.5 12.5 10 7 15.5" />
+    </svg>
   );
 }

@@ -4,8 +4,19 @@
  * and FastAPI serves them at the same origin in production.
  */
 
+function adminToken() {
+  try {
+    return localStorage.getItem("ape.admin_token") || "";
+  } catch {
+    return "";
+  }
+}
+
 async function request(method, path, body) {
-  const opts = { method, headers: { "Content-Type": "application/json" } };
+  const headers = { "Content-Type": "application/json" };
+  const token = adminToken();
+  if (token) headers["X-APE-Admin-Token"] = token;
+  const opts = { method, headers };
   if (body !== undefined) opts.body = JSON.stringify(body);
   const resp = await fetch(path, opts);
   if (!resp.ok) {
@@ -24,7 +35,7 @@ export const api = {
   postFeedback:         (payload)                          => request("POST",   "/feedback", payload),
 
   // Conversation history (Mongo-backed)
-  loadSessionMessages:  (sessionId, limit = 200)           => request("GET",    `/sessions/${encodeURIComponent(sessionId)}/messages?limit=${limit}`),
+  loadSessionMessages:  (sessionId, userId, limit = 200)   => request("GET",    `/sessions/${encodeURIComponent(sessionId)}/messages?user_id=${encodeURIComponent(userId)}&limit=${limit}`),
   listUserSessions:     (userId, limit = 20)               => request("GET",    `/users/${encodeURIComponent(userId)}/sessions?limit=${limit}`),
   getLatestSession:     (userId)                           => request("GET",    `/users/${encodeURIComponent(userId)}/latest-session`),
   deleteSession:        (sessionId, userId)                => request("DELETE", `/sessions/${encodeURIComponent(sessionId)}?user_id=${encodeURIComponent(userId)}`),
