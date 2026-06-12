@@ -97,6 +97,21 @@ function renderMetaChips(msg) {
   } else if (meta.ucb_at_selection != null) {
     chips.push(chip(`ucb: ${Number(meta.ucb_at_selection).toFixed(2)}`));
   }
+  // Applied reward verdict — joined from ape_turn_record by the messages
+  // API, so every previous answer shows what it earned.
+  if (msg.reward_status === "APPLIED") {
+    if (msg.normalized_reward != null) {
+      const v = Number(msg.normalized_reward);
+      chips.push(chip(
+        `reward: ${v > 0 ? "+" : ""}${v}${msg.applied_signal ? " · " + msg.applied_signal : ""}`,
+        v > 0 ? "pos" : "neg",
+      ));
+    } else if (msg.applied_signal && msg.applied_signal !== "no_signal") {
+      chips.push(chip(`signal: ${msg.applied_signal} (no reward)`));
+    }
+  } else if (msg.reward_status === "PENDING" && msg.response_id) {
+    chips.push(chip("reward: pending"));
+  }
   return <>{chips}</>;
 }
 

@@ -329,6 +329,27 @@ def list_session_messages(session_id: str, user_id: str, limit: int = 200):
         raise HTTPException(500, "Store not initialized")
     user_id_hash = hash_user_id(user_id)
     rows = STORE.list_session_messages(session_id, limit=limit, user_id_hash=user_id_hash)
+
+    # Join each assistant message's applied reward from ape_turn_record so
+    # the UI can show what every previous answer earned (signal + value).
+    resp_ids = [r.get("response_id") for r in rows if r.get("response_id")]
+    if resp_ids:
+        verdicts = {
+            t["response_id"]: t
+            for t in STORE.turn_record.find(
+                {"response_id": {"$in": resp_ids}},
+                {"response_id": 1, "reward_status": 1, "signal": 1,
+                 "reward_category": 1, "normalized_reward": 1},
+            )
+        }
+        for r in rows:
+            t = verdicts.get(r.get("response_id"))
+            if t:
+                r["reward_status"]     = t.get("reward_status")
+                r["applied_signal"]    = t.get("signal")
+                r["reward_category"]   = t.get("reward_category")
+                r["normalized_reward"] = t.get("normalized_reward")
+
     return [_clean(r) for r in rows]
 
 
