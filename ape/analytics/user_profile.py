@@ -69,9 +69,13 @@ PARAGRAPH_STRATEGIES: Set[str] = {
 # Mirror of ape_config signal_routing entries; kept here to avoid an extra
 # round-trip on every profile compute.
 # --------------------------------------------------------------------------
-CLARITY_SIGNALS: Set[str]  = {"regenerate_click", "format_change_request", "reask_same_question"}
-FRICTION_SIGNALS: Set[str] = {"thumbs_down", "regenerate_click", "session_abandon", "content_correction"}
-POSITIVE_SIGNALS: Set[str] = {"thumbs_up", "copy_save", "it_worked_statement", "deeper_question"}
+# Current 9-signal catalog names first; legacy names (regenerate_click,
+# session_abandon, copy_save) kept so pre-migration turn records still count.
+CLARITY_SIGNALS: Set[str]  = {"format_change_request", "reask_same_question", "regenerate_click"}
+FRICTION_SIGNALS: Set[str] = {"thumbs_down", "format_change_request", "content_correction",
+                              "regenerate_click", "session_abandon"}
+POSITIVE_SIGNALS: Set[str] = {"thumbs_up", "format_praise_explicit", "it_worked_statement",
+                              "deeper_question", "copy_save"}
 
 
 def compute_user_cognitive_profile(

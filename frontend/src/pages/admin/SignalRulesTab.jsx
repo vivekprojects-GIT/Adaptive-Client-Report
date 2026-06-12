@@ -8,19 +8,17 @@ import StatusPill from "./StatusPill.jsx";
 // reward_scale config, so editing a magnitude on the Reward Scale tab
 // is immediately reflected here.
 const DEFAULT_CATEGORY_VALUES = {
-  strong_positive:  +1.0,
-  weak_positive:    +0.5,
-  weak_negative:    -0.5,
-  strong_negative:  -1.0,
+  explicit_positive: +2.0,
+  inferred_positive: +1.0,
+  inferred_negative: -1.0,
+  explicit_negative: -2.0,
 };
-const CATEGORY_ORDER = ["strong_positive", "weak_positive", "weak_negative", "strong_negative"];
+const CATEGORY_ORDER = ["explicit_positive", "inferred_positive", "inferred_negative", "explicit_negative"];
 
 const SOURCE_TYPES = [
-  { value: "ui",        label: "UI button (user click)" },
-  { value: "llm",       label: "LLM-detected (classifier)" },
-  { value: "derived",   label: "Derived (automatic — e.g. session, compliance)" },
-  { value: "composite", label: "Composite (multi-signal pattern)" },
-  { value: "default",   label: "Default (no_signal)" },
+  { value: "ui",     label: "UI button (user click)" },
+  { value: "llm",    label: "LLM-detected (classifier)" },
+  { value: "system", label: "System (no_signal)" },
 ];
 
 const FREQ_OPTIONS = ["common", "moderate", "rare"];
@@ -199,15 +197,16 @@ export default function SignalRulesTab({ notify }) {
         </h2>
         <p className="admin-section-sub">
           Each signal has two reward axes — <strong>format</strong> and{" "}
-          <strong>content</strong>. Pick a strength <strong>category</strong> per axis
+          <strong>content</strong>. Pick an evidence <strong>tier</strong> per axis
           (the dropdown shows the live numeric value), or leave blank for{" "}
           <code>NOT_RECORDED</code> (no bandit update on that axis). The system
-          ships 25 signals (15 atomic + 10 composite); you can edit any value,
-          add new signals, or delete unused ones.
+          ships exactly the 9 signals from the reward doc (2 UI + 6 LLM +
+          no_signal); you can edit any value, add new signals, or delete unused
+          ones.
         </p>
         <div className="reward-scale-pointer">
-          <strong>Reward magnitudes</strong> (the actual <code>+1.0</code> /
-          <code>+0.5</code> / <code>−0.5</code> / <code>−1.0</code> numbers) live
+          <strong>Reward magnitudes</strong> (the actual <code>±2</code> explicit /
+          <code>±1</code> inferred numbers) live
           on the <strong>Reward Scale</strong> tab. The values shown here in the
           dropdown labels and the table badges are pulled live from that config —
           edit them there to change the numbers everywhere at once.
@@ -221,16 +220,16 @@ export default function SignalRulesTab({ notify }) {
           </ul>
         </div>
         <ul className="col-legend">
-          <li><strong>Signal name</strong> — snake_case identifier matching what the classifier, UI, or composite detector emits.
-            <em> e.g. thumbs_up, format_compliance_pass, pattern_regret.</em></li>
+          <li><strong>Signal name</strong> — snake_case identifier matching what the classifier or UI emits.
+            <em> e.g. thumbs_up, format_change_request, deeper_question.</em></li>
           <li><strong>Source</strong> — origin of the signal.
-            <em> ui = button click; llm = classifier text detection; derived = automatic (compliance, session); composite = multi-signal pattern.</em></li>
-          <li><strong>Format reward</strong> — strength on the format/presentation axis.
-            <em> e.g. strong_negative for format_change_request; weak_positive for copy_save.</em></li>
-          <li><strong>Content reward</strong> — strength on the content/accuracy axis.
-            <em> e.g. strong_negative for content_correction; None for thumbs_up (it's ambiguous, kept analytics-only).</em></li>
+            <em> ui = button click (thumbs only); llm = classifier text detection; system = no_signal.</em></li>
+          <li><strong>Format reward</strong> — evidence tier on the format/presentation axis.
+            <em> e.g. explicit_negative (−2) for format_change_request; inferred_positive (+1) for thumbs_up.</em></li>
+          <li><strong>Content reward</strong> — evidence tier on the content/accuracy axis.
+            <em> e.g. explicit_negative (−2) for content_correction; explicit_positive (+2) for thumbs_up.</em></li>
           <li><strong>Feature ID</strong> — stable integer for ML feature encoding. Never reuse across signals.
-            <em> e.g. 1 (format_change_request), 13 (thumbs_up), 17 (pattern_engaged_positive).</em></li>
+            <em> e.g. 1 (thumbs_up), 4 (format_change_request), 9 (no_signal).</em></li>
           <li><strong>Expected frequency</strong> — sanity bound for monitoring.
             <em> common = most turns; moderate = some turns; rare = should fire infrequently.</em></li>
           <li><strong>Evidence quality</strong> — how trustworthy this signal is for bandit learning (Stage 2 priors).

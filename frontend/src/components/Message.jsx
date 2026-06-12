@@ -95,16 +95,31 @@ function renderMetaChips(msg) {
     chips.push(chip(`ucb: ${Number(meta.ucb_at_selection).toFixed(2)}`));
   }
   // Applied reward verdict — joined from ape_turn_record by the messages
-  // API, so every previous answer shows what it earned.
+  // API. Shows BOTH reward axes of the two-axis model:
+  //   format  — what the bandit consumed (explicit ±2 / inferred ±1)
+  //   content — recorded evidence about the answer's substance
   if (msg.reward_status === "APPLIED") {
-    if (msg.normalized_reward != null) {
-      const v = Number(msg.normalized_reward);
+    const hasFormat  = msg.normalized_reward != null;
+    const hasContent = msg.content_reward != null;
+    if (msg.applied_signal && msg.applied_signal !== "no_signal") {
+      chips.push(chip(`signal: ${msg.applied_signal}`));
+    }
+    if (hasContent) {
+      const c = Number(msg.content_reward);
       chips.push(chip(
-        `reward: ${v > 0 ? "+" : ""}${v}${msg.applied_signal ? " · " + msg.applied_signal : ""}`,
-        v > 0 ? "pos" : "neg",
+        `content: ${c > 0 ? "+" : ""}${c} (${tierLabel(msg.content_category)})`,
+        c > 0 ? "pos" : "neg",
       ));
-    } else if (msg.applied_signal && msg.applied_signal !== "no_signal") {
-      chips.push(chip(`signal: ${msg.applied_signal} (no reward)`));
+    }
+    if (hasFormat) {
+      const f = Number(msg.normalized_reward);
+      chips.push(chip(
+        `format: ${f > 0 ? "+" : ""}${f} (${tierLabel(msg.reward_category)})`,
+        f > 0 ? "pos" : "neg",
+      ));
+    }
+    if (!hasFormat && !hasContent && msg.applied_signal && msg.applied_signal !== "no_signal") {
+      chips.push(chip("no reward (axis not recorded)"));
     }
   } else if (msg.reward_status === "PENDING" && msg.response_id) {
     chips.push(chip("reward: pending"));
@@ -114,6 +129,12 @@ function renderMetaChips(msg) {
 
 function chip(text, klass = "") {
   return <span key={text} className={`chip ${klass}`}>{text}</span>;
+}
+
+// "explicit_positive" -> "explicit", "inferred_negative" -> "inferred"
+function tierLabel(category) {
+  if (!category) return "?";
+  return String(category).split("_")[0];
 }
 
 // ---------- Icons ----------

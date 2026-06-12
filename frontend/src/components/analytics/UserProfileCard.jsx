@@ -169,21 +169,21 @@ export default function UserProfileCard({ profile, userLabel, dailyActivity = nu
           value={profile.clarity_need}
           tone={profile.clarity_need === "High" ? "warn" : "ok"}
           footnote={`${profile.clarity_signal_count} clarity signals seen`}
-          info={<>How often the user signals confusion. Counts <code>regenerate_click</code>, <code>format_change_request</code>, <code>reask_same_question</code>. <strong>High</strong> ≥ 5 signals — consider simpler defaults for them.</>}
+          info={<>How often the user signals confusion. Counts <code>format_change_request</code>, <code>reask_same_question</code>. <strong>High</strong> ≥ 5 signals — consider simpler defaults for them.</>}
         />
         <FacetTile
           label="Friction signals"
           value={profile.friction_signal_count}
           tone={profile.friction_signal_count > 3 ? "warn" : "ok"}
-          footnote="thumbs_down / regenerate / abandon / correction"
-          info={<>Hard negative signals: <code>thumbs_down</code>, <code>regenerate_click</code>, <code>session_abandon</code>, <code>content_correction</code>, plus turns with normalized_reward &lt; -0.3. High friction users are candidates for instruction refinement on their dominant topics.</>}
+          footnote="thumbs_down / format_change / correction"
+          info={<>Hard negative signals: <code>thumbs_down</code>, <code>format_change_request</code>, <code>content_correction</code>, plus turns with negative normalized_reward. High friction users are candidates for instruction refinement on their dominant topics.</>}
         />
         <FacetTile
           label="Positive engagement"
           value={profile.positive_signal_count}
           tone={profile.positive_signal_count > 0 ? "pos" : "neutral"}
-          footnote="thumbs_up / copy / it_worked / deeper_question"
-          info={<>Hard positive signals: <code>thumbs_up</code>, <code>copy_save</code>, <code>it_worked_statement</code>, <code>deeper_question</code>, plus turns with normalized_reward ≥ 0.5. High count = the system is working for this user.</>}
+          footnote="thumbs_up / format_praise / it_worked / deeper_question"
+          info={<>Hard positive signals: <code>thumbs_up</code>, <code>format_praise_explicit</code>, <code>it_worked_statement</code>, <code>deeper_question</code>, plus turns with positive normalized_reward. High count = the system is working for this user.</>}
         />
         <FacetTile
           label="Recency momentum"

@@ -516,11 +516,17 @@ class MongoStore:
         signal: str,
         reward_category: Optional[str],
         normalized_reward: Optional[float],
+        content_category: Optional[str] = None,
+        content_reward: Optional[float] = None,
     ) -> Optional[Dict[str, Any]]:
         """Path B — atomically mark a response as APPLIED.
 
         Conditional on reward_status=PENDING and user_id_hash match — prevents
         double rewards and cross-user reward injection.
+
+        Stores BOTH reward axes: reward_category/normalized_reward is the
+        FORMAT axis (what the bandit consumes), content_category/
+        content_reward is the CONTENT axis (recorded for display/analytics).
 
         Returns the post-update document, or None if the condition failed
         (which means either: response not found, wrong user, or already rewarded).
@@ -535,6 +541,8 @@ class MongoStore:
                 "signal":            signal,
                 "reward_category":   reward_category,
                 "normalized_reward": normalized_reward,
+                "content_category":  content_category,
+                "content_reward":    content_reward,
                 "reward_status":     REWARD_STATUS_APPLIED,
                 "rewarded_at":       utcnow_iso(),
             }},

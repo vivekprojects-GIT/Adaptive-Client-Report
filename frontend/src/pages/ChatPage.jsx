@@ -43,9 +43,18 @@ export default function ChatPage() {
       setRated((prev) => ({ ...prev, [responseId]: signal }));
     }
     if (result.status === "applied" || result.status === "applied_no_bandit_update") {
-      const r = result.normalized_reward;
+      // Show BOTH reward axes: content (explicit ±2) and format (inferred ±1)
+      const parts = [];
+      if (result.content_reward != null) {
+        const c = Number(result.content_reward);
+        parts.push(`content ${c > 0 ? "+" : ""}${c}`);
+      }
+      if (result.normalized_reward != null) {
+        const f = Number(result.normalized_reward);
+        parts.push(`format ${f > 0 ? "+" : ""}${f}`);
+      }
       setToast({
-        msg: `${prettySignal(signal)} ${r != null ? `(${r > 0 ? "+" : ""}${r})` : ""}`,
+        msg: `${prettySignal(signal)}${parts.length ? " · " + parts.join(" · ") : ""}`,
         kind: "ok",
       });
     } else if (result.status === "queued") {

@@ -82,8 +82,12 @@ class FeedbackResponse(BaseModel):
     status:              str
     response_id:         Optional[str] = None
     signal:              Optional[str] = None
+    # FORMAT axis — what the bandit consumed (explicit ±2 / inferred ±1)
     reward_category:     Optional[str] = None
     normalized_reward:   Optional[float] = None
+    # CONTENT axis — recorded for display/analytics, not consumed by the bandit
+    content_category:    Optional[str] = None
+    content_reward:      Optional[float] = None
     reason:              Optional[str] = None
     strategy_row_after:  Optional[Dict[str, Any]] = None
     current_status:      Optional[str] = None

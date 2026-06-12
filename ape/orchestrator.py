@@ -871,6 +871,31 @@ class ApeOrchestrator:
             else:
                 best_bandit_signal, best_bandit_category, best_bandit_reward = leaders[0]
 
+        # CONTENT axis — same strongest-|delta| rule over the pool's
+        # content routings. Not consumed by the bandit (format-only today);
+        # recorded so the UI/analytics can show both axes of the verdict.
+        content_candidates: List[tuple] = []
+        for sig in signal_set:
+            r = self.store.get_signal_routing(sig)
+            if r is None or not r.get("content_relevant"):
+                continue
+            cat = r.get("content_category")
+            if not cat:
+                continue
+            scale = self.store.get_reward_scale(cat)
+            if scale is None or scale.get("normalized_reward") is None:
+                continue
+            normalized = float(scale["normalized_reward"])
+            if normalized != 0.0:
+                content_candidates.append((sig, cat, normalized))
+        best_content_category: Optional[str] = None
+        best_content_reward: Optional[float] = None
+        if content_candidates:
+            top_mag = max(abs(v) for _, _, v in content_candidates)
+            leaders = [(s, c, v) for s, c, v in content_candidates if abs(v) == top_mag]
+            if len({1 if v > 0 else -1 for _, _, v in leaders}) == 1:
+                _, best_content_category, best_content_reward = leaders[0]
+
         # Atomic CAS: PENDING → APPLIED. Record the LABEL (`winner`) but
         # the REWARD CATEGORY + VALUE come from the bandit-best signal.
         # If no signal in the pool was bandit-eligible, store None and
@@ -881,6 +906,8 @@ class ApeOrchestrator:
             signal=winner,
             reward_category=best_bandit_category,
             normalized_reward=best_bandit_reward,
+            content_category=best_content_category,
+            content_reward=best_content_reward,
         )
         if rewarded is None:
             return {"status": "rejected", "reason": "race_already_applied", "response_id": response_id}
@@ -906,6 +933,8 @@ class ApeOrchestrator:
             "n_signals_pooled":   len(pending),
             "reward_category":    best_bandit_category,
             "normalized_reward":  best_bandit_reward,
+            "content_category":   best_content_category,
+            "content_reward":     best_content_reward,
             "strategy_row_after": _clean(updated_row),
         }
 

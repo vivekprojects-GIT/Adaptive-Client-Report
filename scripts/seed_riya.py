@@ -56,6 +56,13 @@ SIGNAL_REWARD: Dict[str, Tuple[str, float]] = {
     "format_change_request":  ("explicit_negative", -2.0),
 }
 
+# CONTENT axis per signal (recorded for display/analytics; the bandit only
+# consumes the format axis above). Thumbs are EXPLICIT content evidence ±2.
+SIGNAL_CONTENT: Dict[str, Tuple[str, float]] = {
+    "thumbs_up":   ("explicit_positive", +2.0),
+    "thumbs_down": ("explicit_negative", -2.0),
+}
+
 # How Riya reacts to a strategy she loves / tolerates / dislikes.
 # (signal, probability) — drawn per pull. "no_signal" = no reaction; the
 # pull still counts (count bumps at selection) but no reward lands.
@@ -147,6 +154,7 @@ def seed_riya(store: MongoStore, seed: int = 42) -> Tuple[int, int]:
                 ts = sample_ts(rng)
                 signal = pick_signal(rng, profile)
                 category, reward = SIGNAL_REWARD.get(signal, (None, None))
+                content_category, content_reward = SIGNAL_CONTENT.get(signal, (None, None))
                 if reward is not None:
                     rewards.append(reward)
                     if reward > 0:
@@ -181,6 +189,8 @@ def seed_riya(store: MongoStore, seed: int = 42) -> Tuple[int, int]:
                     "signal":                signal,
                     "reward_category":       category,
                     "normalized_reward":     reward,
+                    "content_category":      content_category,
+                    "content_reward":        content_reward,
                     "pending_signals":       [],
                 })
                 turn_n += 1

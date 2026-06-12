@@ -339,7 +339,8 @@ def list_session_messages(session_id: str, user_id: str, limit: int = 200):
             for t in STORE.turn_record.find(
                 {"response_id": {"$in": resp_ids}},
                 {"response_id": 1, "reward_status": 1, "signal": 1,
-                 "reward_category": 1, "normalized_reward": 1},
+                 "reward_category": 1, "normalized_reward": 1,
+                 "content_category": 1, "content_reward": 1},
             )
         }
         for r in rows:
@@ -347,8 +348,11 @@ def list_session_messages(session_id: str, user_id: str, limit: int = 200):
             if t:
                 r["reward_status"]     = t.get("reward_status")
                 r["applied_signal"]    = t.get("signal")
+                # FORMAT axis (bandit) + CONTENT axis (display)
                 r["reward_category"]   = t.get("reward_category")
                 r["normalized_reward"] = t.get("normalized_reward")
+                r["content_category"]  = t.get("content_category")
+                r["content_reward"]    = t.get("content_reward")
 
     return [_clean(r) for r in rows]
 
