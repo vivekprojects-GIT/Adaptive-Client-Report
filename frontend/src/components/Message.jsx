@@ -90,7 +90,11 @@ function renderMetaChips(msg) {
   if (meta.intent)            chips.push(chip("intent: "   + meta.intent));
   if (meta.selected_strategy) chips.push(chip("strategy: " + meta.selected_strategy));
   if (msg.rendered_format)    chips.push(chip("rendered: " + msg.rendered_format));
-  if (meta.ucb_at_selection != null) {
+  // Round-robin cold-start picks have no meaningful UCB score — show the
+  // selection method instead of a misleading "ucb: 0.00".
+  if (meta.selection_method === "round_robin") {
+    chips.push(chip("pick: round-robin"));
+  } else if (meta.ucb_at_selection != null) {
     chips.push(chip(`ucb: ${Number(meta.ucb_at_selection).toFixed(2)}`));
   }
   return <>{chips}</>;

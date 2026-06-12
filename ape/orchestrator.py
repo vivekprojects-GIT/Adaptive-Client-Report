@@ -434,7 +434,7 @@ class ApeOrchestrator:
             "rag_hit_count":           len(rag_hits),
             "topic":                   topic,
             "selected_strategy":       suggested,
-            "selection_method":        "ucb",
+            "selection_method":        selection["selection_method"],
             "suggested_format":        suggested,
             "rendered_format":         rendered_format,
             "format_compliance":       int(bool(compliance)),
@@ -461,6 +461,7 @@ class ApeOrchestrator:
                 "intent":            intent,
                 "topic":             topic,
                 "selected_strategy": suggested,
+                "selection_method":  selection["selection_method"],
                 "ucb_at_selection":  selection["ucb_at_selection"],
             },
         )
@@ -673,7 +674,7 @@ class ApeOrchestrator:
             "rag_hit_count":           len(rag_hits),
             "topic":                   topic,
             "selected_strategy":       suggested,
-            "selection_method":        "ucb",
+            "selection_method":        selection["selection_method"],
             "suggested_format":        suggested,
             "rendered_format":         rendered_format,
             "format_compliance":       int(bool(compliance)),
@@ -703,6 +704,7 @@ class ApeOrchestrator:
                 "intent":            intent,
                 "topic":             topic,
                 "selected_strategy": suggested,
+                "selection_method":  selection["selection_method"],
                 "ucb_at_selection":  selection["ucb_at_selection"],
             },
         )
