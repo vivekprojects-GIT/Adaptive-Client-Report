@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 export default function Sidebar({
@@ -13,6 +14,18 @@ export default function Sidebar({
 }) {
   const groups = groupSessionsByRecency(sessions);
   const initial = (userId || "U").slice(0, 1).toUpperCase();
+
+  // Draft-edit the user id locally; commit on Enter or blur. Committing on
+  // every keystroke made the field impossible to edit (an empty field
+  // snapped back to demo_user mid-typing and each keystroke switched users).
+  const [draft, setDraft] = useState(userId);
+  useEffect(() => { setDraft(userId); }, [userId]);
+
+  function commitUserId() {
+    const v = (draft || "").trim();
+    if (v && v !== userId) onUserIdChange(v);
+    else setDraft(userId);   // empty or unchanged — revert the draft
+  }
 
   return (
     <aside className="sidebar">
@@ -71,9 +84,12 @@ export default function Sidebar({
           <input
             className="identity-input"
             type="text"
-            value={userId}
+            value={draft}
             placeholder="user_id"
-            onChange={(e) => onUserIdChange(e.target.value || "demo_user")}
+            title="Type a user id and press Enter to switch"
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); }}
+            onBlur={commitUserId}
           />
         </div>
         <nav className="sidebar-actions">

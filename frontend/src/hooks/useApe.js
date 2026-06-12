@@ -356,6 +356,19 @@ export function useApe() {
     return () => window.removeEventListener("beforeunload", onUnload);
   }, [messages, userId]);
 
+  // ---- User switching ------------------------------------------------------
+  // Changing the user must also drop the old user's sessionId — otherwise the
+  // chat keeps pointing at a session the new user can't read (and the
+  // latest-session auto-resume for the new user never fires).
+  const switchUser = useCallback((id) => {
+    const trimmed = (id || "").trim();
+    if (!trimmed || trimmed === userId) return;
+    setUserId(trimmed);
+    setSessionId(null);
+    setMessages([]);
+    setSessions([]);
+  }, [userId, setUserId, setSessionId]);
+
   // ---- Session controls --------------------------------------------------
   const newSession = useCallback(() => {
     // Drop sessionId; next sendTurn() will trigger the server to mint a new one
@@ -392,7 +405,7 @@ export function useApe() {
   }, [userId]);
 
   return {
-    userId, setUserId,
+    userId, setUserId, switchUser,
     sessionId, switchSession, newSession, deleteSession,
     sessions,
     messages:  pendingMessages.length ? [...messages, ...pendingMessages] : messages,

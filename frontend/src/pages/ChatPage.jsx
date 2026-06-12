@@ -86,7 +86,7 @@ export default function ChatPage() {
     <div className="app">
       <Sidebar
         userId={ape.userId}
-        onUserIdChange={ape.setUserId}
+        onUserIdChange={ape.switchUser}
         sessionId={ape.sessionId}
         sessions={ape.sessions}
         onSwitchSession={ape.switchSession}
