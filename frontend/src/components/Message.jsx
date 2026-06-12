@@ -10,9 +10,10 @@ import { escapeHtml, renderMarkdown } from "../utils/markdown.js";
  * (👍/👎) appears only on the most recent assistant message and routes to
  * Path B with that exact response_id.
  */
-export default function Message({ message, isLastAssistant, showMeta, onFeedback, onRegenerate }) {
+export default function Message({ message, isLastAssistant, showMeta, onFeedback, onRegenerate, ratedSignal }) {
   const isUser = message.role === "user";
   const isPlaceholder = !!message._placeholder;
+  const thumbsLocked = !!ratedSignal;
 
   // For user messages: escape and keep as plain text in the bubble.
   // For assistant: render markdown (headings, lists, tables, code).
@@ -36,18 +37,22 @@ export default function Message({ message, isLastAssistant, showMeta, onFeedback
       {!isUser && isLastAssistant && !isPlaceholder && message.response_id && (
         <div className="feedback-row">
           <button
-            className="fb-btn"
+            className={`fb-btn${ratedSignal === "thumbs_up" ? " active" : ""}`}
             onClick={() => onFeedback(message.response_id, "thumbs_up")}
-            title="Good response"
+            disabled={thumbsLocked}
+            title={thumbsLocked ? "Already rated" : "Good response"}
             aria-label="Thumbs up"
+            aria-pressed={ratedSignal === "thumbs_up"}
           >
             <ThumbUpIcon />
           </button>
           <button
-            className="fb-btn"
+            className={`fb-btn${ratedSignal === "thumbs_down" ? " active" : ""}`}
             onClick={() => onFeedback(message.response_id, "thumbs_down")}
-            title="Bad response"
+            disabled={thumbsLocked}
+            title={thumbsLocked ? "Already rated" : "Bad response"}
             aria-label="Thumbs down"
+            aria-pressed={ratedSignal === "thumbs_down"}
           >
             <ThumbDownIcon />
           </button>

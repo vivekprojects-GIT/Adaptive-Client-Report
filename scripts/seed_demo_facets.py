@@ -141,12 +141,12 @@ def _signal_from_reward(r: float) -> tuple[str, str]:
     Mirrors the real signal_routing config so the profile facets (clarity,
     friction, positive) get realistic input.
     """
-    if r >= 0.7:   return "thumbs_up",        "strong_positive"
-    if r >= 0.3:   return "copy_save",        "weak_positive"
-    if r >= 0.0:   return "deeper_question",  "weak_positive"
+    if r >= 0.7:   return "thumbs_up",        "explicit_positive"
+    if r >= 0.3:   return "copy_save",        "inferred_positive"
+    if r >= 0.0:   return "deeper_question",  "inferred_positive"
     if r >= -0.3:  return "no_signal",        "neutral"
-    if r >= -0.6:  return "regenerate_click", "weak_negative"
-    return            "thumbs_down",          "strong_negative"
+    if r >= -0.6:  return "regenerate_click", "inferred_negative"
+    return            "thumbs_down",          "explicit_negative"
 
 
 def seed_bandit_rows(store, user_hash: str) -> int:

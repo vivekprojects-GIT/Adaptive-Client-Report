@@ -42,8 +42,8 @@ def main() -> int:
         print(f"[02/16] Seed: {counts}")
 
         # 2. Signal routing + reward scale
-        assert store.get_signal_routing("thumbs_up")["format_category"] == "strong_positive"
-        assert store.get_reward_scale("strong_positive")["normalized_reward"] == 1.0
+        assert store.get_signal_routing("thumbs_up")["format_category"] == "inferred_positive"
+        assert store.get_reward_scale("explicit_positive")["normalized_reward"] == 2.0
         print("[03/16] Signal routing + reward scale resolve correctly")
 
         # 3. Bandit cell lazy creation
@@ -150,7 +150,7 @@ def main() -> int:
             response_id="resp_atlas_smoke_001",
             user_id_hash="u_alice_test",
             signal="thumbs_up",
-            reward_category="strong_positive",
+            reward_category="explicit_positive",
             normalized_reward=1.0,
         )
         assert rewarded is not None and rewarded["reward_status"] == "APPLIED"
@@ -164,7 +164,7 @@ def main() -> int:
             response_id="resp_atlas_smoke_001",
             user_id_hash="u_alice_test",
             signal="thumbs_up",
-            reward_category="strong_positive",
+            reward_category="explicit_positive",
             normalized_reward=1.0,
         ) is None
         print("[13/16] Double-reward rejected")
@@ -174,7 +174,7 @@ def main() -> int:
             response_id="resp_atlas_smoke_001",
             user_id_hash="u_eve_attacker",
             signal="thumbs_up",
-            reward_category="strong_positive",
+            reward_category="explicit_positive",
             normalized_reward=1.0,
         ) is None
         print("[14/16] Cross-user injection rejected")
@@ -184,8 +184,8 @@ def main() -> int:
             signal_name="thumbs_up",
             format_relevant=True,
             content_relevant=True,
-            format_category="strong_positive",
-            content_category="strong_positive",
+            format_category="explicit_positive",
+            content_category="explicit_positive",
             changed_by="atlas_test",
         )
         audit = cfg.list_audit(limit=10)

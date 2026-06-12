@@ -221,12 +221,12 @@ def cached_ucb(count: int, avg_reward: float, total_pulls_in_cell: int, c: float
 
 
 def signal_from_reward(r: float) -> Tuple[str, str]:
-    if r >= 0.7:   return "thumbs_up",        "strong_positive"
-    if r >= 0.3:   return "copy_save",        "weak_positive"
-    if r >= 0.0:   return "deeper_question",  "weak_positive"
+    if r >= 0.7:   return "thumbs_up",        "explicit_positive"
+    if r >= 0.3:   return "copy_save",        "inferred_positive"
+    if r >= 0.0:   return "deeper_question",  "inferred_positive"
     if r >= -0.3:  return "no_signal",        "neutral"
-    if r >= -0.6:  return "regenerate_click", "weak_negative"
-    return            "thumbs_down",          "strong_negative"
+    if r >= -0.6:  return "regenerate_click", "inferred_negative"
+    return            "thumbs_down",          "explicit_negative"
 
 
 def sample_ts(rng: random.Random, recency_bias: float) -> datetime:

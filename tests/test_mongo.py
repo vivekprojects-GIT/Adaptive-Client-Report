@@ -47,16 +47,15 @@ def main():
     print(f"✓ Seed: {counts}")
 
     # ---- 2. Read signal routing and reward scale -----------------------
-    # Use format_change_request — it's bandit-relevant in the new catalog.
-    # (thumbs_up was intentionally moved to None routing to remove its bias.)
+    # format_change_request is explicit format evidence → explicit_negative (-2)
     routing = store.get_signal_routing("format_change_request")
     assert routing["format_relevant"] is True
-    assert routing["format_category"] == "strong_negative"
+    assert routing["format_category"] == "explicit_negative"
     print("✓ Signal routing for format_change_request resolves correctly")
 
-    scale = store.get_reward_scale("strong_positive")
-    assert scale["normalized_reward"] == 1.0
-    print("✓ Reward scale for strong_positive resolves correctly")
+    scale = store.get_reward_scale("explicit_positive")
+    assert scale["normalized_reward"] == 2.0
+    print("✓ Reward scale for explicit_positive resolves correctly")
 
     # ---- 3. Bandit cell creation ---------------------------------------
     rows = store.get_or_create_bandit_cell(
@@ -111,7 +110,7 @@ def main():
         response_id=response_id,
         user_id_hash="u_alice",
         signal="thumbs_up",
-        reward_category="strong_positive",
+        reward_category="explicit_positive",
         normalized_reward=1.0,
     )
     assert rewarded is not None, "mark_response_rewarded should succeed first time"
@@ -139,7 +138,7 @@ def main():
         response_id=response_id,
         user_id_hash="u_alice",
         signal="thumbs_up",
-        reward_category="strong_positive",
+        reward_category="explicit_positive",
         normalized_reward=1.0,
     )
     assert second_attempt is None, "Double-reward attempt must be rejected"
@@ -150,7 +149,7 @@ def main():
         response_id=response_id,
         user_id_hash="u_eve_attacker",   # different user
         signal="thumbs_up",
-        reward_category="strong_positive",
+        reward_category="explicit_positive",
         normalized_reward=1.0,
     )
     assert cross_user_attempt is None, "Cross-user reward must be rejected"
@@ -161,8 +160,8 @@ def main():
         signal_name="thumbs_up",
         format_relevant=True,
         content_relevant=True,
-        format_category="strong_positive",
-        content_category="strong_positive",
+        format_category="explicit_positive",
+        content_category="explicit_positive",
         changed_by="admin_test",
     )
     audit_rows = cfg.list_audit(limit=10)

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import Message from "./Message.jsx";
 
-export default function MessageList({ messages, showMeta, onPrompt, onFeedback, onRegenerate }) {
+export default function MessageList({ messages, showMeta, onPrompt, onFeedback, onRegenerate, rated }) {
   const wrapRef = useRef(null);
 
   // Auto-scroll to the bottom on new messages
@@ -50,6 +50,7 @@ export default function MessageList({ messages, showMeta, onPrompt, onFeedback, 
               showMeta={showMeta}
               onFeedback={onFeedback}
               onRegenerate={onRegenerate}
+              ratedSignal={rated?.[m.response_id]}
             />
           ))}
         </div>

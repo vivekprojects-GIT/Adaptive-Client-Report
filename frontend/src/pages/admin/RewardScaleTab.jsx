@@ -55,15 +55,15 @@ export default function RewardScaleTab({ notify }) {
       <div className="admin-section">
         <h2 className="admin-section-title">Add or update reward value</h2>
         <p className="admin-section-sub">
-          Maps a category name (e.g. <code>strong_positive</code>) to the
-          normalized reward value applied to the bandit. UCB requires values
-          in the range <code>[-1.0, +1.0]</code>.
+          Maps an evidence tier (e.g. <code>explicit_positive</code>) to the
+          reward value applied to the bandit. Per the reward doc: explicit
+          evidence = <code>±2</code>, inferred valence = <code>±1</code>.
         </p>
         <ul className="col-legend">
           <li><strong>Category</strong> — snake_case name referenced by signal-routing rules. Must match exactly what those rules emit.
-            <em> e.g. strong_positive, weak_positive, weak_negative, strong_negative.</em></li>
-          <li><strong>Reward</strong> — the normalized value the bandit adds to <code>total_reward</code> when this category fires. Must be in <code>[-1.0, +1.0]</code>.
-            <em> Defaults: strong = ±1.0, weak = ±0.5. Adjust if you want a tighter or looser learning rate.</em></li>
+            <em> e.g. explicit_positive, inferred_positive, inferred_negative, explicit_negative.</em></li>
+          <li><strong>Reward</strong> — the value the bandit adds to <code>total_reward</code> when this category fires.
+            <em> Defaults: explicit = ±2.0, inferred = ±1.0. Adjust if you want a tighter or looser learning rate.</em></li>
         </ul>
         <form className="admin-form" onSubmit={handleSubmit}>
           <div className="form-row">
@@ -71,7 +71,7 @@ export default function RewardScaleTab({ notify }) {
               Category
               <input
                 type="text"
-                placeholder="e.g. strong_positive"
+                placeholder="e.g. explicit_positive"
                 value={cat}
                 onChange={(e) => setCat(e.target.value)}
                 required
@@ -81,10 +81,10 @@ export default function RewardScaleTab({ notify }) {
               Reward
               <input
                 type="number"
-                step="0.1"
-                min="-1"
-                max="1"
-                placeholder="e.g. 1.0"
+                step="0.5"
+                min="-2"
+                max="2"
+                placeholder="e.g. 2.0"
                 value={norm}
                 onChange={(e) => setNorm(e.target.value)}
                 required

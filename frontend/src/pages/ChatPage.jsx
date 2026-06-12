@@ -13,6 +13,10 @@ export default function ChatPage() {
   const ape = useApe();
   const [showMeta, setShowMeta] = usePersistedState("ape.show_meta", true);
   const [toast, setToast] = useState({ msg: null, kind: "" });
+  // response_id -> signal the user clicked ("thumbs_up" / "thumbs_down").
+  // Once a thumb is recorded the pair is disabled — prevents double-voting
+  // (which would buffer contradictory signals and trip the ambiguity rule).
+  const [rated, setRated] = useState({});
 
   useEffect(() => { ape.checkHealth(); }, []);
 
@@ -21,10 +25,22 @@ export default function ChatPage() {
   }, [ape.error]);
 
   async function handleFeedback(responseId, signal) {
+    const isThumb = signal === "thumbs_up" || signal === "thumbs_down";
+    if (isThumb && rated[responseId]) {
+      setToast({ msg: "Already rated this response", kind: "error" });
+      return;
+    }
     const result = await ape.sendFeedback(responseId, signal);
     if (!result) {
       setToast({ msg: "Feedback failed", kind: "error" });
       return;
+    }
+    const accepted =
+      result.status === "applied" ||
+      result.status === "applied_no_bandit_update" ||
+      result.status === "queued";
+    if (accepted && isThumb) {
+      setRated((prev) => ({ ...prev, [responseId]: signal }));
     }
     if (result.status === "applied" || result.status === "applied_no_bandit_update") {
       const r = result.normalized_reward;
@@ -35,6 +51,8 @@ export default function ChatPage() {
     } else if (result.status === "queued") {
       setToast({ msg: `${prettySignal(signal)} saved`, kind: "ok" });
     } else if (result.reason === "already_finalized") {
+      // Reward already settled server-side — lock the thumbs to match.
+      setRated((prev) => ({ ...prev, [responseId]: prev[responseId] || "_finalized_" }));
       setToast({ msg: "Already rated this response", kind: "error" });
     } else {
       setToast({ msg: `Feedback skipped: ${result.reason || result.status}`, kind: "error" });
@@ -83,8 +101,8 @@ export default function ChatPage() {
           <div>
             <h2>{headerTitle}</h2>
             <div className="chat-header-meta">
-              <span>claude-haiku-4-5</span>
-              <span>finance</span>
+              <span>minimaxai/minimax-m3</span>
+              <span>multi-domain</span>
             </div>
           </div>
           <StatusDot ok={ape.statusOk} />
@@ -96,6 +114,7 @@ export default function ChatPage() {
           onPrompt={ape.sendTurn}
           onFeedback={handleFeedback}
           onRegenerate={ape.regenerate}
+          rated={rated}
         />
 
         <Composer onSend={ape.sendTurn} disabled={ape.sending} sessionId={ape.sessionId} />

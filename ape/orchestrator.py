@@ -115,6 +115,11 @@ _EXPLICIT_OR_STRONG_SIGNALS = {
     "thumbs_down",
 }
 
+# Sentinel recorded as the bandit_signal when the top-magnitude format signals
+# in a turn conflict in sign (genuinely contradictory evidence — the arm is
+# not moved). Ported from vg_mvp_v1.0's reward computation.
+AMBIGUOUS_SIGNAL = "_ambiguous_"
+
 
 # Synonym map for the classifier's free-form unmapped_name guesses. The LLM
 # is not deterministic — the same concept comes back as "acknowledgement" /
@@ -340,7 +345,11 @@ class ApeOrchestrator:
         )
         t = _tick("load_bandit_cell", t)
 
-        # A5: pick highest cached_ucb
+        # A5: round-robin over unpulled arms (catalog order), then live UCB1
+        # (ported from vg_mvp_v1.0). Rows are reordered to match the policy's
+        # candidate list so round-robin visits arms in catalog order.
+        _order = {s: i for i, s in enumerate(candidate_strategies)}
+        bandit_rows.sort(key=lambda r: _order.get(r.get("strategy"), len(_order)))
         selected_row = select_strategy_from_rows(bandit_rows)
         if selected_row is None:
             # Should never happen unless strategies list is empty
@@ -351,6 +360,12 @@ class ApeOrchestrator:
             candidate_strategies=candidate_strategies,
             policy_version=selected_row.get("policy_version", "v1"),
         )
+        # Bump the PULL counter now — count advances on selection, not on
+        # reward, which is what moves round-robin to the next unpulled arm.
+        _cell_pk = {"user_id_hash": user_id_hash, "domain": domain,
+                    "intent": intent, "topic": topic}
+        self.store.bump_strategy_count(_cell_pk, selected_row["strategy"])
+        self.store.refresh_cell_ucb_cache(_cell_pk)
         t = _tick("ucb_select", t)
 
         # ------------------------------------------------------------------
@@ -571,6 +586,10 @@ class ApeOrchestrator:
         )
         t = _tick("load_bandit_cell", t)
 
+        # Round-robin over unpulled arms (catalog order), then live UCB1 —
+        # same selection path as handle_turn (ported from vg_mvp_v1.0).
+        _order = {s: i for i, s in enumerate(candidate_strategies)}
+        bandit_rows.sort(key=lambda r: _order.get(r.get("strategy"), len(_order)))
         selected_row = select_strategy_from_rows(bandit_rows)
         if selected_row is None:
             raise RuntimeError(f"No bandit rows for cell intent={intent} topic={topic}")
@@ -580,6 +599,10 @@ class ApeOrchestrator:
             candidate_strategies=candidate_strategies,
             policy_version=selected_row.get("policy_version", "v1"),
         )
+        _cell_pk = {"user_id_hash": user_id_hash, "domain": domain,
+                    "intent": intent, "topic": topic}
+        self.store.bump_strategy_count(_cell_pk, selected_row["strategy"])
+        self.store.refresh_cell_ucb_cache(_cell_pk)
         t = _tick("ucb_select", t)
         suggested = selection["selected_strategy"]
 
@@ -836,12 +859,15 @@ class ApeOrchestrator:
         # ── DECOUPLED LABEL vs BANDIT REWARD ─────────────────────────────
         # The `winner` from composite/atomic resolution is the LABEL we
         # record on the row (for analytics, audit trail, dashboards).
-        # The BANDIT reward is a separate determination: scan ALL signals
-        # in the pool — buffered atomics + the winner — and pick the one
-        # with the highest-magnitude format reward. This way a bandit-
-        # irrelevant winner (e.g. `thumbs_up` which routes to None)
-        # doesn't suppress a perfectly valid +0.5 from a co-fired
-        # `format_compliance_pass`.
+        # The BANDIT reward is a separate determination, per the reward doc
+        # (APE_Reward_Computation.docx, ported from vg_mvp_v1.0):
+        #   • scan ALL signals in the pool — buffered atomics + the winner —
+        #     and read each one's FORMAT delta (explicit ±2 / inferred ±1 / 0)
+        #   • the strongest |delta| wins, so an explicit reshape (-2)
+        #     outweighs an inferred thumbs nudge (+1) in the same turn
+        #   • AMBIGUITY RULE: if two signals tie at the top magnitude with
+        #     OPPOSITE signs (e.g. explicit praise AND explicit reshape),
+        #     the evidence is contradictory — do NOT move the arm.
         # ────────────────────────────────────────────────────────────────
 
         # Collect every unique signal name in scope (buffered + winner)
@@ -849,11 +875,16 @@ class ApeOrchestrator:
         if winner:
             signal_set.add(winner)
 
-        # Find the signal with the highest |format_reward|
-        best_bandit_signal: Optional[str] = None
-        best_bandit_category: Optional[str] = None
-        best_bandit_reward: Optional[float] = None
-        best_abs = -1.0
+        # Score every format-relevant signal in the pool: (signal, category, reward).
+        # USER evidence (ui / llm / composite) outranks MACHINE evidence
+        # (derived: format_compliance, session lifecycle) — derived signals
+        # only reach the bandit when no user signal fired. Without this split
+        # the auto-seeded format_compliance_pass (+1) would tie every
+        # thumbs_down (-1) into the ambiguity rule and user feedback could
+        # never move the arm. Mirrors vg_mvp_v1.0, where the bandit pool only
+        # ever contained user signals.
+        user_candidates: List[tuple] = []
+        derived_candidates: List[tuple] = []
         for sig in signal_set:
             r = self.store.get_signal_routing(sig)
             if r is None or not r.get("format_relevant"):
@@ -865,11 +896,27 @@ class ApeOrchestrator:
             if scale is None or scale.get("normalized_reward") is None:
                 continue
             normalized = float(scale["normalized_reward"])
-            if abs(normalized) > best_abs:
-                best_abs = abs(normalized)
-                best_bandit_signal = sig
-                best_bandit_category = cat
-                best_bandit_reward = normalized
+            if normalized == 0.0:
+                continue
+            if (r.get("source") or "llm") == "derived":
+                derived_candidates.append((sig, cat, normalized))
+            else:
+                user_candidates.append((sig, cat, normalized))
+        format_candidates = user_candidates or derived_candidates
+
+        best_bandit_signal: Optional[str] = None
+        best_bandit_category: Optional[str] = None
+        best_bandit_reward: Optional[float] = None
+        bandit_ambiguous = False
+        if format_candidates:
+            top_mag = max(abs(v) for _, _, v in format_candidates)
+            leaders = [(s, c, v) for s, c, v in format_candidates if abs(v) == top_mag]
+            if len({1 if v > 0 else -1 for _, _, v in leaders}) > 1:
+                # Conflicting evidence at the same (top) magnitude — don't move the arm.
+                bandit_ambiguous = True
+                best_bandit_signal = AMBIGUOUS_SIGNAL
+            else:
+                best_bandit_signal, best_bandit_category, best_bandit_reward = leaders[0]
 
         # Atomic CAS: PENDING → APPLIED. Record the LABEL (`winner`) but
         # the REWARD CATEGORY + VALUE come from the bandit-best signal.
@@ -902,6 +949,7 @@ class ApeOrchestrator:
             "winner":             winner,
             "winner_source":      winner_source,
             "bandit_signal":      best_bandit_signal,
+            "bandit_ambiguous":   bandit_ambiguous,
             "n_signals_pooled":   len(pending),
             "reward_category":    best_bandit_category,
             "normalized_reward":  best_bandit_reward,

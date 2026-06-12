@@ -617,8 +617,9 @@ export default function AnalyticsPage() {
                 </span>
                 <InfoHint width={400}>
                   Per-<code>(intent, topic)</code> bandit cells.
-                  The runtime uses <strong>UCB</strong> — selection is
-                  <code> argmax(avg_reward + c·√(2·ln N / count))</code>, no α/β involved.
+                  The runtime uses <strong>round-robin → UCB</strong> — unpulled arms
+                  (count = 0) are tried first in catalog order, then selection is
+                  <code> argmax(avg_reward + √(2·ln N / count))</code>, no α/β involved.
                   The Beta(α,β) <em>curves</em> on each card are a <strong>visualization-only</strong> projection:
                   <code> α = round(count·(avg+1)/2)</code>, <code>β = count − α + 1</code>. Peak position
                   reflects avg_reward; width reflects pull count (more pulls → narrower → more confident).

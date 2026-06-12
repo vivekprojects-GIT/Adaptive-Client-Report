@@ -56,7 +56,7 @@ SIGNAL_CATALOG: Dict[str, Dict] = {
     # ── Channel 1: Explicit format feedback (LLM-detected text) ────────────
     "format_change_request": {
         "source":             "llm",
-        "format_strength":    "strong_negative",
+        "format_strength":    "explicit_negative",
         "content_strength":   None,
         "feature_id":         1,
         "expected_frequency": "rare",
@@ -65,7 +65,7 @@ SIGNAL_CATALOG: Dict[str, Dict] = {
     },
     "format_keep_request": {
         "source":             "llm",
-        "format_strength":    "strong_positive",
+        "format_strength":    "explicit_positive",
         "content_strength":   None,
         "feature_id":         2,
         "expected_frequency": "rare",
@@ -76,7 +76,7 @@ SIGNAL_CATALOG: Dict[str, Dict] = {
     # ── Channel 2: Objective format measurement (derived, automatic) ───────
     "format_compliance_pass": {
         "source":             "derived",
-        "format_strength":    "weak_positive",
+        "format_strength":    "inferred_positive",
         "content_strength":   None,
         "feature_id":         3,
         "expected_frequency": "common",
@@ -85,7 +85,7 @@ SIGNAL_CATALOG: Dict[str, Dict] = {
     },
     "format_compliance_fail": {
         "source":             "derived",
-        "format_strength":    "weak_negative",
+        "format_strength":    "inferred_negative",
         "content_strength":   None,
         "feature_id":         4,
         "expected_frequency": "moderate",
@@ -96,8 +96,8 @@ SIGNAL_CATALOG: Dict[str, Dict] = {
     # ── Channel 3: Behavioral format evidence (UI actions) ─────────────────
     "copy_save": {
         "source":             "ui",
-        "format_strength":    "weak_positive",
-        "content_strength":   "weak_positive",
+        "format_strength":    "inferred_positive",
+        "content_strength":   "inferred_positive",
         "feature_id":         5,
         "expected_frequency": "moderate",
         "evidence_quality":   "medium",
@@ -105,8 +105,8 @@ SIGNAL_CATALOG: Dict[str, Dict] = {
     },
     "regenerate_click": {
         "source":             "ui",
-        "format_strength":    "weak_negative",
-        "content_strength":   "weak_negative",
+        "format_strength":    "inferred_negative",
+        "content_strength":   "inferred_negative",
         "feature_id":         6,
         "expected_frequency": "moderate",
         "evidence_quality":   "medium",
@@ -116,8 +116,8 @@ SIGNAL_CATALOG: Dict[str, Dict] = {
     # ── Channel 4: Session continuity (derived lifecycle) ──────────────────
     "session_continue": {
         "source":             "derived",
-        "format_strength":    "weak_positive",
-        "content_strength":   "weak_positive",
+        "format_strength":    "inferred_positive",
+        "content_strength":   "inferred_positive",
         "feature_id":         7,
         "expected_frequency": "common",
         "evidence_quality":   "low",
@@ -125,8 +125,8 @@ SIGNAL_CATALOG: Dict[str, Dict] = {
     },
     "session_abandon": {
         "source":             "derived",
-        "format_strength":    "weak_negative",
-        "content_strength":   "weak_negative",
+        "format_strength":    "inferred_negative",
+        "content_strength":   "inferred_negative",
         "feature_id":         8,
         "expected_frequency": "rare",
         "evidence_quality":   "low",
@@ -137,7 +137,7 @@ SIGNAL_CATALOG: Dict[str, Dict] = {
     "content_correction": {
         "source":             "llm",
         "format_strength":    None,
-        "content_strength":   "strong_negative",
+        "content_strength":   "explicit_negative",
         "feature_id":         9,
         "expected_frequency": "rare",
         "evidence_quality":   "high",
@@ -146,7 +146,7 @@ SIGNAL_CATALOG: Dict[str, Dict] = {
     "reask_same_question": {
         "source":             "llm",
         "format_strength":    None,
-        "content_strength":   "weak_negative",
+        "content_strength":   "inferred_negative",
         "feature_id":         10,
         "expected_frequency": "rare",
         "evidence_quality":   "medium",
@@ -155,7 +155,7 @@ SIGNAL_CATALOG: Dict[str, Dict] = {
     "it_worked_statement": {
         "source":             "llm",
         "format_strength":    None,
-        "content_strength":   "weak_positive",
+        "content_strength":   "inferred_positive",
         "feature_id":         11,
         "expected_frequency": "moderate",
         "evidence_quality":   "medium",
@@ -164,37 +164,41 @@ SIGNAL_CATALOG: Dict[str, Dict] = {
     "deeper_question": {
         "source":             "llm",
         "format_strength":    None,
-        "content_strength":   "weak_positive",
+        "content_strength":   "inferred_positive",
         "feature_id":         12,
         "expected_frequency": "moderate",
         "evidence_quality":   "medium",
         "consumers":          ["analytics", "engagement"],
     },
 
-    # ── Channel 6: Overall satisfaction (UI — does NOT update bandit) ──────
+    # ── Channel 6: Overall satisfaction (UI) ───────────────────────────────
+    # Per APE_Reward_Computation.docx (ported from vg_mvp_v1.0): a thumb is
+    # EXPLICIT evidence about content (±2) but only INFERRED valence on the
+    # format axis (±1) — the user reacted to the answer overall, not its shape.
+    # No cross-axis contamination: the format axis never gets the full ±2.
     "thumbs_up": {
         "source":             "ui",
-        "format_strength":    None,
-        "content_strength":   None,
+        "format_strength":    "inferred_positive",   # F +1 (weak)
+        "content_strength":   "explicit_positive",   # C +2
         "feature_id":         13,
         "expected_frequency": "moderate",
-        "evidence_quality":   "low",
-        "consumers":          ["analytics", "retention", "nps"],
+        "evidence_quality":   "high",
+        "consumers":          ["bandit", "analytics", "retention", "nps"],
     },
     "thumbs_down": {
         "source":             "ui",
-        "format_strength":    None,
-        "content_strength":   None,
+        "format_strength":    "inferred_negative",   # F -1 (weak)
+        "content_strength":   "explicit_negative",   # C -2
         "feature_id":         14,
         "expected_frequency": "rare",
-        "evidence_quality":   "low",
-        "consumers":          ["analytics", "retention", "nps"],
+        "evidence_quality":   "high",
+        "consumers":          ["bandit", "analytics", "retention", "nps"],
     },
 
     # ── Channel 8: Composite patterns (multi-signal combinations) ──────────
     "pattern_explicit_format_consensus_neg": {
         "source":             "composite",
-        "format_strength":    "strong_negative",
+        "format_strength":    "explicit_negative",
         "content_strength":   None,
         "feature_id":         15,
         "expected_frequency": "rare",
@@ -205,7 +209,7 @@ SIGNAL_CATALOG: Dict[str, Dict] = {
     },
     "pattern_explicit_format_consensus_pos": {
         "source":             "composite",
-        "format_strength":    "strong_positive",
+        "format_strength":    "explicit_positive",
         "content_strength":   None,
         "feature_id":         16,
         "expected_frequency": "rare",
@@ -216,8 +220,8 @@ SIGNAL_CATALOG: Dict[str, Dict] = {
     },
     "pattern_engaged_positive": {
         "source":             "composite",
-        "format_strength":    "weak_positive",
-        "content_strength":   "weak_positive",
+        "format_strength":    "inferred_positive",
+        "content_strength":   "inferred_positive",
         "feature_id":         17,
         "expected_frequency": "moderate",
         "evidence_quality":   "medium",
@@ -227,8 +231,8 @@ SIGNAL_CATALOG: Dict[str, Dict] = {
     },
     "pattern_confused_negative": {
         "source":             "composite",
-        "format_strength":    "weak_negative",
-        "content_strength":   "weak_negative",
+        "format_strength":    "inferred_negative",
+        "content_strength":   "inferred_negative",
         "feature_id":         18,
         "expected_frequency": "rare",
         "evidence_quality":   "medium",
@@ -238,8 +242,8 @@ SIGNAL_CATALOG: Dict[str, Dict] = {
     },
     "pattern_regret": {
         "source":             "composite",
-        "format_strength":    "weak_negative",
-        "content_strength":   "weak_negative",
+        "format_strength":    "inferred_negative",
+        "content_strength":   "inferred_negative",
         "feature_id":         19,
         "expected_frequency": "rare",
         "evidence_quality":   "high",
@@ -260,8 +264,8 @@ SIGNAL_CATALOG: Dict[str, Dict] = {
     },
     "pattern_abandoned_after_approval": {
         "source":             "composite",
-        "format_strength":    "weak_negative",
-        "content_strength":   "weak_negative",
+        "format_strength":    "inferred_negative",
+        "content_strength":   "inferred_negative",
         "feature_id":         21,
         "expected_frequency": "rare",
         "evidence_quality":   "low",
@@ -272,7 +276,7 @@ SIGNAL_CATALOG: Dict[str, Dict] = {
     "pattern_content_failure_confirmed": {
         "source":             "composite",
         "format_strength":    None,
-        "content_strength":   "strong_negative",
+        "content_strength":   "explicit_negative",
         "feature_id":         22,
         "expected_frequency": "rare",
         "evidence_quality":   "high",
@@ -282,7 +286,7 @@ SIGNAL_CATALOG: Dict[str, Dict] = {
     },
     "pattern_format_endorsed_through_behavior": {
         "source":             "composite",
-        "format_strength":    "weak_positive",
+        "format_strength":    "inferred_positive",
         "content_strength":   None,
         "feature_id":         23,
         "expected_frequency": "moderate",
@@ -293,8 +297,8 @@ SIGNAL_CATALOG: Dict[str, Dict] = {
     },
     "pattern_silent_acceptance": {
         "source":             "composite",
-        "format_strength":    "weak_positive",
-        "content_strength":   "weak_positive",
+        "format_strength":    "inferred_positive",
+        "content_strength":   "inferred_positive",
         "feature_id":         24,
         "expected_frequency": "common",
         "evidence_quality":   "low",

@@ -1,10 +1,11 @@
-"""Bandit package — UCB selection from cached_ucb + reward computation."""
+"""Bandit package — round-robin → live-UCB1 selection + reward computation."""
 
 import math
 
 from .selection import (
     select_strategy_from_rows,
     build_selection_payload,
+    compute_ucb,
 )
 from .reward import compute_rewards
 from ..strategies import INTENT_STRATEGIES

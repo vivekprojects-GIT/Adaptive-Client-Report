@@ -13,8 +13,8 @@ direct MongoStore writes. That guarantees:
 Usage:
     cfg = ConfigManager(store)
     cfg.update_signal_rule("thumbs_up", format_relevant=True, content_relevant=True,
-                           format_category="strong_positive",
-                           content_category="strong_positive",
+                           format_category="inferred_positive",
+                           content_category="explicit_positive",
                            changed_by="admin_user")
 """
 

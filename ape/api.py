@@ -43,7 +43,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import anthropic
+from .llm.nvidia_client import NvidiaClient
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, StreamingResponse
@@ -112,14 +112,17 @@ RAG: Optional[RagStore] = None
 
 def _build() -> ApeOrchestrator:
     load_dotenv(override=True)
-    model   = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
-    api_key = os.getenv("ANTHROPIC_API_KEY")
+    # LLM backend: NVIDIA NIM (OpenAI-compatible) — replaced the Anthropic
+    # Claude client. NvidiaClient mimics the Anthropic SDK surface, so the
+    # classifier / synthesizer / orchestrator are unchanged.
+    model   = os.getenv("NVIDIA_MODEL", "minimaxai/minimax-m3")
+    api_key = os.getenv("NVIDIA_API_KEY")
     if not api_key:
-        raise RuntimeError("ANTHROPIC_API_KEY is required")
+        raise RuntimeError("NVIDIA_API_KEY is required")
 
     domain = os.getenv("APE_DOMAIN", "finance")
 
-    client = anthropic.Anthropic(api_key=api_key)
+    client = NvidiaClient(api_key=api_key, model=model)
     store = MongoStore()
 
     # Seed default config if collections are empty
@@ -130,14 +133,18 @@ def _build() -> ApeOrchestrator:
     STORE = store
     CONFIG_MGR = ConfigManager(store)
 
+    # RAG disabled — initialization commented out. RAG stays None, the
+    # orchestrator skips retrieval, and /rag/* endpoints return
+    # "RAG not initialized". Uncomment the block below to re-enable.
     # Multi-domain RAG knowledge base (Chroma). Idempotent ingest of the seed
     # corpora on boot so retrieval works immediately.
-    RAG = RagStore()
-    try:
-        counts = RAG.ingest()
-        print(f"[startup] RAG ingest counts: {counts}", flush=True)
-    except Exception as e:
-        print(f"[startup] RAG ingest failed (continuing without RAG): {e}", flush=True)
+    # RAG = RagStore()
+    # try:
+    #     counts = RAG.ingest()
+    #     print(f"[startup] RAG ingest counts: {counts}", flush=True)
+    # except Exception as e:
+    #     print(f"[startup] RAG ingest failed (continuing without RAG): {e}", flush=True)
+    print("[startup] RAG disabled (initialization commented out)", flush=True)
 
     return ApeOrchestrator(client=client, model=model, store=store, domain=domain, rag=RAG)
 

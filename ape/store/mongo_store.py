@@ -378,34 +378,74 @@ class MongoStore:
         }))
         return rows
 
+    def bump_strategy_count(
+        self,
+        attribution_pk: Dict[str, str],
+        attribution_sk: str,
+    ) -> Optional[Dict[str, Any]]:
+        """Increment `count` on SELECT (Path A) — ported from vg_mvp_v1.0.
+
+        `count` is the PULL counter: it advances when the arm is served, not
+        when feedback arrives. This is what makes round-robin cold start
+        work — after one pull the arm's count is 1, so the next /turn in the
+        cell moves on to the next unpulled arm even if no reward ever lands.
+
+        avg_reward is re-derived (total_reward / count) so the stored value
+        never goes stale.
+        """
+        row = self.bandit_state.find_one({**attribution_pk, "strategy": attribution_sk})
+        if row is None:
+            return None
+        new_count = int(row.get("count", 0)) + 1
+        new_avg = float(row.get("total_reward", 0.0)) / new_count
+        return self.bandit_state.find_one_and_update(
+            {**attribution_pk, "strategy": attribution_sk},
+            {"$set": {
+                "count":           new_count,
+                "avg_reward":      new_avg,
+                "last_updated_at": utcnow_iso(),
+            }},
+            return_document=ReturnDocument.AFTER,
+        )
+
     def update_strategy_reward(
         self,
         attribution_pk: Dict[str, str],
         attribution_sk: str,
         normalized_reward: float,
     ) -> Optional[Dict[str, Any]]:
-        """Apply a single reward to one strategy row.
+        """Apply a single reward to one strategy row (Path B).
 
         attribution_pk: {user_id_hash, domain, intent, topic}
         attribution_sk: strategy name
 
+        Per the vg_mvp_v1.0 semantics, the reward does NOT bump `count`
+        (that's the pull counter, advanced at selection time). It adds to
+        total_reward, tracks positive/negative counts, and re-derives
+        avg_reward = total_reward / count.
+
         Returns the updated row (post-update count/total/avg).
         """
-        # Read current state
         row = self.bandit_state.find_one({**attribution_pk, "strategy": attribution_sk})
         if row is None:
             return None
-        new_count        = row["count"] + 1
-        new_total        = row["total_reward"] + float(normalized_reward)
-        new_avg          = new_total / new_count
+        reward = float(normalized_reward)
+        count = max(int(row.get("count", 0)), 1)   # reward follows a pull; guard div/0
+        new_total = float(row.get("total_reward", 0.0)) + reward
+        new_avg = new_total / count
         updated = self.bandit_state.find_one_and_update(
             {**attribution_pk, "strategy": attribution_sk},
-            {"$set": {
-                "count":           new_count,
-                "total_reward":    new_total,
-                "avg_reward":      new_avg,
-                "last_updated_at": utcnow_iso(),
-            }},
+            {
+                "$set": {
+                    "total_reward":    new_total,
+                    "avg_reward":      new_avg,
+                    "last_updated_at": utcnow_iso(),
+                },
+                "$inc": {
+                    "positive_count": 1 if reward > 0 else 0,
+                    "negative_count": 1 if reward < 0 else 0,
+                },
+            },
             return_document=ReturnDocument.AFTER,
         )
         return updated
@@ -413,11 +453,15 @@ class MongoStore:
     def refresh_cell_ucb_cache(self, attribution_pk: Dict[str, str]) -> int:
         """Recompute cached_ucb for every strategy row in the cell.
 
-        UCB: score = avg_reward + C * sqrt(ln(N) / count)
-        where N = sum of counts across the whole cell.
+        Selection no longer reads this cache — it computes UCB live (see
+        ape/bandit/selection.py). The cache is maintained purely for the
+        admin/analytics display, using the SAME UCB1 formula so what's
+        displayed matches what selection computes:
 
-        Unpulled arms (count = 0) get COLD_START_UCB_SCORE so they're
-        still selected first by the cold-start rule.
+            ucb = avg_reward + sqrt(2 * ln(N) / count)
+
+        Unpulled arms (count = 0) get COLD_START_UCB_SCORE so they sort
+        to the top of "next pick" displays, mirroring round-robin.
         """
         rows = list(self.bandit_state.find(attribution_pk))
         N = sum(int(r["count"]) for r in rows)
@@ -431,7 +475,8 @@ class MongoStore:
             if cnt == 0:
                 new_ucb = COLD_START_UCB_SCORE
             else:
-                new_ucb = float(r["avg_reward"]) + self.ucb_c * math.sqrt(ln_N / cnt)
+                avg = float(r.get("total_reward", 0.0)) / cnt
+                new_ucb = avg + math.sqrt(2.0 * ln_N / cnt)
             self.bandit_state.update_one(
                 {"_id": r["_id"]},
                 {"$set": {"cached_ucb": new_ucb, "last_updated_at": utcnow_iso()}},

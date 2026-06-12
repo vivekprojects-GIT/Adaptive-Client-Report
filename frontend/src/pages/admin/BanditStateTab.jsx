@@ -111,8 +111,10 @@ export default function BanditStateTab({ notify }) {
         <p className="admin-section-sub">
           Read-only view of <code>ape_user_bandit_state</code> — every per-user cell
           with its arms' <code>count</code>, <code>avg_reward</code>, and
-          <code> cached_ucb</code>. The arm with the highest <code>cached_ucb</code>
-          is the one UCB will pick on the user's next <code>/turn</code> in that cell.
+          <code> cached_ucb</code>. Selection is <strong>round-robin first</strong>
+          (unpulled arms, in catalog order), <strong>then UCB</strong> — the arm with
+          the highest score wins the user's next <code>/turn</code> in that cell.
+          <code> count</code> is the PULL counter (bumped at selection, not at reward).
           Useful for debugging "why did the bandit pick X" or recovering from a
           poisoned cell after a bad-feedback session.
         </p>
