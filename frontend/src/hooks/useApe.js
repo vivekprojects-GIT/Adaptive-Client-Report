@@ -306,8 +306,9 @@ export function useApe() {
   }, [userId, refreshHistory]);
 
   // ---- Regenerate ---------------------------------------------------------
-  // Fire regenerate_click on the response being regenerated, then re-issue
-  // the user's most recent query so the bandit picks a fresh strategy.
+  // Re-issue the user's most recent query so the bandit picks a fresh
+  // strategy. (vg signal catalog: regenerate is not a signal — only thumbs
+  // and LLM-detected text move rewards.)
   const regenerate = useCallback(async (responseId) => {
     if (!responseId) return null;
     // Find the user message immediately before this assistant response
@@ -319,42 +320,11 @@ export function useApe() {
         break;
       }
     }
-    // Fire the negative signal on the old response
-    await sendFeedback(responseId, "regenerate_click");
     // Re-issue the same query (gets a new bandit selection)
     if (userQuery) {
       await sendTurn(userQuery);
     }
-  }, [messages, sendFeedback, sendTurn]);
-
-  // ---- Session abandon (best-effort beacon on tab close) ------------------
-  // Fires session_abandon for the most recent PENDING response when the
-  // user closes the tab / navigates away. Uses navigator.sendBeacon so the
-  // request survives unload. Best-effort only — not all browsers fire
-  // beforeunload reliably (especially mobile).
-  useEffect(() => {
-    function onUnload() {
-      // Find the most recent assistant message with a response_id and no
-      // applied signal yet — that's the row that might still be PENDING.
-      const lastAssistant = [...messages].reverse().find(
-        (m) => m.role === "assistant" && m.response_id && !m.applied_signal
-      );
-      if (!lastAssistant || !userId) return;
-      const payload = JSON.stringify({
-        user_id:     userId,
-        response_id: lastAssistant.response_id,
-        signal:      "session_abandon",
-      });
-      try {
-        navigator.sendBeacon?.(
-          "/feedback",
-          new Blob([payload], { type: "application/json" })
-        );
-      } catch { /* nothing we can do — page is unloading */ }
-    }
-    window.addEventListener("beforeunload", onUnload);
-    return () => window.removeEventListener("beforeunload", onUnload);
-  }, [messages, userId]);
+  }, [messages, sendTurn]);
 
   // ---- User switching ------------------------------------------------------
   // Changing the user must also drop the old user's sessionId — otherwise the

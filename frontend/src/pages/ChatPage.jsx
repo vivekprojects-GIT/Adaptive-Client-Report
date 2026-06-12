@@ -138,7 +138,5 @@ function prettySignal(s) {
   return {
     thumbs_up: "Thumbs up",
     thumbs_down: "Thumbs down",
-    copy_save: "Copied",
-    regenerate_click: "Regenerated",
   }[s] || s;
 }

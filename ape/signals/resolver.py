@@ -19,15 +19,11 @@ from typing import Dict, Optional
 
 
 # Priority ladder for UI signals — lower index = higher priority.
-# Rationale:
-#   regenerate_click > session_abandon > thumbs_down  (negatives first)
-#   thumbs_up > copy_save                              (explicit before implicit positive)
+# vg catalog: the UI only emits thumbs. Negatives outrank positives
+# (a complaint is rarer and more informative than praise).
 UI_SIGNAL_PRIORITY = [
-    "regenerate_click",
-    "session_abandon",
     "thumbs_down",
     "thumbs_up",
-    "copy_save",
 ]
 
 

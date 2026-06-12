@@ -58,6 +58,8 @@ _SIGNAL_ALIASES = {
     "nosignal":            "no_signal",
     "none":                "no_signal",
     "format_change":       "format_change_request",
+    "format_keep_request": "format_praise_explicit",   # legacy name pre-vg-catalog
+    "format_praise":       "format_praise_explicit",
     "reask":               "reask_same_question",
     "it_worked":           "it_worked_statement",
     "deeper":              "deeper_question",

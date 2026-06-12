@@ -1,26 +1,23 @@
 """
 Orchestrator — implements the production query-flow design.
 
-Per-turn flow (Path A — strategy selection + auto-fired signals):
+Per-turn flow (Path A — strategy selection):
 
-  A0. (NEW) If user has a previous PENDING response in this session,
-      finalize it now:
+  A0. If user has a previous PENDING response in this session, finalize it:
         • Append classifier signal (LLM source) to its pending_signals
-        • Append session_continue (derived source) if prev_age < 5min
-        • Run _finalize_response → composite detection → atomic resolver
-          → max-magnitude reward → bandit cell update
+        • Run _finalize_response → resolver → max-magnitude reward
+          (with ambiguity rule) → bandit cell update
   A1. Validate intent (read APE_Config / intent entity)
   A2. Read allowed strategies for (domain, intent, topic) (policy lookup)
   A3. Read strategy metadata + active instruction version
   A4. Query the user-personalized bandit state for this cell
-  A5. Pick highest cached_ucb (lazy-create cell if missing)
+  A5. Round-robin over unpulled arms (catalog order), then live UCB1;
+      bump the pull counter on the selected arm
   A6. Synthesizer LLM call → answer text + rendered_format
-  A7. Compute format_compliance(strategy, rendered_format). Pre-seed the
-      new response's pending_signals[] with one of:
-        • format_compliance_pass  (source: derived)  if synthesizer obeyed
-        • format_compliance_fail  (source: derived)  if synthesizer diverged
-  A8. Write APE_Turn_Record with reward_status=PENDING, attribution_pk/sk,
-      and the pre-seeded pending_signals[].
+  A7. Compute format_compliance(strategy, rendered_format) — stored as a
+      FIELD for analytics only; it is not a signal.
+  A8. Write APE_Turn_Record with reward_status=PENDING and attribution
+      pk/sk (pending_signals starts empty).
 
 Reward flow (Path B — buffered resolver over pending_signals):
 
@@ -28,52 +25,34 @@ Reward flow (Path B — buffered resolver over pending_signals):
       incoming signal to pending_signals[] (source: ui).
   B2. Decide eager vs deferred finalize:
         • Age >= 5s, or pending count >= 3, or signal is explicit/strong
-          → call _finalize_response now
+          (both thumbs qualify) → call _finalize_response now
         • Otherwise → return {status: queued}, wait for next signal or
           for Path A's next-turn flush to finalize.
   B3. _finalize_response:
-        • Composite detector runs first (10 patterns from composites.py).
-          If a pattern matches, that name becomes the LABEL.
-        • Atomic resolver falls back (UI > LLM, priority ladder inside UI).
-          Or, if neither UI nor LLM fired, pick the first derived signal.
+        • Atomic resolver picks the LABEL (UI > LLM).
         • Reward magnitude is computed SEPARATELY from the label:
-          scan every signal in the pool (atomics + composite winner),
-          look up each one's format-axis routing, pick the largest
-          absolute normalized_reward in [-1.0, +1.0].
+          scan every signal in the pool, look up each one's format-axis
+          routing (explicit ±2 / inferred ±1), strongest |delta| wins;
+          conflicting top-magnitude evidence → ambiguous, no arm update.
         • Atomic CAS PENDING → APPLIED with (label, reward_category, reward).
-        • update_strategy_reward on the attribution cell.
-        • refresh_cell_ucb_cache to recompute UCB for every arm.
+        • update_strategy_reward on the attribution cell (total_reward only;
+          count is the pull counter bumped at selection).
+        • refresh_cell_ucb_cache to recompute the display cache.
 
-Signal catalog (25 signals, all wired by mid-2026):
+Signal catalog (exactly the vg_mvp_v1.0 set — 9 signals):
 
-  Source: ui          (4) thumbs_up, thumbs_down, copy_save, regenerate_click
-  Source: llm         (6) format_change_request, format_keep_request,
-                          content_correction, reask_same_question,
-                          it_worked_statement, deeper_question
-  Source: derived     (4) format_compliance_pass, format_compliance_fail,
-                          session_continue, session_abandon
-  Source: composite  (10) pattern_explicit_format_consensus_neg/_pos,
-                          pattern_engaged_positive, pattern_confused_negative,
-                          pattern_regret, pattern_change_of_heart,
-                          pattern_abandoned_after_approval,
-                          pattern_content_failure_confirmed,
-                          pattern_format_endorsed_through_behavior,
-                          pattern_silent_acceptance
-  Source: default     (1) no_signal
+  Source: ui      (2) thumbs_up, thumbs_down
+  Source: llm     (6) format_change_request, format_praise_explicit,
+                      content_correction, reask_same_question,
+                      it_worked_statement, deeper_question
+  Source: system  (1) no_signal
 
 Where each signal originates:
-  - UI signals (thumbs/copy/regenerate) fire from the chat frontend on
-    explicit user clicks, posted via POST /feedback.
-  - session_abandon fires from the frontend's beforeunload handler via
-    navigator.sendBeacon (best-effort, browser-dependent).
+  - UI signals (thumbs) fire from the chat frontend on explicit user
+    clicks, posted via POST /feedback.
   - LLM signals come from the classifier reading the user's NEXT
     message; the system appends them to the PREVIOUS response's
     pending_signals[] at the top of handle_turn.
-  - session_continue is computed at handle_turn time: if a previous
-    PENDING response is < 5 min old when the user sends another turn,
-    we count that as continued engagement.
-  - Composite patterns are detected at finalize-time by composites.py
-    based on which atomic signals are buffered.
 
 Raw queries are NOT stored. Only classification + attribution metadata.
 """
@@ -105,14 +84,15 @@ from .strategies import INTENT_STRATEGIES, compute_format_compliance
 
 
 # ── Signals that are decisive enough to finalize eagerly (no need to wait
-# for more signals to accumulate). Includes explicit format complaints,
-# explicit format praise, and strong UI negatives.
+# for more signals to accumulate). With the vg catalog the UI only emits
+# thumbs, so both finalize immediately; explicit format praise/complaints
+# and content corrections are decisive by definition.
 _EXPLICIT_OR_STRONG_SIGNALS = {
     "format_change_request",
-    "format_keep_request",
+    "format_praise_explicit",
     "content_correction",
-    "regenerate_click",
     "thumbs_down",
+    "thumbs_up",
 }
 
 # Sentinel recorded as the bandit_signal when the top-magnitude format signals
@@ -285,8 +265,8 @@ class ApeOrchestrator:
         # ── Buffered-resolver flush of the PREVIOUS PENDING response ──────
         # The classifier just produced a signal that's a reaction to the
         # previous response — feed it into that response's pending_signals
-        # before finalizing. Also fire session_continue (the user clearly
-        # didn't abandon — they sent another message).
+        # before finalizing. (vg catalog: no derived session_continue signal —
+        # only the 9 user/LLM signals exist.)
         prev_pending = self.store.find_previous_pending_response(
             user_id_hash=user_id_hash,
             session_id=session_id,
@@ -301,15 +281,7 @@ class ApeOrchestrator:
                     "source": "llm",
                     "ts":     utcnow_iso(),
                 })
-            # Session continuity — user sent another message → implicit positive
-            prev_age = self.store.get_response_age_seconds(prev_id) or 0.0
-            if prev_age < 300:  # 5-min cutoff for "continued" vs "returned later"
-                self.store.append_pending_signal(prev_id, {
-                    "signal": "session_continue",
-                    "source": "derived",
-                    "ts":     utcnow_iso(),
-                })
-            # Now finalize the previous response: composite + resolver + reward
+            # Now finalize the previous response: resolver + reward
             try:
                 self._finalize_response(prev_id, user_id_hash)
             except Exception as e:
@@ -407,19 +379,10 @@ class ApeOrchestrator:
         response_id = new_response_id()
         attribution_pk = make_attribution_pk(user_id_hash, domain, intent, topic)
 
-        # Pre-seed pending_signals with the objective format_compliance result.
-        # This is the bias-free "did the synthesizer obey the strategy" signal —
-        # it fires every turn automatically, gives the bandit a steady heartbeat
-        # of format evidence independent of user mood, and routes per the
-        # signal catalog (compliance_pass → +0.5, compliance_fail → -0.5).
-        compliance_signal = (
-            "format_compliance_pass" if compliance else "format_compliance_fail"
-        )
-        initial_pending_signals = [{
-            "signal": compliance_signal,
-            "source": "derived",
-            "ts":     ts,
-        }]
+        # vg catalog: no derived format_compliance signals — the bandit only
+        # learns from the 9 user/LLM signals. Compliance is still computed and
+        # stored on the record (format_compliance field) for analytics.
+        initial_pending_signals: List[Dict[str, Any]] = []
 
         self.store.write_pending_response({
             "response_id":             response_id,
@@ -554,13 +517,6 @@ class ApeOrchestrator:
                     "source": "llm",
                     "ts":     utcnow_iso(),
                 })
-            prev_age = self.store.get_response_age_seconds(prev_id) or 0.0
-            if prev_age < 300:
-                self.store.append_pending_signal(prev_id, {
-                    "signal": "session_continue",
-                    "source": "derived",
-                    "ts":     utcnow_iso(),
-                })
             try:
                 self._finalize_response(prev_id, user_id_hash)
             except Exception as e:
@@ -654,12 +610,11 @@ class ApeOrchestrator:
         t = _time.monotonic()
 
         # ---- Compliance + writes ----
+        # (compliance is stored as a field for analytics; it is NOT a signal —
+        # the vg catalog has no derived signals.)
         compliance = compute_format_compliance(suggested, rendered_format)
         instr_version = instruction_versions.get(suggested, "v1")
         attribution_pk = make_attribution_pk(user_id_hash, domain, intent, topic)
-        compliance_signal = (
-            "format_compliance_pass" if compliance else "format_compliance_fail"
-        )
 
         self.store.write_pending_response({
             "response_id":             response_id,
@@ -683,11 +638,7 @@ class ApeOrchestrator:
             "instruction_version":     instr_version,
             "attribution_bandit_pk":   attribution_pk,
             "attribution_bandit_sk":   suggested,
-            "pending_signals":         [{
-                "signal": compliance_signal,
-                "source": "derived",
-                "ts":     ts,
-            }],
+            "pending_signals":         [],
         })
 
         assistant_msg_id = new_message_id()

@@ -44,40 +44,36 @@ NOW        = datetime.now(timezone.utc)
 USER_ID    = "Riya"
 
 # ---------------------------------------------------------------------------
-# Signal -> (reward_category, format reward) under the vg evidence-tier model
+# Signal -> (reward_category, format reward) under the vg evidence-tier model.
+# Exactly the vg catalog: only thumbs + LLM text signals exist. Signals with
+# no format-axis routing (no_signal) produce NO bandit reward — the counter
+# simply isn't bumped on that axis.
 # ---------------------------------------------------------------------------
 SIGNAL_REWARD: Dict[str, Tuple[str, float]] = {
     "thumbs_up":              ("inferred_positive", +1.0),
-    "copy_save":              ("inferred_positive", +1.0),
-    "format_keep_request":    ("explicit_positive", +2.0),
-    "format_compliance_pass": ("inferred_positive", +1.0),
-    "format_compliance_fail": ("inferred_negative", -1.0),
-    "regenerate_click":       ("inferred_negative", -1.0),
+    "format_praise_explicit": ("explicit_positive", +2.0),
     "thumbs_down":            ("inferred_negative", -1.0),
     "format_change_request":  ("explicit_negative", -2.0),
 }
 
 # How Riya reacts to a strategy she loves / tolerates / dislikes.
-# (signal, probability) — drawn per pull.
+# (signal, probability) — drawn per pull. "no_signal" = no reaction; the
+# pull still counts (count bumps at selection) but no reward lands.
 PROFILES: Dict[str, List[Tuple[str, float]]] = {
     "loved": [
-        ("thumbs_up",              0.45),
-        ("copy_save",              0.25),
-        ("format_keep_request",    0.15),
-        ("format_compliance_pass", 0.15),
+        ("thumbs_up",              0.50),
+        ("format_praise_explicit", 0.20),
+        ("no_signal",              0.30),
     ],
     "okay": [
-        ("thumbs_up",              0.15),
-        ("copy_save",              0.25),
-        ("format_compliance_pass", 0.40),
-        ("format_compliance_fail", 0.10),
-        ("regenerate_click",       0.10),
+        ("thumbs_up",              0.25),
+        ("no_signal",              0.60),
+        ("thumbs_down",            0.15),
     ],
     "disliked": [
-        ("thumbs_down",            0.35),
-        ("format_change_request",  0.25),
-        ("regenerate_click",       0.25),
-        ("format_compliance_fail", 0.15),
+        ("thumbs_down",            0.40),
+        ("format_change_request",  0.30),
+        ("no_signal",              0.30),
     ],
 }
 
@@ -150,12 +146,13 @@ def seed_riya(store: MongoStore, seed: int = 42) -> Tuple[int, int]:
             for pull_idx in range(pulls):
                 ts = sample_ts(rng)
                 signal = pick_signal(rng, profile)
-                category, reward = SIGNAL_REWARD[signal]
-                rewards.append(reward)
-                if reward > 0:
-                    pos += 1
-                elif reward < 0:
-                    neg += 1
+                category, reward = SIGNAL_REWARD.get(signal, (None, None))
+                if reward is not None:
+                    rewards.append(reward)
+                    if reward > 0:
+                        pos += 1
+                    else:
+                        neg += 1
 
                 response_id = f"demo_riya_{uuid.uuid4().hex[:10]}"
                 selection_method = "round_robin" if pull_idx == 0 else "ucb"
@@ -170,7 +167,7 @@ def seed_riya(store: MongoStore, seed: int = 42) -> Tuple[int, int]:
                     "selected_strategy":     strategy,
                     "selection_method":      selection_method,
                     "rendered_format":       FORMAT_EXPECTATIONS.get(strategy, "paragraph"),
-                    "format_compliance":     0 if signal == "format_compliance_fail" else 1,
+                    "format_compliance":     1 if rng.random() > 0.10 else 0,
                     "ucb_at_selection":      0.0,
                     "instruction_version":   "v1",
                     "attribution_bandit_pk": {

@@ -61,7 +61,7 @@ SIGNALS (how NEW_USER_MESSAGE reacts to PREVIOUS_ASSISTANT_RESPONSE):
                             "redo as an analogy", "TL;DR?"
                           ✗ NOT for asking more content ("explain more" → deeper_question)
 
-  format_keep_request     User EXPLICITLY praises the format/shape itself.
+  format_praise_explicit     User EXPLICITLY praises the format/shape itself.
                           ✓ "this format is perfect, keep using it"
                           ✓ "I love how you structured this — always use bullets like that"
                           ✓ "the table layout was exactly what I needed"
@@ -98,7 +98,7 @@ SIGNALS (how NEW_USER_MESSAGE reacts to PREVIOUS_ASSISTANT_RESPONSE):
 
 PRECEDENCE — when a message could plausibly match multiple signals, decide in
 this order (first match wins):
-  1. Explicit format praise (format_keep_request) or complaint (format_change_request)
+  1. Explicit format praise (format_praise_explicit) or complaint (format_change_request)
      beats everything else — the user named the format.
   2. Content correction beats acknowledgment.
   3. Acknowledgment + new topic-related question → deeper_question (the question
@@ -106,7 +106,7 @@ this order (first match wins):
   4. Bare acknowledgment with NO question and NO request → it_worked_statement.
   5. Otherwise → no_signal.
 
-NEVER emit: thumbs_up, thumbs_down, copy_save, regenerate_click, session_abandon (UI-only).
+NEVER emit: thumbs_up, thumbs_down (UI-only).
 
 RULES:
   1. Intent is decided ONLY by NEW_USER_MESSAGE.

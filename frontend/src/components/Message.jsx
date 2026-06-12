@@ -58,10 +58,7 @@ export default function Message({ message, isLastAssistant, showMeta, onFeedback
           </button>
           <button
             className="fb-btn"
-            onClick={() => {
-              navigator.clipboard?.writeText(message.content || "");
-              onFeedback(message.response_id, "copy_save");
-            }}
+            onClick={() => navigator.clipboard?.writeText(message.content || "")}
             title="Copy response"
             aria-label="Copy"
           >
