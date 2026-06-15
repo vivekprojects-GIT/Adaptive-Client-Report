@@ -43,7 +43,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from .llm.nvidia_client import NvidiaClient
+import anthropic
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, StreamingResponse
@@ -112,17 +112,15 @@ RAG: Optional[RagStore] = None
 
 def _build() -> ApeOrchestrator:
     load_dotenv(override=True)
-    # LLM backend: NVIDIA NIM (OpenAI-compatible) — replaced the Anthropic
-    # Claude client. NvidiaClient mimics the Anthropic SDK surface, so the
-    # classifier / synthesizer / orchestrator are unchanged.
-    model   = os.getenv("NVIDIA_MODEL", "minimaxai/minimax-m3")
-    api_key = os.getenv("NVIDIA_API_KEY")
+    # LLM backend: Anthropic Claude (Haiku).
+    model   = os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5")
+    api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
-        raise RuntimeError("NVIDIA_API_KEY is required")
+        raise RuntimeError("ANTHROPIC_API_KEY is required")
 
     domain = os.getenv("APE_DOMAIN", "finance")
 
-    client = NvidiaClient(api_key=api_key, model=model)
+    client = anthropic.Anthropic(api_key=api_key)
     store = MongoStore()
 
     # Seed default config if collections are empty

@@ -15,9 +15,9 @@ short_description: Per-user UCB bandit picks the best response format
       sdk: docker          tells HF to build from the Dockerfile in this repo
       app_port: 7860       must match the port FastAPI listens on (see Dockerfile)
     Set these secrets in Space Settings → Variables and Secrets:
-      NVIDIA_API_KEY       nvapi-...            (required — NVIDIA NIM LLM backend)
+      ANTHROPIC_API_KEY    sk-ant-...           (required — Anthropic Claude)
       APE_MONGO_URI        mongodb+srv://...    (required)
-      NVIDIA_MODEL         minimaxai/minimax-m3 (optional, has default)
+      ANTHROPIC_MODEL      claude-haiku-4-5     (optional, has default)
       APE_MONGO_DB         ape                  (optional, has default)
 -->
 
@@ -59,7 +59,7 @@ ape_modulor_production/
 │   ├── bandit/
 │   │   ├── selection.py        select highest cached_ucb + breakdown
 │   │   └── reward.py           legacy in-memory reward computation
-│   ├── llm/                 classifier + synthesizer (NVIDIA NIM, minimax-m3)
+│   ├── llm/                 classifier + synthesizer (Anthropic Claude)
 │   ├── store/
 │   │   ├── mongo_schema.py     collections, indexes, status enums
 │   │   ├── mongo_store.py      MongoStore class (primary)
@@ -305,9 +305,9 @@ Open `http://localhost:7860/`.
 1. Create a new Space → SDK: **Docker**, hardware: CPU basic.
 2. Push this repo to the Space (or connect a GitHub repo).
 3. Go to Space Settings → **Variables and secrets** and add:
-   - `NVIDIA_API_KEY` (secret) — your NVIDIA NIM key (nvapi-...)
+   - `ANTHROPIC_API_KEY` (secret) — your Anthropic key (sk-ant-...)
    - `APE_MONGO_URI` (secret) — Atlas/Mongo connection string
-   - `NVIDIA_MODEL` (variable, optional) — defaults to `minimaxai/minimax-m3`
+   - `ANTHROPIC_MODEL` (variable, optional) — defaults to `claude-haiku-4-5`
 4. HF builds the Dockerfile automatically. Logs appear under the "Logs" tab.
 5. Once healthy (the `HEALTHCHECK` probes `/health`), the Space serves
    the chat UI at the root and the admin/analytics dashboards at `/admin`

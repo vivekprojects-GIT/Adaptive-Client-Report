@@ -8,12 +8,12 @@
 #                                Spaces default).
 #
 # Required HF Space secrets (Settings → Variables and Secrets):
-#   NVIDIA_API_KEY      nvapi-...            — required for /turn LLM calls
-#                                              (NVIDIA NIM, OpenAI-compatible)
+#   ANTHROPIC_API_KEY   sk-ant-...           — required for /turn LLM calls
+#                                              (Anthropic Claude)
 #   APE_MONGO_URI       mongodb+srv://...    — required for state + history
 #
 # Optional secrets / env:
-#   NVIDIA_MODEL        minimaxai/minimax-m3 (default in env_default below)
+#   ANTHROPIC_MODEL     claude-haiku-4-5     (default in env_default below)
 #   APE_MONGO_DB        ape                  (default)
 #   APE_DOMAIN          finance              (default)
 #   APE_UCB_C           1.0                  (default)
@@ -21,7 +21,7 @@
 # Build locally:
 #   docker build -t ape-modulor .
 #   docker run -p 7860:7860 \
-#     -e NVIDIA_API_KEY=nvapi-... -e APE_MONGO_URI=mongodb+srv://... \
+#     -e ANTHROPIC_API_KEY=sk-ant-... -e APE_MONGO_URI=mongodb+srv://... \
 #     ape-modulor
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -65,7 +65,7 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_NO_CACHE_DIR=1 \
-    NVIDIA_MODEL=minimaxai/minimax-m3 \
+    ANTHROPIC_MODEL=claude-haiku-4-5 \
     APE_MONGO_DB=ape \
     APE_DOMAIN=finance \
     APE_UCB_C=1.0 \
