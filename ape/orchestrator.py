@@ -267,7 +267,14 @@ class ApeOrchestrator:
         # A2-equivalent: classifier extracts intent + domain + topic + signal
         cls = classify_and_detect(self.client, self.model, query, history, prev_format=None)
         intent = cls["intent"]
-        domain = cls.get("domain") or self.domain
+        # Domain detection disabled — the LLM's domain guess is unstable for
+        # out-of-vocabulary subjects (it flips general/cricket/it/... for the
+        # same question), which fragments the bandit into many cold-start
+        # cells and makes round-robin look "stuck" on the first arm. Pin to
+        # the configured domain so the bandit keys on (user, intent) only.
+        # Re-enable LLM domains by restoring the line below.
+        # domain = cls.get("domain") or self.domain
+        domain = self.domain
         # Topic disabled — collapse to a single cell so the bandit keys on
         # (user, domain, intent) only. Re-enable by restoring the line below.
         # topic = canonicalize_topic_for_domain(cls.get("topic"), domain)
@@ -511,7 +518,14 @@ class ApeOrchestrator:
 
         cls = classify_and_detect(self.client, self.model, query, history, prev_format=None)
         intent = cls["intent"]
-        domain = cls.get("domain") or self.domain
+        # Domain detection disabled — the LLM's domain guess is unstable for
+        # out-of-vocabulary subjects (it flips general/cricket/it/... for the
+        # same question), which fragments the bandit into many cold-start
+        # cells and makes round-robin look "stuck" on the first arm. Pin to
+        # the configured domain so the bandit keys on (user, intent) only.
+        # Re-enable LLM domains by restoring the line below.
+        # domain = cls.get("domain") or self.domain
+        domain = self.domain
         # Topic disabled — collapse to a single cell so the bandit keys on
         # (user, domain, intent) only. Re-enable by restoring the line below.
         # topic = canonicalize_topic_for_domain(cls.get("topic"), domain)
