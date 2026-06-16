@@ -136,6 +136,15 @@ _SUGGESTED_INTENT_ALIASES = {
 }
 
 
+# Topic is currently DISABLED in the bandit key. The classifier still emits a
+# topic, but we collapse every turn into this single sentinel so the bandit
+# learns per (user, domain, intent) only — not per (user, domain, intent,
+# topic). This stops the bandit fragmenting into many cold-start cells.
+# To re-enable topic granularity, restore the canonicalize_topic_for_domain
+# call in handle_turn / the streaming handler and remove this collapse.
+BANDIT_TOPIC = "_all"
+
+
 def _slugify_label(name: str) -> str:
     """Normalize a free-form label to lowercase snake_case so trivial casing /
     punctuation / whitespace variants collapse to the same key.
@@ -259,7 +268,10 @@ class ApeOrchestrator:
         cls = classify_and_detect(self.client, self.model, query, history, prev_format=None)
         intent = cls["intent"]
         domain = cls.get("domain") or self.domain
-        topic  = canonicalize_topic_for_domain(cls.get("topic"), domain)
+        # Topic disabled — collapse to a single cell so the bandit keys on
+        # (user, domain, intent) only. Re-enable by restoring the line below.
+        # topic = canonicalize_topic_for_domain(cls.get("topic"), domain)
+        topic  = BANDIT_TOPIC
         t = _tick("classifier_llm", t)
 
         # ── Buffered-resolver flush of the PREVIOUS PENDING response ──────
@@ -500,7 +512,10 @@ class ApeOrchestrator:
         cls = classify_and_detect(self.client, self.model, query, history, prev_format=None)
         intent = cls["intent"]
         domain = cls.get("domain") or self.domain
-        topic  = canonicalize_topic_for_domain(cls.get("topic"), domain)
+        # Topic disabled — collapse to a single cell so the bandit keys on
+        # (user, domain, intent) only. Re-enable by restoring the line below.
+        # topic = canonicalize_topic_for_domain(cls.get("topic"), domain)
+        topic  = BANDIT_TOPIC
         t = _tick("classifier_llm", t)
 
         prev_pending = self.store.find_previous_pending_response(

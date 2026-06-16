@@ -149,9 +149,12 @@ def normalize_classifier_output(raw: Dict[str, Any]) -> Dict[str, Any]:
     norm_domain = _DOMAIN_ALIASES.get(raw_domain, raw_domain)
     out["domain"] = norm_domain if norm_domain in VALID_DOMAINS else DEFAULT_DOMAIN
 
-    # Canonicalize topic — domain-aware (finance uses the whitelist; other
-    # domains slugify so their topics survive as their own bandit cells).
-    out["topic"] = canonicalize_topic_for_domain(out.get("topic"), out["domain"])
+    # Topic detection DISABLED — the bandit keys on (user, domain, intent)
+    # only. We no longer canonicalize an LLM-detected topic; downstream code
+    # collapses every turn into a single cell (BANDIT_TOPIC). Re-enable by
+    # restoring the line below and the "topic" field in CLASSIFIER_PROMPT.
+    # out["topic"] = canonicalize_topic_for_domain(out.get("topic"), out["domain"])
+    out["topic"] = "_all"
     out["intent_confidence"] = float(out.get("intent_confidence", 0.3))
     out.setdefault("unmapped_name", None)
     out.pop("_query", None)

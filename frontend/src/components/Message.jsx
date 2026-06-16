@@ -83,7 +83,8 @@ export default function Message({ message, isLastAssistant, showMeta, onFeedback
 function renderMetaChips(msg) {
   const meta = msg.meta || {};
   const chips = [];
-  if (meta.topic)             chips.push(chip("topic: "    + meta.topic));
+  // Topic is disabled in the bandit key (collapsed to "_all") — don't show it.
+  if (meta.topic && meta.topic !== "_all") chips.push(chip("topic: " + meta.topic));
   if (meta.intent)            chips.push(chip("intent: "   + meta.intent));
   if (meta.selected_strategy) chips.push(chip("strategy: " + meta.selected_strategy));
   if (msg.rendered_format)    chips.push(chip("rendered: " + msg.rendered_format));

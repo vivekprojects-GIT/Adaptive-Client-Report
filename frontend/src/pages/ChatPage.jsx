@@ -110,7 +110,7 @@ export default function ChatPage() {
           <div>
             <h2>{headerTitle}</h2>
             <div className="chat-header-meta">
-              <span>claude-haiku-4-5</span>
+              <span>TinyLlama-1.1B-Chat</span>
               <span>multi-domain</span>
             </div>
           </div>

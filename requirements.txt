@@ -1,5 +1,9 @@
 anthropic>=0.40.0
 requests>=2.31.0
+# Self-hosted LLM backend (LLM_BACKEND=local) — TinyLlama-1.1B-Chat on CPU
+transformers>=4.44.0
+torch>=2.2.0
+accelerate>=0.30.0
 fastapi>=0.110.0
 uvicorn[standard]>=0.27.0
 pydantic>=2.5.0

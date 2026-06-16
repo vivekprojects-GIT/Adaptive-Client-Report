@@ -1,7 +1,8 @@
 """
 Prompt templates for the two LLM calls per turn.
 
-  - CLASSIFIER_PROMPT: single-call extraction of intent, topic, and signal.
+  - CLASSIFIER_PROMPT: single-call extraction of intent, domain, and signal.
+    (Topic detection is disabled — the bandit keys on user + domain + intent.)
   - synthesizer system prompt: built dynamically from strategy instructions.
 
 Both are deliberately short. Long prompts are expensive to send and harder
@@ -24,8 +25,8 @@ INPUT (sent inside the user message):
 
 OUTPUT — return ONE JSON object, exactly in this shape, nothing else:
   {"intent":"<intent>","intent_confidence":<0.0-1.0>,"unmapped_name":<null or snake_case>,
-   "domain":"<domain>","topic":"<short snake_case noun phrase the question is about>",
-   "signal":"<signal>"}
+   "domain":"<domain>","signal":"<signal>"}
+  (Topic detection is disabled — do NOT include a "topic" field.)
 
 DOMAINS (subject area of NEW_USER_MESSAGE — pick the single best fit):
   cricket   the sport of cricket: players, formats, matches, rules, leagues
@@ -36,12 +37,12 @@ DOMAINS (subject area of NEW_USER_MESSAGE — pick the single best fit):
 Pick "general" only when the message clearly fits no listed domain.
 
 Example outputs (byte-for-byte format you must produce):
-  {"intent":"Definitional","intent_confidence":0.95,"unmapped_name":null,"domain":"cricket","topic":"lbw_rule","signal":"no_signal"}
-  {"intent":"Explanation","intent_confidence":0.9,"unmapped_name":null,"domain":"it","topic":"tcp_handshake","signal":"no_signal"}
-  {"intent":"Comparison","intent_confidence":0.88,"unmapped_name":null,"domain":"it","topic":"sql_vs_nosql","signal":"deeper_question"}
-  {"intent":"Definitional","intent_confidence":0.92,"unmapped_name":null,"domain":"movies","topic":"inception_plot","signal":"no_signal"}
-  {"intent":"Instructional","intent_confidence":0.86,"unmapped_name":null,"domain":"travel","topic":"beat_jet_lag","signal":"no_signal"}
-  {"intent":"unmapped","intent_confidence":0.40,"unmapped_name":"acknowledgment","domain":"general","topic":"general","signal":"it_worked_statement"}
+  {"intent":"Definitional","intent_confidence":0.95,"unmapped_name":null,"domain":"cricket","signal":"no_signal"}
+  {"intent":"Explanation","intent_confidence":0.9,"unmapped_name":null,"domain":"it","signal":"no_signal"}
+  {"intent":"Comparison","intent_confidence":0.88,"unmapped_name":null,"domain":"it","signal":"deeper_question"}
+  {"intent":"Definitional","intent_confidence":0.92,"unmapped_name":null,"domain":"movies","signal":"no_signal"}
+  {"intent":"Instructional","intent_confidence":0.86,"unmapped_name":null,"domain":"travel","signal":"no_signal"}
+  {"intent":"unmapped","intent_confidence":0.40,"unmapped_name":"acknowledgment","domain":"general","signal":"it_worked_statement"}
 
 INTENTS (pick based on NEW_USER_MESSAGE only):
   Decision        recommendation        e.g. "Should I X?", "Which X?"
