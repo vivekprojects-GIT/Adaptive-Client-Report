@@ -44,7 +44,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import anthropic
-from .llm.local_llm_client import LocalLLMClient
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, StreamingResponse
@@ -113,26 +112,15 @@ RAG: Optional[RagStore] = None
 
 def _build() -> ApeOrchestrator:
     load_dotenv(override=True)
+    # LLM backend: Anthropic Claude (Haiku).
+    model   = os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5")
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise RuntimeError("ANTHROPIC_API_KEY is required")
+
     domain = os.getenv("APE_DOMAIN", "finance")
 
-    # LLM backend — LLM_BACKEND selects which model serves /turn:
-    #   "local"     → self-hosted TinyLlama-1.1B-Chat via transformers (no API
-    #                 key; runs on CPU). LOCAL_LLM_MODEL overrides the model id.
-    #   "anthropic" → Anthropic Claude (needs ANTHROPIC_API_KEY).
-    # Both expose the same Anthropic-SDK surface, so the classifier /
-    # synthesizer / orchestrator are unchanged either way.
-    backend = os.getenv("LLM_BACKEND", "local").strip().lower()
-    if backend == "anthropic":
-        model   = os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5")
-        api_key = os.getenv("ANTHROPIC_API_KEY")
-        if not api_key:
-            raise RuntimeError("ANTHROPIC_API_KEY is required for LLM_BACKEND=anthropic")
-        client = anthropic.Anthropic(api_key=api_key)
-    else:
-        model = os.getenv("LOCAL_LLM_MODEL", "TinyLlama/TinyLlama-1.1B-Chat-v1.0")
-        # preload=True so the first /turn isn't blocked on the model load.
-        client = LocalLLMClient(model=model, preload=True)
-        print(f"[startup] local LLM backend: {model}", flush=True)
+    client = anthropic.Anthropic(api_key=api_key)
     store = MongoStore()
 
     # Seed default config if collections are empty

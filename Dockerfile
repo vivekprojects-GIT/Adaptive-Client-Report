@@ -65,23 +65,17 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_NO_CACHE_DIR=1 \
-    LLM_BACKEND=local \
-    LOCAL_LLM_MODEL=TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
-    LOCAL_LLM_MAX_TOKENS=512 \
     ANTHROPIC_MODEL=claude-haiku-4-5 \
     APE_MONGO_DB=ape \
     APE_DOMAIN=finance \
     APE_UCB_C=1.0 \
     PORT=7860 \
     HOME=/home/user \
-    HF_HOME=/home/user/.cache/huggingface \
     APE_RAG_DIR=/home/user/.chroma
 
-# Install the CPU-only PyTorch wheel first (the default index pulls a ~2GB
-# CUDA build we don't need on a CPU Space), then the rest of the deps.
+# Install Python deps before copying source so they cache independently
 COPY --chown=user:user requirements.txt ./
-RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu \
- && pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy backend source
 COPY --chown=user:user ape/      ./ape/
@@ -92,10 +86,10 @@ COPY --from=frontend-build --chown=user:user /app/frontend/dist ./frontend/dist
 
 USER user
 
-# Pre-download the local LLM weights (TinyLlama-1.1B-Chat) at build time so
-# the first request isn't blocked on a ~2GB download. RAG is disabled, so we
-# no longer warm the Chroma / all-MiniLM-L6-v2 embedding model.
-RUN python -c "from ape.llm.local_llm_client import LocalLLMClient; LocalLLMClient(preload=True); print('warm local LLM: ok')"
+# Pre-download the Chroma embedding model (all-MiniLM-L6-v2 ONNX) at build
+# time and warm the persistent store, so the first request isn't blocked on a
+# model download and RAG works even if runtime egress is restricted.
+RUN python -c "from ape.rag import RagStore; print('warm RAG:', RagStore().ingest())"
 
 EXPOSE 7860
 
