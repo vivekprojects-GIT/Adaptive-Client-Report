@@ -358,6 +358,48 @@ export default function ResearchTab() {
         </p>
       </div>
 
+      {/* ── Recommendation: best approach for us ───────────────────────── */}
+      <div className="admin-section">
+        <h2 className="admin-section-title">Recommendation — the best approach for us</h2>
+        <div className="unique-banner">
+          <div className="unique-tag">✓ Verdict</div>
+          <p>
+            For our situation — <strong>sparse, comparative (thumbs), delayed
+            feedback</strong>; a small menu of strategies; a POC aiming at a
+            per-user "brain" — the best approach is the <strong>hybrid</strong>:
+            the <strong>UCB bandit + an agentic memory/reflection layer + a
+            critic</strong>, with the agent as the centerpiece. It is the only
+            option that is both <strong>shippable now</strong> (no training, no
+            data threshold) <em>and</em> <strong>on the path to the goal</strong>.
+          </p>
+        </div>
+
+        <h3 className="admin-subhead">Why it beats each alternative (for us)</h3>
+        <ul className="ref-list">
+          <li><strong>🥇 UCB + agent memory + critic (the fusion)</strong>
+            <div className="ref-note">Bandit answers "which format works" (provable, interpretable); the agent reasons a rich preference profile from just a few signals (what LLMs do well and bandits/RLHF can't on sparse data); the critic stops sycophancy. The only path that ships now AND becomes a "brain".</div></li>
+          <li><strong>Pure UCB / Thompson</strong>
+            <div className="ref-note">Too narrow — learns format stats only; can't capture style, values, or reasoning preferences. Never becomes a brain.</div></li>
+          <li><strong>Contextual Thompson</strong>
+            <div className="ref-note">Better stats and the right Stage-2 upgrade, but still only stats — no language-level user model.</div></li>
+          <li><strong>Per-user RLHF / reward model</strong>
+            <div className="ref-note">Most powerful, but premature — data-hungry and expensive; we lack the per-user volume. It's the destination, not the first move.</div></li>
+          <li><strong>Pure agent / memory (no bandit)</strong>
+            <div className="ref-note">Loses the grounded, provable reward signal; can drift and hallucinate preferences. The bandit keeps it honest.</div></li>
+        </ul>
+
+        <div className="reward-scale-pointer">
+          <strong>First move:</strong> add the <strong>profile + reflection agent</strong>,
+          seeded from the cognitive-facet analytics we already compute
+          (<code>compute_user_cognitive_profile</code>), and inject that profile into
+          the synthesizer prompt — keeping the UCB bandit as-is for format selection.
+          That turns existing stats into a readable per-user "brain" in days, not a
+          research project. <strong>Graduate later:</strong> contextual Thompson
+          (Stage 2) once we have enough users to learn across them; a learned reward
+          model + DPO (Stages 3–4) only once feedback volume justifies the cost.
+        </div>
+      </div>
+
       {/* ── Method selection guide ─────────────────────────────────────── */}
       <div className="admin-section">
         <h2 className="admin-section-title">Which method, when? (we are NOT UCB-only)</h2>
