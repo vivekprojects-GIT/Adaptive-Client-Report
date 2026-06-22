@@ -128,6 +128,58 @@ const DECISION = [
     a: "Yes → RL / RLHF (reward model + policy, or DPO). No → a bandit is enough." },
 ];
 
+// ── Industry context — how it's really done, and why per-user is hard ────────
+const INDUSTRY = [
+  {
+    k: "Bandits are everywhere",
+    v: "Contextual bandits / Thompson Sampling run recommendations & ads at Google, Meta, Netflix, Spotify, LinkedIn. This is mature, deployed tech — not unexplored.",
+  },
+  {
+    k: "RLHF is preference learning",
+    v: "The exact family here. It aligns every modern chat LLM (InstructGPT, DPO, Nash-HF). Heavily researched — just aimed at AGGREGATE human preference, not each end-user.",
+  },
+  {
+    k: "Per-user data is too sparse",
+    v: "A rich preference model needs thousands of labels; one user gives a handful. Big labs use POOLED models (learn across millions, condition on user features) — not per-user online learning.",
+  },
+  {
+    k: "They chose memory over weights",
+    v: "Per-user fine-tuning is costly and hard to serve, so the per-user 'brain' that actually shipped is in-context MEMORY + retrieval (ChatGPT / Gemini memory). Cheaper mechanism, same goal.",
+  },
+  {
+    k: "Bandit menu vs generation space",
+    v: "Bandits pick from a menu; LLM output is an infinite space. Cleanly combining them at scale is genuinely open — the niche this project pokes at.",
+  },
+  {
+    k: "Sycophancy & feedback loops",
+    v: "Optimizing hard to one person's thumbs creates models that just tell you what you want (sycophancy) and filter bubbles. Labs are deliberately cautious (Sharma et al. 2023).",
+  },
+];
+
+// ── Agentic path — ship-now alternative to the learned-reward-model track ─────
+const AGENTIC_LANE = [
+  {
+    component: "1 · Profile / memory agent",
+    role: "Maintains a per-user 'mental model' in readable text/JSON — preferences, style, do's & don'ts, recurring topics.",
+    wiring: "New ape_user_profile doc in Mongo, seeded from the cognitive-facet analytics you already compute (structured_preference, clarity_need, preferred_format).",
+  },
+  {
+    component: "2 · Reflection agent",
+    role: "Every N turns, reads (history + thumbs + signals) and rewrites the profile: e.g. '3 down-votes on long answers → prefers concise'.",
+    wiring: "A triggered orchestrator step; feed the existing per-user facet summary in as structured input to the reflection prompt so it doesn't start cold.",
+  },
+  {
+    component: "3 · Orchestrator integration",
+    role: "Injects the profile into the synthesizer prompt; the UCB bandit still picks the format as a fast statistical prior.",
+    wiring: "Add the profile block in build_synthesizer_system_prompt() — same spot the strategy instruction goes. Bandit selection is unchanged; profile + bandit are complementary.",
+  },
+  {
+    component: "4 · Critic agent",
+    role: "Before sending, checks the draft for correctness & sycophancy vs the profile ('are we just agreeing?').",
+    wiring: "A post-synthesis LLM check in handle_turn; log its verdict alongside the existing signals so it shows in analytics.",
+  },
+];
+
 // ── Paper library (all links HTTP-validated) ─────────────────────────────────
 const GROUPS = [
   {
@@ -247,6 +299,40 @@ const GROUPS = [
     ],
   },
   {
+    group: "Agentic path — memory, reflection & critic (ship-now track)",
+    items: [
+      { t: "Park et al. (2023) — Generative Agents: Interactive Simulacra of Human Behavior",
+        p: "The canonical memory + reflection agent: stores observations and periodically reflects them into higher-level beliefs. The blueprint for our profile/reflection agents.",
+        u: "https://arxiv.org/abs/2304.03442" },
+      { t: "Shinn et al. (2023) — Reflexion: Language Agents with Verbal Reinforcement Learning",
+        p: "Learns from feedback by writing reflections in language instead of updating weights — exactly the 'model the user in language' idea.",
+        u: "https://arxiv.org/abs/2303.11366" },
+      { t: "Packer et al. (2023) — MemGPT: Towards LLMs as Operating Systems",
+        p: "Manages long-term memory beyond the context window — relevant for an evolving per-user profile.",
+        u: "https://arxiv.org/abs/2310.08560" },
+      { t: "Yao et al. (2022) — ReAct: Synergizing Reasoning and Acting in Language Models",
+        p: "The reason-then-act loop underneath most LLM agents — the orchestration pattern for the critic/router.",
+        u: "https://arxiv.org/abs/2210.03629" },
+    ],
+  },
+  {
+    group: "LLM personalization & alignment frontier",
+    items: [
+      { t: "Jang et al. (2023) — Personalized Soups: Personalized LLM Alignment via Post-hoc Parameter Merging",
+        p: "Per-user alignment by merging preference-tuned models — a concrete attempt at the per-person 'brain'.",
+        u: "https://arxiv.org/abs/2310.11564" },
+      { t: "Rame et al. (2023) — Rewarded Soups: Pareto-optimal Alignment by Interpolating Weights",
+        p: "Blends multiple reward objectives instead of one — handles the fact that people weigh things differently.",
+        u: "https://arxiv.org/abs/2306.04488" },
+      { t: "Ong et al. (2024) — RouteLLM: Learning to Route LLMs with Preference Data",
+        p: "Uses preference data to ROUTE between models/strategies — a bandit-flavoured, production-grade use of feedback.",
+        u: "https://arxiv.org/abs/2406.18665" },
+      { t: "Sharma et al. (2023, Anthropic) — Towards Understanding Sycophancy in Language Models",
+        p: "Why optimizing to user approval is dangerous (models that just agree) — the risk our critic agent guards against.",
+        u: "https://arxiv.org/abs/2310.13548" },
+    ],
+  },
+  {
     group: "Where bandits are used in the real world",
     items: [
       { t: "Bouneffouf & Rish (2019) — Survey on Practical Applications of Multi-Armed & Contextual Bandits",
@@ -350,6 +436,60 @@ export default function ResearchTab() {
           — which is exactly why the dueling-bandit and delayed-feedback papers
           below are the most relevant frontier for us.
         </div>
+      </div>
+
+      {/* ── Agentic path (ship-now alternative) ────────────────────────── */}
+      <div className="admin-section">
+        <h2 className="admin-section-title">Agentic path — a ship-now alternative to the reward-model track</h2>
+        <p className="admin-section-sub">
+          Stages 3–4 (learn a reward model, then RLHF) are data-hungry and slow.
+          A parallel, cheaper track gets a working preference "brain" <em>now</em>:
+          instead of learning weights, an <strong>agent maintains the user model
+          in language</strong> and the LLM reasons it from sparse feedback. This is
+          the same approach big labs shipped for per-user adaptation (memory).
+        </p>
+        <div className="method-grid">
+          {AGENTIC_LANE.map((a) => (
+            <div key={a.component} className="method-card fit-now">
+              <div className="method-head">
+                <span className="method-name">{a.component}</span>
+              </div>
+              <div className="method-row"><span className="method-k">Role</span><span>{a.role}</span></div>
+              <div className="method-row"><span className="method-k">Wires into</span><span>{a.wiring}</span></div>
+            </div>
+          ))}
+        </div>
+        <div className="roadmap-arrow" aria-hidden="true" style={{ textAlign: "center" }}>↓</div>
+        <div className="reward-scale-pointer">
+          <strong>Agentic track vs reward-model track.</strong> The agentic path
+          (memory + reflection + critic) is <strong>interpretable, cheap, and
+          shippable today</strong> — the profile is readable text, nothing is
+          trained — but it has <strong>no convergence guarantees</strong> and can
+          drift or hallucinate preferences (hence the critic). The learned-reward
+          track (Stages 3–4) is <strong>principled but data-hungry and
+          expensive</strong>. Recommended: <strong>run the agentic track now</strong>
+          alongside the UCB bandit (bandit = fast format prior; profile = rich
+          preferences; critic = safety), and graduate to a learned reward model
+          only when accumulated feedback justifies it. See the "Agentic path"
+          papers below (Generative Agents, Reflexion, MemGPT, ReAct).
+        </div>
+      </div>
+
+      {/* ── Industry context ───────────────────────────────────────────── */}
+      <div className="admin-section">
+        <h2 className="admin-section-title">Industry context — how it's really done (and why per-user is hard)</h2>
+        <p className="admin-section-sub">
+          The components are all industrial-grade; what's uncommon is our exact
+          combination — a lightweight, interpretable, per-user learner steering an
+          LLM. These are the real reasons big labs solve personalization differently.
+        </p>
+        <ul className="ref-list">
+          {INDUSTRY.map((x) => (
+            <li key={x.k}>
+              <strong>{x.k}.</strong> <span className="ref-note">{x.v}</span>
+            </li>
+          ))}
+        </ul>
       </div>
 
       {/* ── Paper library ──────────────────────────────────────────────── */}
