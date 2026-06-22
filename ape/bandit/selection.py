@@ -40,15 +40,26 @@ from typing import Any, Dict, List, Optional
 # under-explore 4x on this scale.
 REWARD_RANGE_WIDTH = 4.0
 
+# Exploration constant. Multiplies the (width-corrected) exploration bonus.
+#   c = 1   → textbook-balanced UCB1, but very explore-heavy on this reward
+#             scale (a clear winner is only picked ~45% of the time).
+#   c = 0.25→ commits to the learned winner much faster (~70%), which suits
+#             sparse human feedback. Lower = more exploitation.
+# Hardcoded here (not env) so selection behavior is explicit and versioned.
+UCB_EXPLORATION_C = 0.25
+
 
 def compute_ucb(count: int, total_reward: float, n_total: int) -> float:
     """UCB1 score for one arm.
 
-      ucb(arm) = avg_reward(arm) + REWARD_RANGE_WIDTH * sqrt( 2 * ln(N) / count(arm) )
+      ucb(arm) = avg_reward(arm)
+                 + UCB_EXPLORATION_C * REWARD_RANGE_WIDTH
+                   * sqrt( 2 * ln(N) / count(arm) )
 
-    where N is the sum of counts across ALL arms in the cell and
-    REWARD_RANGE_WIDTH = 4 (rewards span [-2, +2]). With width=1 this reduces
-    to the textbook UCB1 bonus.
+    where N is the sum of counts across ALL arms in the cell,
+    REWARD_RANGE_WIDTH = 4 (rewards span [-2, +2]), and UCB_EXPLORATION_C is
+    the exploration knob (0.25 → exploitation-leaning, suited to sparse
+    feedback). With c=1 and width=1 this reduces to textbook UCB1.
 
     Edge cases:
       count == 0   → +inf. The arm is unpulled. Round-robin should have
@@ -62,7 +73,7 @@ def compute_ucb(count: int, total_reward: float, n_total: int) -> float:
     avg = total_reward / count
     if n_total <= 0:
         return avg
-    return avg + REWARD_RANGE_WIDTH * math.sqrt(2.0 * math.log(n_total) / count)
+    return avg + UCB_EXPLORATION_C * REWARD_RANGE_WIDTH * math.sqrt(2.0 * math.log(n_total) / count)
 
 
 def _cell_n_total(rows: List[Dict[str, Any]]) -> int:
