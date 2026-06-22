@@ -56,6 +56,78 @@ const ROADMAP = [
   },
 ];
 
+// ── Method selection guide: when to use what ─────────────────────────────────
+const METHODS = [
+  {
+    method: "Greedy / ε-greedy",
+    problem: "Explore vs exploit with no context and minimal machinery.",
+    when: "Tiny action sets; a quick baseline.",
+    fit: "skip", fitLabel: "not for us",
+    fitText: "Too crude — exploration is random, with no awareness of uncertainty.",
+    papers: "Sutton & Barto §2",
+  },
+  {
+    method: "UCB1 (+ variants)",
+    problem: "Explore/exploit on a small fixed set with provable guarantees and full transparency.",
+    when: "Few arms, scalar reward, you want deterministic & auditable picks.",
+    fit: "now", fitLabel: "using now (Stage 0)",
+    fitText: "Interpretable — we can SHOW why each arm was picked — and strong with round-robin cold-start. The right starting point.",
+    papers: "Auer 2002",
+  },
+  {
+    method: "Thompson Sampling (Bayesian)",
+    problem: "Same explore/exploit, but sample from a belief distribution instead of adding a bonus.",
+    when: "You want better empirical performance, natural uncertainty, easy priors, and graceful handling of delayed/batched feedback.",
+    fit: "next", fitLabel: "strong alternative",
+    fitText: "Often beats UCB in practice and copes better with sparse/delayed feedback (which we have). Trade-off: less transparent than UCB.",
+    papers: "Thompson 1933 · Agrawal & Goyal 2012 · Russo 2018 (tutorial)",
+  },
+  {
+    method: "Contextual bandits (LinUCB / NeuralUCB)",
+    problem: "The best action DEPENDS on the situation — who the user is, the context.",
+    when: "You have features and different users/contexts want different things.",
+    fit: "stage2", fitLabel: "Stage 2",
+    fitText: "Needed for real personalization beyond per-(user, intent) cells.",
+    papers: "Li 2010 · Zhou 2020",
+  },
+  {
+    method: "Contextual Thompson Sampling",
+    problem: "Contextual + Bayesian — personalization with belief sampling.",
+    when: "Personalization AND you want TS's empirical edge / uncertainty handling.",
+    fit: "stage2best", fitLabel: "Stage 2 — best fit",
+    fitText: "Likely our best Stage-2 choice — contextual TS tends to outperform LinUCB in practice.",
+    papers: "Agrawal & Goyal 2013",
+  },
+  {
+    method: "Dueling / Preference bandits",
+    problem: "You only observe 'A was better than B' — never absolute scores.",
+    when: "Feedback is comparative: thumbs, A/B, regenerate.",
+    fit: "matches", fitLabel: "matches our feedback (Stage 1)",
+    fitText: "Matches our signal EXACTLY. The natural first upgrade from scalar rewards.",
+    papers: "Yue 2012 · Bengs 2021",
+  },
+  {
+    method: "RL / RLHF (reward model + policy)",
+    problem: "Shape a complex, structured policy (e.g. text generation) from human preference feedback.",
+    when: "Action space is huge/structured (language); you want to steer generation itself, not pick from a menu.",
+    fit: "goal", fitLabel: "the goal (Stages 3–4)",
+    fitText: "Learn a reward model of the person, then steer the LLM's actual output. This is the indirect 'brain'.",
+    papers: "Christiano 2017 · Ouyang 2022 · Rafailov 2023",
+  },
+];
+
+// ── Decision flow — pick the method without confusion ────────────────────────
+const DECISION = [
+  { q: "Is feedback comparative ('A better than B') or an absolute score?",
+    a: "Comparative → Dueling / Preference bandits. Absolute → continue below." },
+  { q: "Does the best choice depend on context (who / what / when)?",
+    a: "Yes → Contextual methods. No → plain (non-contextual) bandit." },
+  { q: "Do you want transparency & provable bounds, or best empirical performance?",
+    a: "Transparency → UCB family. Performance / priors / delayed feedback → Thompson family." },
+  { q: "Is the action space huge & structured — generating text, not picking from a menu?",
+    a: "Yes → RL / RLHF (reward model + policy, or DPO). No → a bandit is enough." },
+];
+
 // ── Paper library (all links HTTP-validated) ─────────────────────────────────
 const GROUPS = [
   {
@@ -104,6 +176,12 @@ const GROUPS = [
       { t: "Agrawal & Goyal (2012) — Analysis of Thompson Sampling",
         p: "Modern proof that the dice-rolling approach matches UCB's guarantees. (The Beta-curves on the analytics page nod to this.)",
         u: "https://arxiv.org/abs/1111.1797" },
+      { t: "Russo, Van Roy, Kazerouni, Osband & Wen (2018) — A Tutorial on Thompson Sampling",
+        p: "The friendly, comprehensive guide to Thompson Sampling (incl. contextual). Best starting point if we adopt TS.",
+        u: "https://arxiv.org/abs/1707.02038" },
+      { t: "Chapelle & Li (2011) — An Empirical Evaluation of Thompson Sampling",
+        p: "Showed Thompson Sampling often beats UCB in practice — the paper that revived TS for real systems.",
+        u: "https://papers.nips.cc/paper_files/paper/2011/hash/e53a0a2978c28872a4505bdb51db06dc-Abstract.html" },
       { t: "Russo & Van Roy (2018) — Learning to Optimize via Information-Directed Sampling",
         p: "Picks the option that TEACHES the most per try, not just the one that looks best now.",
         u: "https://arxiv.org/abs/1403.5556" },
@@ -115,6 +193,9 @@ const GROUPS = [
       { t: "Li, Chu, Langford & Schapire (2010) — A Contextual-Bandit Approach (LinUCB)",
         p: "Uses clues about the situation (context) to choose smarter — a different best choice for different users.",
         u: "https://arxiv.org/abs/1003.0146" },
+      { t: "Agrawal & Goyal (2013) — Thompson Sampling for Contextual Bandits with Linear Payoffs",
+        p: "Contextual personalization done the Bayesian (Thompson) way — likely our best Stage-2 choice.",
+        u: "https://arxiv.org/abs/1209.3352" },
       { t: "Zhou, Li & Gu (2020) — Neural Contextual Bandits with UCB Exploration (NeuralUCB)",
         p: "Replaces the simple average with a neural network, keeping the same uncertainty-bonus idea.",
         u: "https://arxiv.org/abs/1911.04462" },
@@ -189,6 +270,54 @@ export default function ResearchTab() {
           the <strong>formula</strong> to use at each stage — followed by the
           validated paper library.
         </p>
+      </div>
+
+      {/* ── Method selection guide ─────────────────────────────────────── */}
+      <div className="admin-section">
+        <h2 className="admin-section-title">Which method, when? (we are NOT UCB-only)</h2>
+        <p className="admin-section-sub">
+          UCB is just our starting point — chosen because it's simple,
+          interpretable, and provably good for a cold start. But the right tool
+          depends on the sub-problem. Here's the full menu, what each one solves,
+          when to reach for it, and how it fits our path to the goal.
+        </p>
+        <div className="method-grid">
+          {METHODS.map((m) => (
+            <div key={m.method} className={`method-card fit-${m.fit}`}>
+              <div className="method-head">
+                <span className="method-name">{m.method}</span>
+                <span className={`method-badge fit-${m.fit}`}>{m.fitLabel}</span>
+              </div>
+              <div className="method-row"><span className="method-k">Problem</span><span>{m.problem}</span></div>
+              <div className="method-row"><span className="method-k">Use when</span><span>{m.when}</span></div>
+              <div className="method-row"><span className="method-k">Fit for us</span><span>{m.fitText}</span></div>
+              <div className="method-row"><span className="method-k">Papers</span><span className="ref-note">{m.papers}</span></div>
+            </div>
+          ))}
+        </div>
+
+        <h3 className="admin-subhead">Decision flow — answer these in order</h3>
+        <ol className="decision-flow">
+          {DECISION.map((d, i) => (
+            <li key={i}>
+              <span className="decision-q">{d.q}</span>
+              <span className="decision-a">{d.a}</span>
+            </li>
+          ))}
+        </ol>
+
+        <div className="reward-scale-pointer">
+          <strong>What we use, and why — no confusion.</strong> Our feedback is
+          <em> comparative</em> (thumbs) and <em>delayed</em> (lands next turn),
+          and our action set is a <em>small menu</em> of strategies — so a bandit,
+          not full RL, is correct for now. We run <strong>UCB</strong> first
+          because it's transparent and easy to trust in a demo. The clean
+          progression: <strong>UCB → Preference/Dueling (Stage 1) → Contextual
+          Thompson Sampling (Stage 2) → per-user reward model (Stage 3) → RLHF/DPO
+          generation steering (Stage 4)</strong>. We switch from UCB to the
+          Thompson / contextual / RLHF family exactly when the data justifies it —
+          not all at once.
+        </div>
       </div>
 
       {/* ── Flow diagram / roadmap ─────────────────────────────────────── */}

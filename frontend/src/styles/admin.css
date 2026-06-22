@@ -1633,3 +1633,24 @@
 .roadmap-k { font-weight: 600; color: var(--text,#2d2a26); }
 .roadmap-row code { font-size: 12px; white-space: normal; word-break: break-word; }
 .roadmap-arrow { font-size: 20px; color: var(--text-secondary,#9a948b); line-height: 1; margin: 4px 0; }
+
+/* Research tab — method selection guide + decision flow */
+.method-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; margin: 10px 0 16px; }
+.method-card { border: 1px solid var(--border,#e7e2d9); border-radius: 10px; background: rgba(250,248,244,0.6); padding: 11px 13px; }
+.method-card.fit-now      { border-color: #4f8a4d; box-shadow: 0 0 0 1px #4f8a4d22; }
+.method-card.fit-goal     { border-color: #b5541f; box-shadow: 0 0 0 1px #b5541f22; }
+.method-card.fit-matches,
+.method-card.fit-stage2best { border-color: #b88a2e; }
+.method-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; }
+.method-name { font-size: 14px; font-weight: 650; }
+.method-badge { font-size: 10.5px; font-weight: 600; padding: 1px 8px; border-radius: 999px; background: #ece8e1; color: #6b655d; white-space: nowrap; }
+.method-badge.fit-now { background: #e3f0e2; color: #2f6b2e; }
+.method-badge.fit-goal { background: #f6e3d6; color: #97441a; }
+.method-badge.fit-matches, .method-badge.fit-stage2best { background: #f6efd9; color: #7a5a14; }
+.method-badge.fit-skip { background: #efe7e7; color: #8a6b6b; }
+.method-row { display: grid; grid-template-columns: 84px 1fr; gap: 8px; font-size: 12px; padding: 3px 0; line-height: 1.45; }
+.method-k { font-weight: 600; color: var(--text,#2d2a26); }
+.decision-flow { margin: 6px 0 14px; padding-left: 20px; }
+.decision-flow li { margin-bottom: 9px; font-size: 13px; }
+.decision-q { display: block; font-weight: 600; }
+.decision-a { display: block; color: var(--text-secondary,#6b655d); margin-top: 1px; }
