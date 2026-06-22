@@ -34,12 +34,21 @@ from typing import Any, Dict, List, Optional
 # cache refresh + read-side endpoints that show the current score per arm.
 # ----------------------------------------------------------------------------
 
+# Reward range width — rewards live in [-2, +2] (explicit ±2 / inferred ±1),
+# so the exploration bonus is scaled by the width (b-a = 4) per Hoeffding.
+# Textbook UCB1 assumes width-1 rewards; without this factor the bonus would
+# under-explore 4x on this scale.
+REWARD_RANGE_WIDTH = 4.0
+
+
 def compute_ucb(count: int, total_reward: float, n_total: int) -> float:
     """UCB1 score for one arm.
 
-      ucb(arm) = avg_reward(arm) + sqrt( 2 * ln(N) / count(arm) )
+      ucb(arm) = avg_reward(arm) + REWARD_RANGE_WIDTH * sqrt( 2 * ln(N) / count(arm) )
 
-    where N is the sum of counts across ALL arms in the cell.
+    where N is the sum of counts across ALL arms in the cell and
+    REWARD_RANGE_WIDTH = 4 (rewards span [-2, +2]). With width=1 this reduces
+    to the textbook UCB1 bonus.
 
     Edge cases:
       count == 0   → +inf. The arm is unpulled. Round-robin should have
@@ -53,7 +62,7 @@ def compute_ucb(count: int, total_reward: float, n_total: int) -> float:
     avg = total_reward / count
     if n_total <= 0:
         return avg
-    return avg + math.sqrt(2.0 * math.log(n_total) / count)
+    return avg + REWARD_RANGE_WIDTH * math.sqrt(2.0 * math.log(n_total) / count)
 
 
 def _cell_n_total(rows: List[Dict[str, Any]]) -> int:
