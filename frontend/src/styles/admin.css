@@ -1609,3 +1609,27 @@
 .ref-note { color: var(--text-secondary, #6b655d); }
 .ref-list li { margin-bottom: 10px; }
 .ref-note { display: block; margin-top: 2px; font-size: 12.5px; line-height: 1.5; }
+
+/* Research tab — roadmap / flow diagram */
+.roadmap { display: flex; flex-direction: column; align-items: stretch; margin: 8px 0 14px; }
+.roadmap-item { display: flex; flex-direction: column; align-items: center; }
+.roadmap-card {
+  width: 100%;
+  border: 1px solid var(--border, #e7e2d9);
+  border-radius: 12px;
+  background: rgba(250, 248, 244, 0.7);
+  padding: 12px 14px;
+}
+.roadmap-card.is-here { border-color: #4f8a4d; box-shadow: 0 0 0 1px #4f8a4d33; }
+.roadmap-card.is-goal { border-color: #b5541f; background: rgba(181,84,31,0.06); }
+.roadmap-head { display: flex; align-items: center; gap: 8px; margin-bottom: 2px; }
+.roadmap-stage { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; color: var(--text-secondary,#6b655d); text-transform: uppercase; }
+.roadmap-badge { font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 999px; }
+.roadmap-badge.here { background: #e3f0e2; color: #2f6b2e; }
+.roadmap-badge.goal { background: #f6e3d6; color: #97441a; }
+.roadmap-title { font-size: 15px; font-weight: 650; margin-bottom: 3px; }
+.roadmap-summary { font-size: 13px; color: var(--text-secondary,#6b655d); margin-bottom: 8px; line-height: 1.5; }
+.roadmap-row { display: grid; grid-template-columns: 130px 1fr; gap: 10px; font-size: 12.5px; padding: 4px 0; border-top: 1px dashed var(--border,#e7e2d9); align-items: start; }
+.roadmap-k { font-weight: 600; color: var(--text,#2d2a26); }
+.roadmap-row code { font-size: 12px; white-space: normal; word-break: break-word; }
+.roadmap-arrow { font-size: 20px; color: var(--text-secondary,#9a948b); line-height: 1; margin: 4px 0; }

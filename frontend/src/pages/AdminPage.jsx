@@ -9,6 +9,7 @@ import OffersTab     from "./admin/OffersTab.jsx";
 import SignalRulesTab from "./admin/SignalRulesTab.jsx";
 import RewardScaleTab from "./admin/RewardScaleTab.jsx";
 import UcbConfigTab   from "./admin/UcbConfigTab.jsx";
+import ResearchTab    from "./admin/ResearchTab.jsx";
 import BanditStateTab from "./admin/BanditStateTab.jsx";
 import AuditTab       from "./admin/AuditTab.jsx";
 import "../styles/app-shell.css";
@@ -26,6 +27,7 @@ const TABS = [
   { id: "rewards",      label: "Reward Scale" },
   { id: "ucb",          label: "UCB Formula" },
   { id: "bandit",       label: "Bandit State" },
+  { id: "research",     label: "Research" },
   { id: "audit",        label: "Audit Log" },
 ];
 
@@ -74,6 +76,7 @@ export default function AdminPage() {
         {active === "rewards"      && <RewardScaleTab notify={notify} />}
         {active === "ucb"          && <UcbConfigTab   notify={notify} />}
         {active === "bandit"       && <BanditStateTab notify={notify} />}
+        {active === "research"     && <ResearchTab />}
         {active === "audit"        && <AuditTab       notify={notify} />}
       </main>
 
