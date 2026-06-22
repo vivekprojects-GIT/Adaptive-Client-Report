@@ -83,6 +83,36 @@ const RECENT_REFS = [
   },
 ];
 
+// Advanced & latest — surveys + frontier directions, several directly
+// relevant to how THIS app collects feedback.
+const ADVANCED_REFS = [
+  {
+    title: "Slivkins (2019) — Introduction to Multi-Armed Bandits (Foundations & Trends in ML)",
+    plain: "A free, modern, comprehensive monograph covering the whole bandit field end to end — the best single deep-dive if you want everything in one document.",
+    url: "https://arxiv.org/abs/1904.07272",
+  },
+  {
+    title: "Bengs, Busa-Fekete, El Mesaoudi-Paul & Hüllermeier (2021) — Preference-based Online Learning with Dueling Bandits: A Survey (JMLR)",
+    plain: "Most relevant to us: bandits that learn from 'which answer was better' feedback — exactly the kind of signal a thumbs-up/down gives — instead of absolute numeric scores.",
+    url: "https://arxiv.org/abs/1807.11398",
+  },
+  {
+    title: "Munos et al. (2023, DeepMind) — Nash Learning from Human Feedback",
+    plain: "Frontier work linking preference feedback to aligning large language models (RLHF). The modern descendant of bandit ideas — directly in our problem space, since we learn from human feedback on LLM answers.",
+    url: "https://arxiv.org/abs/2312.00886",
+  },
+  {
+    title: "Joulani, György & Szepesvári (2013) — Online Learning under Delayed Feedback (ICML)",
+    plain: "Handles rewards that arrive LATE rather than immediately — relevant to us, because a turn's reward often only lands on the user's NEXT message, not right away.",
+    url: "https://arxiv.org/abs/1306.0686",
+  },
+  {
+    title: "Bouneffouf & Rish (2019) — A Survey on Practical Applications of Multi-Armed and Contextual Bandits",
+    plain: "A tour of where bandits are actually used in the real world — recommendations, ads, clinical trials, finance — useful for seeing the bigger picture beyond the theory.",
+    url: "https://arxiv.org/abs/1904.10040",
+  },
+];
+
 /**
  * UcbConfigTab — tune the UCB selection formula live (no redeploy).
  *
@@ -243,6 +273,16 @@ export default function UcbConfigTab({ notify }) {
         <h3 className="admin-subhead">Recent research (2018–2021) — UCB in the ML era</h3>
         <ul className="ref-list">
           {RECENT_REFS.map((r) => (
+            <li key={r.url}>
+              <a href={r.url} target="_blank" rel="noopener noreferrer">{r.title}</a>
+              <div className="ref-note">{r.plain}</div>
+            </li>
+          ))}
+        </ul>
+
+        <h3 className="admin-subhead">Advanced &amp; latest — surveys + frontier (some directly relevant to us)</h3>
+        <ul className="ref-list">
+          {ADVANCED_REFS.map((r) => (
             <li key={r.url}>
               <a href={r.url} target="_blank" rel="noopener noreferrer">{r.title}</a>
               <div className="ref-note">{r.plain}</div>
