@@ -2,60 +2,84 @@ import { useEffect, useState } from "react";
 import { api } from "../../api.js";
 
 // Research references behind the UCB formula — shown in the tab so the
-// formula choices are traceable to the literature.
+// formula choices are traceable to the literature. `plain` = layman's terms.
 const CORE_REFS = [
   {
     title: "Auer, Cesa-Bianchi & Fischer (2002) — Finite-time Analysis of the Multiarmed Bandit Problem",
-    note: "Defines UCB1: x̄ⱼ + √(2·ln n / nⱼ). The algorithm we use.",
+    plain: "The recipe we use. It proved that if you score each option by its average result PLUS a 'how unsure am I about this one' bonus, you reliably find the best option while wasting very few tries.",
     url: "https://link.springer.com/article/10.1023/A:1013689704352",
   },
   {
     title: "Sutton & Barto (2018) — Reinforcement Learning: An Introduction, §2.7",
-    note: "Writes UCB as Q(a) + c·√(ln t / N(a)) — the source of the tunable c knob.",
+    plain: "A famous textbook that writes the same idea with a single dial called c for 'how adventurous to be.' That dial is the c knob in the form above.",
     url: "http://incompleteideas.net/book/the-book-2nd.html",
   },
   {
     title: "Hoeffding (1963) — Probability Inequalities for Sums of Bounded Random Variables",
-    note: "The confidence bound scales with the reward range (b−a) — basis for our width factor.",
+    plain: "A math rule for 'how far can an average realistically be from the truth.' It's the reason the exploration bonus must be scaled to the size of your scores (our ×4 reward-range factor).",
     url: "https://doi.org/10.1080/01621459.1963.10500830",
   },
   {
     title: "Lai & Robbins (1985) — Asymptotically efficient adaptive allocation rules",
-    note: "Established the logarithmic regret lower bound that UCB achieves.",
+    plain: "Proved the best any method can possibly do: you can't avoid testing the losers more than a tiny (logarithmic) amount. UCB hits that ideal limit.",
     url: "https://doi.org/10.1016/0196-8858(85)90002-8",
   },
   {
     title: "Lattimore & Szepesvári (2020) — Bandit Algorithms (Cambridge Univ. Press)",
-    note: "Comprehensive modern textbook; derives UCB1, range scaling, and the variants. Free PDF.",
+    plain: "The modern go-to textbook that explains UCB and all its cousins in one place. Free PDF — the best single starting point.",
     url: "https://tor-lattimore.com/downloads/book/book.pdf",
   },
 ];
 
 const VARIANT_REFS = [
   {
-    title: "Garivier & Moulines (2011) — On Upper-Confidence Bound Policies for Switching Bandit Problems",
-    note: "Discounted / sliding-window UCB for non-stationary rewards (preference drift).",
+    title: "Garivier & Moulines (2011) — UCB Policies for Switching Bandit Problems",
+    plain: "A version that slowly FORGETS old feedback — useful when people change their minds over time, so the bandit doesn't cling to a preference from months ago.",
     url: "https://arxiv.org/abs/0805.3415",
   },
   {
-    title: "Audibert, Munos & Szepesvári (2009) — Exploration–exploitation with variance estimates",
-    note: "UCB-V: adds a per-arm variance term.",
+    title: "Audibert, Munos & Szepesvári (2009) — Exploration with variance estimates (UCB-V)",
+    plain: "Explores the unpredictable/noisy options more and the steady, consistent ones less — it pays attention to how much results bounce around.",
     url: "https://doi.org/10.1016/j.tcs.2009.01.016",
   },
   {
-    title: "Garivier & Cappé (2011) — The KL-UCB Algorithm for Bounded Stochastic Bandits",
-    note: "Tighter confidence bounds via KL divergence.",
+    title: "Garivier & Cappé (2011) — The KL-UCB Algorithm",
+    plain: "A sharper, tighter version of the bonus that wastes even fewer tries than plain UCB1.",
     url: "https://arxiv.org/abs/1102.2490",
   },
   {
-    title: "Agrawal & Goyal (2012) — Analysis of Thompson Sampling for the Multi-armed Bandit Problem",
-    note: "Bayesian alternative to UCB (the analytics page's Beta-curve view nods to this).",
+    title: "Agrawal & Goyal (2012) — Analysis of Thompson Sampling",
+    plain: "A different style: instead of adding a bonus, it 'rolls dice' weighted by what it currently believes about each option. Often works as well or better. (The Beta-curves on the analytics page nod to this idea.)",
     url: "https://arxiv.org/abs/1111.1797",
   },
   {
     title: "Li, Chu, Langford & Schapire (2010) — A Contextual-Bandit Approach (LinUCB)",
-    note: "Contextual bandits — the natural next step if signal feature_ids become context.",
+    plain: "Uses extra clues about the situation (the 'context') to choose smarter — e.g. a different best strategy for different kinds of users. The next step if we ever feed user features into selection.",
     url: "https://arxiv.org/abs/1003.0146",
+  },
+];
+
+// Newer work — UCB isn't replaced, it's scaled up to modern ML.
+const RECENT_REFS = [
+  {
+    title: "Zhou, Li & Gu (2020) — Neural Contextual Bandits with UCB-based Exploration (NeuralUCB)",
+    plain: "Swaps the simple average for a neural network, but keeps the exact same 'add an uncertainty bonus' idea. UCB for the deep-learning era.",
+    url: "https://arxiv.org/abs/1911.04462",
+  },
+  {
+    title: "Zhang, Zhou, Li & Gu (2021) — Neural Thompson Sampling",
+    plain: "The dice-rolling (Thompson) style, but powered by a neural network instead of simple statistics.",
+    url: "https://arxiv.org/abs/2010.00827",
+  },
+  {
+    title: "Foster & Rakhlin (2020) — Beyond UCB: Optimal and Efficient Contextual Bandits with Regression Oracles",
+    plain: "Shows you can do contextual bandits efficiently using ANY prediction model, not only UCB-style bounds — a more flexible modern recipe.",
+    url: "https://arxiv.org/abs/2002.04926",
+  },
+  {
+    title: "Russo & Van Roy (2018) — Learning to Optimize via Information-Directed Sampling",
+    plain: "Picks the option that will TEACH it the most per try, not just the one that looks best right now — a smarter way to balance explore vs exploit.",
+    url: "https://arxiv.org/abs/1403.5556",
   },
 ];
 
@@ -178,49 +202,68 @@ export default function UcbConfigTab({ notify }) {
 
       {/* ── Research basis ─────────────────────────────────────────────── */}
       <div className="admin-section">
-        <h2 className="admin-section-title">Research basis</h2>
+        <h2 className="admin-section-title">Research basis (in plain English)</h2>
         <p className="admin-section-sub">
           Our score <code>ucb = avg + c · (b−a) · √(2 · ln N / count)</code> is
-          standard UCB1 with two grounded adjustments: the tunable exploration
-          constant <code>c</code> and the reward-range scaling <code>(b−a)</code>.
-          Each piece traces directly to the literature.
+          standard UCB1 with two grounded adjustments: the exploration dial
+          <code> c</code> and the reward-range scaling <code>(b−a)</code>. Below,
+          each paper is summarised so anyone can follow why the formula looks the
+          way it does.
         </p>
 
-        <h3 className="admin-subhead">Core — the formula we run</h3>
+        <div className="reward-scale-pointer">
+          <strong>Why are the core papers old?</strong> UCB is a mathematically
+          <em> settled</em> method — its guarantees were proven in 1963, 1985 and
+          2002 and are still correct, so the classic formula never needed
+          replacing. Newer research (bottom section) doesn't replace it; it
+          <strong> scales it up</strong> to neural networks, context, and
+          changing preferences.
+        </div>
+
+        <h3 className="admin-subhead">Core — the formula we actually run</h3>
         <ul className="ref-list">
           {CORE_REFS.map((r) => (
             <li key={r.url}>
               <a href={r.url} target="_blank" rel="noopener noreferrer">{r.title}</a>
-              <span className="ref-note"> — {r.note}</span>
+              <div className="ref-note">{r.plain}</div>
             </li>
           ))}
         </ul>
 
-        <h3 className="admin-subhead">Variants — extra knobs if we extend</h3>
+        <h3 className="admin-subhead">Variants — other flavours of the same idea</h3>
         <ul className="ref-list">
           {VARIANT_REFS.map((r) => (
             <li key={r.url}>
               <a href={r.url} target="_blank" rel="noopener noreferrer">{r.title}</a>
-              <span className="ref-note"> — {r.note}</span>
+              <div className="ref-note">{r.plain}</div>
+            </li>
+          ))}
+        </ul>
+
+        <h3 className="admin-subhead">Recent research (2018–2021) — UCB in the ML era</h3>
+        <ul className="ref-list">
+          {RECENT_REFS.map((r) => (
+            <li key={r.url}>
+              <a href={r.url} target="_blank" rel="noopener noreferrer">{r.title}</a>
+              <div className="ref-note">{r.plain}</div>
             </li>
           ))}
         </ul>
 
         <div className="reward-scale-pointer">
-          <strong>Conclusion.</strong> For standard UCB1 the only meaningful
-          tunables are <code>c</code> (exploration) and <code>(b−a)</code>
-          (reward-range scaling) — both exposed above; everything else
-          (<code>avg</code>, <code>count</code>, <code>N</code>, the
-          <code> ln</code>/<code>√</code> shape) is either live data or the
-          fixed UCB1 definition, so there is nothing more to tune within UCB1
-          itself. Different sources write the constant as 2, √2, or fold it into
+          <strong>Conclusion.</strong> For standard UCB1 the only real dials are
+          <code> c</code> (how adventurous) and <code>(b−a)</code> (reward scale)
+          — both exposed above; everything else is live data or the fixed UCB1
+          definition, so there's nothing more to tune within UCB1 itself.
+          Different textbooks write the constant as 2, √2, or fold it into
           <code> c</code> — same algorithm, different bookkeeping — which is why
-          there is no single "correct" c. If we later need to handle
-          <strong> preference drift</strong> (users changing their minds over
-          time), the most useful upgrade is a <strong>discounted / sliding-window
-          UCB</strong> (Garivier &amp; Moulines); for richer adaptivity,
-          variance-aware (UCB-V), tighter (KL-UCB), Bayesian (Thompson), or
-          contextual (LinUCB) variants are the established next steps.
+          there's no single "correct" c. The classic papers are old because the
+          theory is settled, not outdated; recent work (NeuralUCB, Neural
+          Thompson, Beyond-UCB, Information-Directed Sampling) keeps the same
+          explore-vs-exploit core and adds machine learning on top. The most
+          useful upgrade for us specifically would be a
+          <strong> discounted / sliding-window UCB</strong> if users' preferences
+          start drifting over time.
         </div>
       </div>
     </div>

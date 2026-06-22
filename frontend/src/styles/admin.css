@@ -1607,3 +1607,5 @@
 .ref-list a { color: var(--primary, #b5541f); text-decoration: underline; }
 .ref-list a:hover { opacity: 0.8; }
 .ref-note { color: var(--text-secondary, #6b655d); }
+.ref-list li { margin-bottom: 10px; }
+.ref-note { display: block; margin-top: 2px; font-size: 12.5px; line-height: 1.5; }
