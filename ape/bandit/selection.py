@@ -41,12 +41,12 @@ from typing import Any, Dict, List, Optional
 REWARD_RANGE_WIDTH = 4.0
 
 # Exploration constant. Multiplies the (width-corrected) exploration bonus.
-#   c = 1   → textbook-balanced UCB1, but very explore-heavy on this reward
-#             scale (a clear winner is only picked ~45% of the time).
-#   c = 0.25→ commits to the learned winner much faster (~70%), which suits
-#             sparse human feedback. Lower = more exploitation.
+#   c = 1   → textbook-balanced UCB1; explore-heavy on this reward scale
+#             (a clear winner is only picked ~45% of the time over 20 turns).
+#   c < 1   → commits to the learned winner faster (more exploitation),
+#             which suits sparse human feedback. Lower = more exploitation.
 # Hardcoded here (not env) so selection behavior is explicit and versioned.
-UCB_EXPLORATION_C = 0.25
+UCB_EXPLORATION_C = 1.0
 
 
 def compute_ucb(count: int, total_reward: float, n_total: int) -> float:
