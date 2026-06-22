@@ -147,10 +147,6 @@ const INDUSTRY = [
     v: "Per-user fine-tuning is costly and hard to serve, so the per-user 'brain' that actually shipped is in-context MEMORY + retrieval (ChatGPT / Gemini memory). Cheaper mechanism, same goal.",
   },
   {
-    k: "Bandit menu vs generation space",
-    v: "Bandits pick from a menu; LLM output is an infinite space. Cleanly combining them at scale is genuinely open — the niche this project pokes at.",
-  },
-  {
     k: "Sycophancy & feedback loops",
     v: "Optimizing hard to one person's thumbs creates models that just tell you what you want (sycophancy) and filter bubbles. Labs are deliberately cautious (Sharma et al. 2023).",
   },
@@ -569,6 +565,37 @@ export default function ResearchTab() {
             </li>
           ))}
         </ul>
+
+        <div className="unique-banner">
+          <div className="unique-tag">◆ The core open problem — bandit menu vs generation space</div>
+          <p>
+            A <strong>bandit</strong> chooses among a small, fixed set of
+            <strong> discrete arms</strong> — here, response formats / strategies.
+            The math is clean, provable, and interpretable, but it can only pick
+            from what's <em>on the menu</em>. An <strong>LLM's output</strong> is
+            an effectively <strong>infinite space</strong>: any sequence of tokens,
+            every response unique. There is no menu.
+          </p>
+          <div className="unique-fuse">
+            <span className="unique-chip">Why it's hard<small>
+              <strong>Action explosion:</strong> you can't run a bandit over "all possible texts."
+              <strong> Credit assignment:</strong> which of hundreds of tokens earned the thumbs-up?
+              <strong> Reward sparsity:</strong> one scalar for a whole paragraph.</small></span>
+            <span className="unique-chip">How the field bridges it<small>
+              <strong>RLHF</strong> works directly in token space via RL (generation as a sequential decision) — powerful but heavy.
+              <strong> Routing bandits</strong> (RouteLLM) pick among <em>models</em>.</small></span>
+            <span className="unique-chip">Where we sit<small>
+              Shrink the infinite space to a curated <strong>menu of formats/strategies</strong>; the bandit picks the <em>mode</em>, the LLM generates freely <em>within</em> it. Bandit interpretability + LLM fluency.</small></span>
+          </div>
+          <p className="unique-why">
+            Cleanly fusing <strong>per-user bandit selection</strong> with
+            <strong> open-ended LLM generation</strong> at scale is still open
+            research. This project pokes at exactly that seam: keep the bandit over
+            an interpretable strategy menu, and let the agent/profile shape what's
+            generated inside the chosen mode — getting the best of both without the
+            cost of token-level RL.
+          </p>
+        </div>
 
         <h3 className="admin-subhead">Who uses what (public papers / eng blogs / talks)</h3>
         <table className="usage-table">
