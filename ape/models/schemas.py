@@ -120,6 +120,13 @@ class RewardScaleUpdate(BaseModel):
     changed_by:        str = "admin_user"
 
 
+class UcbConfigUpdate(BaseModel):
+    """Global UCB formula knobs: ucb = avg + c * width * sqrt(2 lnN / count)."""
+    exploration_c:      float = Field(..., ge=0.0, le=10.0)
+    reward_range_width: float = Field(..., gt=0.0, le=100.0)
+    changed_by:         str = "admin_user"
+
+
 class PolicyUpsert(BaseModel):
     domain:               str
     intent:               str

@@ -34,32 +34,49 @@ from typing import Any, Dict, List, Optional
 # cache refresh + read-side endpoints that show the current score per arm.
 # ----------------------------------------------------------------------------
 
-# Reward range width — rewards live in [-2, +2] (explicit ±2 / inferred ±1),
-# so the exploration bonus is scaled by the width (b-a = 4) per Hoeffding.
-# Textbook UCB1 assumes width-1 rewards; without this factor the bonus would
-# under-explore 4x on this scale.
+# ── UCB formula parameters (admin-tunable at runtime) ────────────────────────
+# The full score is:
+#     ucb = avg_reward + c * width * sqrt( 2 * ln(N) / count )
+#
+#   width (REWARD_RANGE_WIDTH) — reward range (b-a). Rewards span [-2, +2] so
+#     the default is 4; this Hoeffding correction keeps the bonus on the same
+#     scale as the rewards (textbook UCB1 assumes width 1).
+#   c (UCB_EXPLORATION_C) — exploration constant. c=1 is textbook-balanced
+#     (explore-heavy on this scale); c<1 commits to the learned winner faster
+#     (more exploitation), which suits sparse human feedback.
+#
+# These are DEFAULTS. The live values live in `_ucb_params` and are refreshed
+# from the admin config (bandit_config/ucb in MongoDB) at startup and whenever
+# the admin updates them via POST /config/ucb — no redeploy needed. Selection
+# and the display cache both read get_ucb_params(), so they never diverge.
 REWARD_RANGE_WIDTH = 4.0
-
-# Exploration constant. Multiplies the (width-corrected) exploration bonus.
-#   c = 1   → textbook-balanced UCB1; explore-heavy on this reward scale
-#             (a clear winner is only picked ~45% of the time over 20 turns).
-#   c < 1   → commits to the learned winner faster (more exploitation),
-#             which suits sparse human feedback. Lower = more exploitation.
-# Hardcoded here (not env) so selection behavior is explicit and versioned.
 UCB_EXPLORATION_C = 1.0
+
+_ucb_params = {"c": UCB_EXPLORATION_C, "width": REWARD_RANGE_WIDTH}
+
+
+def set_ucb_params(c: float | None = None, width: float | None = None) -> dict:
+    """Update the live UCB parameters (called on startup + admin edits)."""
+    if c is not None:
+        _ucb_params["c"] = float(c)
+    if width is not None:
+        _ucb_params["width"] = float(width)
+    return dict(_ucb_params)
+
+
+def get_ucb_params() -> dict:
+    """Current live UCB parameters: {"c": float, "width": float}."""
+    return dict(_ucb_params)
 
 
 def compute_ucb(count: int, total_reward: float, n_total: int) -> float:
     """UCB1 score for one arm.
 
-      ucb(arm) = avg_reward(arm)
-                 + UCB_EXPLORATION_C * REWARD_RANGE_WIDTH
-                   * sqrt( 2 * ln(N) / count(arm) )
+      ucb(arm) = avg_reward(arm) + c * width * sqrt( 2 * ln(N) / count(arm) )
 
-    where N is the sum of counts across ALL arms in the cell,
-    REWARD_RANGE_WIDTH = 4 (rewards span [-2, +2]), and UCB_EXPLORATION_C is
-    the exploration knob (0.25 → exploitation-leaning, suited to sparse
-    feedback). With c=1 and width=1 this reduces to textbook UCB1.
+    where N is the sum of counts across ALL arms in the cell, and (c, width)
+    are the live admin-tunable parameters (see get_ucb_params). With c=1 and
+    width=1 this reduces to textbook UCB1.
 
     Edge cases:
       count == 0   → +inf. The arm is unpulled. Round-robin should have
@@ -73,7 +90,9 @@ def compute_ucb(count: int, total_reward: float, n_total: int) -> float:
     avg = total_reward / count
     if n_total <= 0:
         return avg
-    return avg + UCB_EXPLORATION_C * REWARD_RANGE_WIDTH * math.sqrt(2.0 * math.log(n_total) / count)
+    c = _ucb_params["c"]
+    width = _ucb_params["width"]
+    return avg + c * width * math.sqrt(2.0 * math.log(n_total) / count)
 
 
 def _cell_n_total(rows: List[Dict[str, Any]]) -> int:

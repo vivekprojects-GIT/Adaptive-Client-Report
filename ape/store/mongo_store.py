@@ -467,7 +467,10 @@ class MongoStore:
         Unpulled arms (count = 0) get COLD_START_UCB_SCORE so they sort
         to the top of "next pick" displays, mirroring round-robin.
         """
-        from ..bandit.selection import REWARD_RANGE_WIDTH, UCB_EXPLORATION_C
+        from ..bandit.selection import get_ucb_params
+
+        params = get_ucb_params()
+        c, width = params["c"], params["width"]
 
         rows = list(self.bandit_state.find(attribution_pk))
         N = sum(int(r["count"]) for r in rows)
@@ -482,7 +485,7 @@ class MongoStore:
                 new_ucb = COLD_START_UCB_SCORE
             else:
                 avg = float(r.get("total_reward", 0.0)) / cnt
-                new_ucb = avg + UCB_EXPLORATION_C * REWARD_RANGE_WIDTH * math.sqrt(2.0 * ln_N / cnt)
+                new_ucb = avg + c * width * math.sqrt(2.0 * ln_N / cnt)
             self.bandit_state.update_one(
                 {"_id": r["_id"]},
                 {"$set": {"cached_ucb": new_ucb, "last_updated_at": utcnow_iso()}},

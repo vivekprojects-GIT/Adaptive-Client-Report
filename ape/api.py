@@ -77,7 +77,9 @@ from .models import (
     StrategyUpsert,
     TurnRequest,
     TurnResponse,
+    UcbConfigUpdate,
 )
+from .bandit.selection import set_ucb_params, get_ucb_params
 from .orchestrator import ApeOrchestrator, hash_user_id
 from .rag import RAG_DOMAINS, RagStore
 from .store import MongoStore
@@ -130,6 +132,20 @@ def _build() -> ApeOrchestrator:
     global STORE, CONFIG_MGR, RAG
     STORE = store
     CONFIG_MGR = ConfigManager(store)
+
+    # Load the admin-tunable UCB params (bandit_config/ucb) into the live
+    # selection module. Seed defaults if the doc doesn't exist yet.
+    ucb_doc = store.get_active_config("bandit_config", "ucb")
+    if not ucb_doc:
+        defaults = get_ucb_params()
+        store.upsert_config("bandit_config", "ucb", {
+            "exploration_c":      defaults["c"],
+            "reward_range_width": defaults["width"],
+        })
+        ucb_doc = store.get_active_config("bandit_config", "ucb")
+    set_ucb_params(c=ucb_doc.get("exploration_c"), width=ucb_doc.get("reward_range_width"))
+    print(f"[startup] UCB params: c={ucb_doc.get('exploration_c')} "
+          f"width={ucb_doc.get('reward_range_width')}", flush=True)
 
     # RAG disabled — initialization commented out. RAG stays None, the
     # orchestrator skips retrieval, and /rag/* endpoints return
@@ -486,6 +502,25 @@ def upsert_reward_value(req: RewardScaleUpdate):
         changed_by=req.changed_by,
     )
     return {"status": "ok", "category": req.category}
+
+
+@app.get("/config/ucb")
+def get_ucb_config():
+    """Current global UCB params: exploration_c + reward_range_width."""
+    return _guard_cfg().get_ucb_config()
+
+
+@app.post("/config/ucb")
+def update_ucb_config(req: UcbConfigUpdate):
+    """Update the UCB formula knobs and apply them live (no redeploy)."""
+    result = _guard_cfg().update_ucb_config(
+        exploration_c=req.exploration_c,
+        reward_range_width=req.reward_range_width,
+        changed_by=req.changed_by,
+    )
+    # Apply to the running selection module immediately (single worker).
+    set_ucb_params(c=result["exploration_c"], width=result["reward_range_width"])
+    return {"status": "ok", **result}
 
 
 @app.post("/config/policies")

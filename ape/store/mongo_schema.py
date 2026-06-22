@@ -138,6 +138,7 @@ ENTITY_POLICY       = "policy"
 ENTITY_SIGNAL_RULE  = "signal_routing"
 ENTITY_REWARD_RULE  = "reward_scale"
 ENTITY_OFFER_POLICY = "offer_policy"
+ENTITY_BANDIT_CONFIG = "bandit_config"   # global UCB params (entity_id="ucb")
 
 
 # ---- Index specifications --------------------------------------------------

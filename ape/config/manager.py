@@ -293,6 +293,42 @@ class ConfigManager:
         )
 
     # ------------------------------------------------------------------
+    # UCB formula config (global) — ucb = avg + c * width * sqrt(2 lnN/count)
+    # ------------------------------------------------------------------
+    def get_ucb_config(self) -> Dict[str, Any]:
+        doc = self.store.get_active_config("bandit_config", "ucb") or {}
+        return {
+            "exploration_c":      float(doc.get("exploration_c", 1.0)),
+            "reward_range_width": float(doc.get("reward_range_width", 4.0)),
+        }
+
+    def update_ucb_config(
+        self,
+        exploration_c: float,
+        reward_range_width: float,
+        changed_by: str = "admin_user",
+    ) -> Dict[str, Any]:
+        before = self.store.get_active_config("bandit_config", "ucb")
+        self.store.upsert_config(
+            entity_type="bandit_config",
+            entity_id="ucb",
+            fields={
+                "exploration_c":      float(exploration_c),
+                "reward_range_width": float(reward_range_width),
+            },
+        )
+        after = self.store.get_active_config("bandit_config", "ucb")
+        self.store.log_admin_action(
+            action_type="UPSERT_UCB_CONFIG",
+            entity_type="bandit_config",
+            entity_id="ucb",
+            changed_by=changed_by,
+            before=_clean(before),
+            after=_clean(after),
+        )
+        return self.get_ucb_config()
+
+    # ------------------------------------------------------------------
     # Read helpers — admin views return ALL docs (active + paused) so the
     # admin can re-activate paused ones. The runtime uses list_active_config
     # directly (NOT these methods) — see orchestrator + recommender.
