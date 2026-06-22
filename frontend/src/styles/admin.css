@@ -1590,3 +1590,20 @@
 .weights-section {
   background: rgba(250, 248, 244, 0.78);
 }
+
+/* UCB Formula tab — research references */
+.admin-subhead {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 18px 0 6px;
+  color: var(--text, #2d2a26);
+}
+.ref-list {
+  margin: 0 0 8px;
+  padding-left: 18px;
+  line-height: 1.55;
+}
+.ref-list li { margin-bottom: 6px; font-size: 13px; }
+.ref-list a { color: var(--primary, #b5541f); text-decoration: underline; }
+.ref-list a:hover { opacity: 0.8; }
+.ref-note { color: var(--text-secondary, #6b655d); }
