@@ -441,6 +441,30 @@ export default function ResearchTab() {
       {/* ── Agentic path (ship-now alternative) ────────────────────────── */}
       <div className="admin-section">
         <h2 className="admin-section-title">Agentic path — a ship-now alternative to the reward-model track</h2>
+
+        <div className="unique-banner">
+          <div className="unique-tag">★ Our unique approach</div>
+          <p>
+            Most systems pick <em>one</em> tool: a <strong>bandit</strong> (statistics only),
+            an <strong>agent/memory</strong> (language only), or <strong>RLHF</strong> (weights only).
+            We <strong>fuse three</strong> into one loop:
+          </p>
+          <div className="unique-fuse">
+            <span className="unique-chip">UCB bandit<small>fast, provable, interpretable prior on <em>which format</em> works</small></span>
+            <span className="unique-plus">+</span>
+            <span className="unique-chip">Agent memory + reflection<small>rich language model of <em>who</em> the user is &amp; <em>why</em> they prefer things — generalises from sparse feedback</small></span>
+            <span className="unique-plus">+</span>
+            <span className="unique-chip">Critic agent<small>guards against sycophancy &amp; feedback loops</small></span>
+          </div>
+          <p className="unique-why">
+            The <strong>bandit grounds the agent</strong> in real reward statistics; the
+            <strong> agent gives the bandit context</strong> it can't represent (style, values,
+            history); the <strong>critic keeps it honest</strong>. None of the three alone is a
+            per-user "brain" — the <strong>fusion</strong> is the bet. It's interpretable and
+            ship-now (no training), unlike per-user RLHF.
+          </p>
+        </div>
+
         <p className="admin-section-sub">
           Stages 3–4 (learn a reward model, then RLHF) are data-hungry and slow.
           A parallel, cheaper track gets a working preference "brain" <em>now</em>:
