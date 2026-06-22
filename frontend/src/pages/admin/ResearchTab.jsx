@@ -156,6 +156,19 @@ const INDUSTRY = [
   },
 ];
 
+// ── Who uses what in industry (public papers / eng blogs / talks) ────────────
+const INDUSTRY_USAGE = [
+  { co: "Yahoo", method: "Contextual bandit (LinUCB)", use: "News article selection — the seminal Li et al. 2010 paper was Yahoo's front page." },
+  { co: "Netflix", method: "Contextual bandits", use: "Artwork / thumbnail personalization, row & title ranking." },
+  { co: "Spotify", method: "Contextual bandits (BaRT)", use: "Home-screen recommendations, playlist / podcast ranking." },
+  { co: "Microsoft", method: "Contextual bandits as a service", use: "Azure Personalizer / the Decision Service (built on Vowpal Wabbit)." },
+  { co: "Google / YouTube", method: "Deep RL (off-policy REINFORCE) + bandits", use: "Video recommendations ('Top-K off-policy correction'); bandits in ads." },
+  { co: "Meta", method: "Applied RL (Horizon / ReAgent) + bandits", use: "Notifications, feed & recommendation ranking." },
+  { co: "LinkedIn · Amazon · Booking · DoorDash · Uber", method: "Contextual bandits", use: "Feed/notification timing, layout, recommendations." },
+  { co: "OpenAI · Anthropic · Google DeepMind", method: "RLHF (+ DPO, Constitutional AI)", use: "Aligning LLMs to AGGREGATE human preference (ChatGPT, Claude, Gemini)." },
+  { co: "OpenAI / Google (consumer LLMs)", method: "Agentic memory (context, not weights)", use: "Per-USER adaptation — ChatGPT / Gemini 'Memory' features." },
+];
+
 // ── Agentic path — ship-now alternative to the learned-reward-model track ─────
 const AGENTIC_LANE = [
   {
@@ -556,6 +569,30 @@ export default function ResearchTab() {
             </li>
           ))}
         </ul>
+
+        <h3 className="admin-subhead">Who uses what (public papers / eng blogs / talks)</h3>
+        <table className="usage-table">
+          <thead>
+            <tr><th>Company</th><th>Method family</th><th>Personalization use case</th></tr>
+          </thead>
+          <tbody>
+            {INDUSTRY_USAGE.map((r) => (
+              <tr key={r.co}>
+                <td><strong>{r.co}</strong></td>
+                <td>{r.method}</td>
+                <td className="ref-note">{r.use}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p className="ref-note" style={{ marginTop: "6px" }}>
+          The pattern: recommendations/ads → contextual bandits &amp; RL; LLM
+          alignment → RLHF/DPO (aimed at everyone, not per-user); per-user LLM
+          adaptation → memory/context, not bandits. Nobody does per-user
+          bandit→LLM the way we frame it — the big players split it; our niche is
+          fusing them. (Public descriptions only — production internals aren't
+          fully disclosed and change over time.)
+        </p>
       </div>
 
       {/* ── Paper library ──────────────────────────────────────────────── */}
