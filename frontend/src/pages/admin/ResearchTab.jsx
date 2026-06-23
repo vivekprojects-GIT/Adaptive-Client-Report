@@ -56,6 +56,30 @@ const ROADMAP = [
   },
 ];
 
+// ── RL family tree — categorize it so anyone can place our work ──────────────
+const RL_TREE = [
+  { level: 0, name: "Reinforcement Learning", tag: "the umbrella",
+    plain: "Learn by doing: take an action, get a reward, do more of what works." },
+  { level: 1, name: "Multi-armed bandit", tag: "one-step RL · simplest",
+    plain: "One decision, immediate reward, and your choice does NOT change the world for next time. Like slot machines: try arms, learn which pays best." },
+  { level: 2, name: "Contextual bandit", tag: "★ we are here",
+    us: true,
+    plain: "A bandit that sees the situation first, so the best choice can differ per user / scenario. e.g. a different chart for different data + user." },
+  { level: 1, name: "Full / Sequential RL", tag: "MDP",
+    plain: "Actions CHANGE future states and rewards come late, so you must plan over time. Like chess: a move now shapes the board many turns later.",
+    methods: "Q-learning · policy gradients · PPO · actor-critic" },
+  { level: 2, name: "RLHF",
+    tag: "full RL + learned reward",
+    plain: "Full RL where the reward comes from a model trained on human preferences. How ChatGPT / Claude / Gemini are aligned." },
+];
+
+const RL_AXES = [
+  { type: "Multi-armed bandit",        reward: "Immediate", change: "No",  plan: "No" },
+  { type: "Contextual bandit  (us)",   reward: "Immediate", change: "No",  plan: "No", us: true },
+  { type: "Full / sequential RL",      reward: "Delayed",   change: "Yes", plan: "Yes" },
+  { type: "RLHF",                      reward: "Delayed (learned reward model)", change: "Yes (token by token)", plan: "Yes" },
+];
+
 // ── Method selection guide: when to use what ─────────────────────────────────
 const METHODS = [
   {
@@ -365,6 +389,62 @@ export default function ResearchTab() {
           the <strong>formula</strong> to use at each stage — followed by the
           validated paper library.
         </p>
+      </div>
+
+      {/* ── RL family tree (orientation primer) ────────────────────────── */}
+      <div className="admin-section">
+        <h2 className="admin-section-title">First, the categories — where our work sits</h2>
+        <p className="admin-section-sub">
+          Everything here lives under <strong>Reinforcement Learning</strong> (learn
+          from reward feedback). But RL is a family — and we use the <em>simplest</em>
+          branch. Here's the whole tree in plain words so anyone can place us.
+        </p>
+
+        <div className="rl-tree">
+          {RL_TREE.map((n) => (
+            <div key={n.name} className={`rl-node lvl-${n.level}${n.us ? " us" : ""}`}>
+              <div className="rl-node-head">
+                <span className="rl-name">{n.name}</span>
+                <span className={`rl-tag${n.us ? " us" : ""}`}>{n.tag}</span>
+              </div>
+              <div className="rl-plain">{n.plain}</div>
+              {n.methods && <div className="ref-note">Methods: {n.methods}</div>}
+            </div>
+          ))}
+        </div>
+
+        <h3 className="admin-subhead">The one question that categorizes everything</h3>
+        <p className="admin-section-sub">
+          <strong>Does your action change the next state?</strong> No → it's a
+          <strong> bandit</strong> (one-step). Yes → it's <strong>full RL</strong>
+          (sequential, plan over time). That single axis splits the whole field:
+        </p>
+        <table className="usage-table">
+          <thead>
+            <tr><th>Method</th><th>Reward timing</th><th>Action changes next state?</th><th>Plan over time?</th></tr>
+          </thead>
+          <tbody>
+            {RL_AXES.map((r) => (
+              <tr key={r.type} className={r.us ? "row-us" : ""}>
+                <td><strong>{r.type}</strong></td>
+                <td>{r.reward}</td>
+                <td>{r.change}</td>
+                <td>{r.plan}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        <div className="reward-scale-pointer">
+          <strong>So, plainly:</strong> what we build <em>is</em> reinforcement
+          learning — the <strong>contextual-bandit (one-step) corner</strong>, the
+          simplest form. It is <strong>not</strong> the whole field: <strong>full
+          RL</strong> adds sequential decisions where today's choice changes
+          tomorrow's state, and <strong>RLHF</strong> is full RL driven by a learned
+          human-preference reward. We deliberately stay in the bandit corner because
+          picking a format/chart is genuinely one-step — no need for the cost and
+          instability of full sequential RL.
+        </div>
       </div>
 
       {/* ── Recommendation: best approach for us ───────────────────────── */}

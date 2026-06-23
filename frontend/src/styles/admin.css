@@ -1676,3 +1676,17 @@
 .usage-table th, .usage-table td { text-align: left; padding: 7px 9px; border-bottom: 1px solid var(--border,#e7e2d9); vertical-align: top; }
 .usage-table th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-secondary,#6b655d); }
 .usage-table td:first-child { white-space: nowrap; }
+
+/* Research tab — RL family tree */
+.rl-tree { margin: 8px 0 14px; display: flex; flex-direction: column; gap: 7px; }
+.rl-node { border: 1px solid var(--border,#e7e2d9); border-left-width: 3px; border-radius: 8px; background: rgba(250,248,244,0.55); padding: 8px 12px; }
+.rl-node.lvl-0 { margin-left: 0;  border-left-color: #6b655d; }
+.rl-node.lvl-1 { margin-left: 22px; border-left-color: #8a7bb0; }
+.rl-node.lvl-2 { margin-left: 44px; border-left-color: #b88a2e; }
+.rl-node.us { background: rgba(79,138,77,0.08); border-color: #4f8a4d; border-left-color: #4f8a4d; }
+.rl-node-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.rl-name { font-size: 14px; font-weight: 650; }
+.rl-tag { font-size: 10.5px; font-weight: 600; padding: 1px 8px; border-radius: 999px; background: #ece8e1; color: #6b655d; }
+.rl-tag.us { background: #e3f0e2; color: #2f6b2e; }
+.rl-plain { font-size: 12.5px; color: var(--text-secondary,#6b655d); margin-top: 3px; line-height: 1.5; }
+.usage-table tr.row-us td { background: rgba(79,138,77,0.08); }
