@@ -141,10 +141,94 @@ def parse_generation_wrapper(text: str, strategy: str) -> Tuple[str, str]:
         if rendered_format not in RENDERED_FORMAT_VOCABULARY:
             rendered_format = "hybrid"
         response_text = str(parsed.get("response", ""))
-        return rendered_format, response_text
+        return coerce_response_to_strategy_format(strategy, rendered_format, response_text)
 
     # Parsing failed — preserve the raw text as the response
-    return fallback, text
+    return coerce_response_to_strategy_format(strategy, fallback, text)
+
+
+def coerce_response_to_strategy_format(
+    strategy: str,
+    rendered_format: str,
+    response_text: str,
+) -> Tuple[str, str]:
+    """Apply deterministic repairs for high-risk format drift.
+
+    The LLM can overfit to previous conversation shape. For bullet_contrast,
+    comparison questions strongly bias it toward markdown tables even when the
+    selected strategy forbids them. Convert simple tables to labelled bullet
+    blocks so the rendered output matches the selected arm.
+    """
+    if strategy != "bullet_contrast":
+        return rendered_format, response_text
+
+    repaired = _table_to_labelled_bullets(response_text)
+    if repaired:
+        return "bulleted_list", repaired
+    return rendered_format, response_text
+
+
+def _table_to_labelled_bullets(text: str) -> str:
+    """Convert a simple markdown table into two or more labelled bullet blocks."""
+    rows = _parse_markdown_table(text)
+    if not rows or len(rows) < 2:
+        return ""
+
+    headers = rows[0]
+    data_rows = rows[1:]
+    if len(headers) < 2:
+        return ""
+
+    blocks: List[str] = []
+    if len(headers) >= 3:
+        row_label_header = headers[0]
+        option_headers = headers[1:]
+        for col_idx, option in enumerate(option_headers, start=1):
+            bullets = []
+            for row in data_rows:
+                if len(row) <= col_idx:
+                    continue
+                label = row[0].strip()
+                value = row[col_idx].strip()
+                if label and value:
+                    bullets.append(f"- {label}: {value}")
+                elif value:
+                    bullets.append(f"- {value}")
+            if option and bullets:
+                blocks.append(f"**{option}**\n" + "\n".join(bullets))
+        if blocks:
+            return "\n\n".join(blocks)
+
+    # Two-column tables such as Pros/Cons.
+    for col_idx, header in enumerate(headers):
+        bullets = []
+        for row in data_rows:
+            if len(row) <= col_idx:
+                continue
+            value = row[col_idx].strip()
+            if value:
+                bullets.append(f"- {value}")
+        if header and bullets:
+            blocks.append(f"**{header}**\n" + "\n".join(bullets))
+    return "\n\n".join(blocks)
+
+
+def _parse_markdown_table(text: str) -> List[List[str]]:
+    table_lines = []
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not (line.startswith("|") and line.endswith("|") and "|" in line[1:-1]):
+            continue
+        cells = [c.strip() for c in line.strip("|").split("|")]
+        if cells and all(_is_separator_cell(c) for c in cells):
+            continue
+        table_lines.append(cells)
+    return table_lines
+
+
+def _is_separator_cell(cell: str) -> bool:
+    compact = cell.replace(":", "").replace("-", "").strip()
+    return compact == ""
 
 
 def _fallback_format(strategy: str) -> str:

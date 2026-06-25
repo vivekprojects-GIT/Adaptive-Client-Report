@@ -153,6 +153,8 @@ def build_synthesizer_system_prompt(
         )
     return (
         "You are a knowledgeable assistant. Use prior turns when relevant.\n"
+        "Use prior turns only for facts and continuity, never as permission "
+        "to copy their response shape.\n"
         "Write clean markdown with concise sections and bullets when useful.\n"
         "Do not use emojis, decorative symbols, or overly casual phrasing.\n"
         "The selected response-format instruction below is mandatory; do not "
