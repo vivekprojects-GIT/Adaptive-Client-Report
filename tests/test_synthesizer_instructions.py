@@ -39,3 +39,17 @@ def test_bullet_contrast_repairs_markdown_table_to_bullets():
     assert "- Tax: After-tax" in response
     assert "- RMDs: Required" in response
     assert "|" not in response
+
+
+def test_table_strategy_normalizes_data_table_label():
+    raw = """
+    {
+      "rendered_format": "data_table",
+      "response": "| Pros | Cons |\\n|---|---|\\n| Simple | Less custom |"
+    }
+    """
+
+    rendered_format, response = parse_generation_wrapper(raw, "pros_cons_table")
+
+    assert rendered_format == "comparison_table"
+    assert "| Pros | Cons |" in response

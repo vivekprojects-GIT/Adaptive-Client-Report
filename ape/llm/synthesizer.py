@@ -159,6 +159,10 @@ def coerce_response_to_strategy_format(
     selected strategy forbids them. Convert simple tables to labelled bullet
     blocks so the rendered output matches the selected arm.
     """
+    expected = FORMAT_EXPECTATIONS.get(strategy)
+    if expected == "comparison_table" and rendered_format == "data_table":
+        return "comparison_table", response_text
+
     if strategy != "bullet_contrast":
         return rendered_format, response_text
 
