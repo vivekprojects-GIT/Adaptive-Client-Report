@@ -153,10 +153,9 @@ class IntentUpsert(BaseModel):
 
 
 class StrategyUpsert(BaseModel):
-    strategy_id:                str
-    format_type:                str = "paragraph"
-    accepted_rendered_formats:  Optional[List[str]] = None
-    changed_by:                 str = "admin_user"
+    strategy_id: str
+    format_type: str = "paragraph"
+    changed_by:  str = "admin_user"
 
 
 class HealthResponse(BaseModel):

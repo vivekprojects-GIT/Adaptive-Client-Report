@@ -17,9 +17,9 @@ serve. Lookups are exact-match (`get_active_config(type, id)`).
 - `ape/strategies/instructions.py` — `STRATEGY_INSTRUCTIONS`: one **format-only**
   sentence per strategy (e.g. `comparison_table` → "Format as a markdown table…").
   These are domain-neutral by design, so they work across all domains.
-- Strategy config in Mongo owns format compliance: `format_type` is the primary
-  target and `accepted_rendered_formats` lists acceptable rendered labels.
-  Runtime compliance reads the active strategy row, not a hardcoded format map.
+- Strategy config in Mongo carries `format_type` metadata. Per MVP1, this is
+  returned with the selected instruction; it is not a nested format-selection
+  or alias-compliance layer.
 
 ## 3.3 Signals & Reward Scale
 
@@ -68,10 +68,10 @@ format if the wrapper is malformed.
 A0 flush previous pending response · A1 check DB intent and fall back to
 `unmapped` when missing/inactive · A2 resolve active policy strategies
 (`topic` → `_default`) · A3 verify strategy
-rows are ACTIVE and load strategy-owned formats · A4 load/lazy-create bandit cell ·
+rows are ACTIVE and load strategy `format_type` metadata · A4 load/lazy-create bandit cell ·
 A5 round-robin/UCB select and bump count · A5b RAG retrieve · A6 append accepted
-user message · A7 synthesize with active instruction · A8 compute compliance
-from `accepted_rendered_formats` · A9 write PENDING turn.
+user message · A7 synthesize with active instruction · A8 store optional
+format analytics metadata · A9 write PENDING turn.
 
 **Path B — `apply_feedback` + `_finalize_response`:** append signal to the
 turn's pool, eager-finalize when an explicit/strong signal arrives → composite

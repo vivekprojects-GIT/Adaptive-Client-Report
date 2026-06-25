@@ -22,7 +22,6 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from .seed import normalize_accepted_rendered_formats, normalize_strategy_format_type
 from ..store import (
     ENTITY_INSTRUCTION,
     ENTITY_INTENT,
@@ -67,25 +66,23 @@ class ConfigManager:
         self,
         strategy_id: str,
         format_type: str,
-        accepted_rendered_formats: Optional[List[str]] = None,
         changed_by: str = "system",
     ) -> None:
         before = self.store.get_active_config(ENTITY_STRATEGY, strategy_id)
-        format_type = normalize_strategy_format_type(strategy_id, format_type)
-        accepted = normalize_accepted_rendered_formats(
-            strategy_id,
-            format_type,
-            accepted_rendered_formats,
-        )
         self.store.upsert_config(
             entity_type=ENTITY_STRATEGY,
             entity_id=strategy_id,
             fields={
-                "strategy_id":               strategy_id,
-                "format_type":               format_type,
-                "expected_format":           format_type,
-                "accepted_rendered_formats": accepted,
+                "strategy_id": strategy_id,
+                "format_type": format_type,
             },
+        )
+        self.store.config.update_many(
+            {"entity_type": ENTITY_STRATEGY, "entity_id": strategy_id},
+            {"$unset": {
+                "accepted_rendered_formats": "",
+                "expected_format": "",
+            }},
         )
         after = self.store.get_active_config(ENTITY_STRATEGY, strategy_id)
         self.store.log_admin_action(

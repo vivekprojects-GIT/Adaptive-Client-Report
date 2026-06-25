@@ -28,8 +28,8 @@ only when the served intent has no active strategy candidates.
   `/admin/rebuild-bandit`, `/admin/db-snapshot`, `/admin/bandit-state`,
   `/admin/audit`, `/admin/rag-ingest`
 
-Strategy writes include `format_type` and optional `accepted_rendered_formats`.
-The strategy remains the bandit arm; aliases only decide format compliance.
+Strategy writes include `format_type` metadata only. The strategy remains the
+bandit arm; there is no nested format selection or alias-compliance layer.
 
 ## 6.3 Analytics (all support `?days=`; many support `?domain=`)
 

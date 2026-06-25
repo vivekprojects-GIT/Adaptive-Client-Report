@@ -137,33 +137,18 @@ def test_no_active_policy_strategies_rejects_without_bandit_rows(monkeypatch):
     assert store.turn_record.count_documents({}) == 0
 
 
-def test_strategy_owned_format_aliases_control_compliance(monkeypatch):
+def test_strategy_config_uses_format_type_metadata_only(monkeypatch):
     from ape.config.manager import ConfigManager
-    from ape.config.seed import backfill_strategy_format_aliases
-    from ape.orchestrator import ApeOrchestrator
+    from ape.config.seed import cleanup_strategy_format_metadata
 
     store = _store(monkeypatch)
     cfg = ConfigManager(store)
-    orch = ApeOrchestrator(client=object(), model="fake", store=store, domain="finance")
 
-    cfg.upsert_strategy(
-        "pros_cons_table",
-        "comparison_table",
-        accepted_rendered_formats=["comparison_table"],
-    )
-    strict_doc = store.get_active_config("strategy", "pros_cons_table")
-    assert orch._compute_format_compliance(strict_doc, "data_table") is False
-
-    cfg.upsert_strategy(
-        "pros_cons_table",
-        "comparison_table",
-        accepted_rendered_formats=["comparison_table", "data_table"],
-    )
-    alias_doc = store.get_active_config("strategy", "pros_cons_table")
-    assert orch._compute_format_compliance(alias_doc, "data_table") is True
-
-    standard_doc = store.get_active_config("strategy", "standard_llm")
-    assert orch._compute_format_compliance(standard_doc, "hybrid") is True
+    cfg.upsert_strategy("pros_cons_table", "comparison_table")
+    doc = store.get_active_config("strategy", "pros_cons_table")
+    assert doc["format_type"] == "comparison_table"
+    assert "accepted_rendered_formats" not in doc
+    assert "expected_format" not in doc
 
     store.config.update_one(
         {"entity_type": "strategy", "entity_id": "bullet_contrast"},
@@ -173,10 +158,11 @@ def test_strategy_owned_format_aliases_control_compliance(monkeypatch):
             "accepted_rendered_formats": ["*"],
         }},
     )
-    backfill_strategy_format_aliases(store)
-    repaired_doc = store.get_active_config("strategy", "bullet_contrast")
-    assert repaired_doc["format_type"] == "bulleted_list"
-    assert repaired_doc["accepted_rendered_formats"] == ["bulleted_list"]
+    cleanup_strategy_format_metadata(store)
+    cleaned_doc = store.get_active_config("strategy", "bullet_contrast")
+    assert cleaned_doc["format_type"] == "*"
+    assert "accepted_rendered_formats" not in cleaned_doc
+    assert "expected_format" not in cleaned_doc
 
 
 def test_turn_routes_raise_422_before_streaming_for_missing_strategy_config(monkeypatch):

@@ -46,9 +46,9 @@ Orchestrator  MongoStore   Anthropic        RagStore (Chroma)
 | `ape_topic_trend_daily` | derived daily `(date, domain, topic)` activity (recompute) |
 
 **Cell key:** `(user_id_hash, domain, intent, topic)` → arms = strategies.
-Strategies own formats through `format_type` and `accepted_rendered_formats`;
-formats never own strategies. See `11-database-design.md` for the DB-first
-`/turn` flow, including unknown-intent fallback to `unmapped`.
+Strategies carry instruction text plus `format_type` metadata; the bandit
+learns the strategy, not a nested format. See `11-database-design.md` for the
+DB-first `/turn` flow, including unknown-intent fallback to `unmapped`.
 Privacy: raw queries are **never** aggregated; only normalized fields.
 
 ## 1.4 Glossary & Conventions

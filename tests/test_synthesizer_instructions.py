@@ -41,7 +41,7 @@ def test_bullet_contrast_repairs_markdown_table_to_bullets():
     assert "|" not in response
 
 
-def test_table_strategy_preserves_data_table_label_for_alias_compliance():
+def test_table_strategy_preserves_data_table_label():
     raw = """
     {
       "rendered_format": "data_table",

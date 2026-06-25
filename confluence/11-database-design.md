@@ -1,7 +1,8 @@
 # 11 - Database Design
 
-This is the current MongoDB production flow. The `mvp1/` folder is historical
-DynamoDB reference material only.
+This is the current MongoDB production flow, aligned to the `vg_mvp_v1.0`
+strategy-level behavior. The `mvp1/` folder remains the DynamoDB reference for
+the original MVP1 shape.
 
 ## Tables Used
 
@@ -22,8 +23,8 @@ DynamoDB reference material only.
 7. Current intent is checked against `ape_config` where `entity_type="intent"` and `status=ACTIVE`. If the classifier label is missing or inactive, the flow preserves that label as `suggested_intent`, switches the served intent to active `unmapped`, and continues.
 8. Policy lookup reads active policy rows for `(domain, served_intent, topic="_all")`, then falls back to `topic="_default"`.
 9. Every policy strategy is verified against an active `strategy` config row. Inactive strategy rows are ignored. If no active strategies remain, API returns 422.
-10. Strategy config supplies format ownership: `format_type` is the primary shape and `accepted_rendered_formats` lists acceptable rendered labels. The relationship is strategy -> formats, never format -> strategies.
-    Startup backfill repairs legacy wildcard strategy rows so only `standard_llm` keeps `format_type="*"` / `accepted_rendered_formats=["*"]`.
+10. Strategy config supplies instruction metadata: `format_type` is a hint returned with the selected instruction. There is no nested format selection and no active `accepted_rendered_formats` alias system.
+    Startup cleanup removes old alias fields from strategy rows without changing the configured `format_type`.
 11. The user's bandit cell is loaded or created in `ape_user_bandit_state` for `user_id_hash + domain + served_intent + topic`, one row per active candidate strategy.
 12. Missing strategy arms are created with `count=0`, `total_reward=0`, `avg_reward=0.5`, and `cached_ucb=999.0`.
 13. Selection happens in memory: first any `count == 0` arm by policy order, else highest UCB:
@@ -31,9 +32,9 @@ DynamoDB reference material only.
 14. After selection, DB is updated immediately: selected arm `count` is bumped and the cell UCB display cache is refreshed.
 15. Active instruction/config is fetched for the selected strategy.
 16. Only now is the user message written to `ape_messages`.
-17. The synthesizer uses selected strategy, active instruction text, and strategy `format_type` as parser fallback.
-18. Format compliance is computed from the active strategy row: pass if `accepted_rendered_formats` contains the rendered format, or if aliases contain `"*"`.
-19. A new pending receipt is written to `ape_turn_record` with `response_id`, `user_id_hash`, `selected_strategy`, `expected_format`, `accepted_rendered_formats`, `rendered_format`, `format_compliance`, `reward_status=PENDING`, and bandit attribution pk/sk.
+17. The synthesizer uses selected strategy, active instruction text, and strategy `format_type` as parser fallback metadata.
+18. Optional format-compliance analytics are strategy-level only and are not used as the bandit reward.
+19. A new pending receipt is written to `ape_turn_record` with `response_id`, `user_id_hash`, `selected_strategy`, `suggested_format`, `rendered_format`, `format_compliance`, `reward_status=PENDING`, and bandit attribution pk/sk.
 20. Assistant message is written to `ape_messages` with the same response id and metadata chips.
 
 ## Reward DB Flow

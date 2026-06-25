@@ -29,8 +29,9 @@ Confluence **section** (parent page); the `## ` headings inside it are the
 | 10 | Deployment & Ops | docker, hugging face, runbook, decisions (ADR) |
 | 11 | Database Design | Mongo collections, DB-first turn flow, reward flow |
 
-`mvp1/` is retained as historical DynamoDB reference material. The current app
-uses the MongoDB flow documented in `11-database-design.md`.
+`mvp1/` is retained as the MVP1 behavior/schema reference. The current app uses
+MongoDB, but its strategy-level learning semantics should stay aligned with
+that reference; see `11-database-design.md`.
 
 ## Conventions used in these docs
 - File/identifier references point at the real code (`ape/...`, `frontend/src/...`).

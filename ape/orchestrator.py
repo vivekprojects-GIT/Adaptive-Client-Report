@@ -82,6 +82,7 @@ from .store import (
     new_session_id,
     utcnow_iso,
 )
+from .strategies import compute_format_compliance
 
 
 class UnknownIntentError(ValueError):
@@ -830,9 +831,8 @@ class ApeOrchestrator:
         )
         suggested = selection["selected_strategy"]
         selected_strategy_doc = strategy_docs_by_id[suggested]
-        expected_format, accepted_formats = self._strategy_format_info(selected_strategy_doc)
-        selection["expected_format"] = expected_format
-        selection["accepted_rendered_formats"] = accepted_formats
+        format_type = self._strategy_format_type(selected_strategy_doc)
+        selection["format_type"] = format_type
 
         cell_pk = {
             "user_id_hash": user_id_hash,
@@ -885,8 +885,7 @@ class ApeOrchestrator:
             "candidate_strategies": candidate_strategies,
             "selection": selection,
             "selected_strategy_doc": selected_strategy_doc,
-            "expected_format": expected_format,
-            "accepted_rendered_formats": accepted_formats,
+            "format_type": format_type,
             "instruction_versions": instruction_versions,
             "rag_hits": rag_hits,
             "rag_context": rag_context,
@@ -909,7 +908,7 @@ class ApeOrchestrator:
 
         synth_start = _time.monotonic()
         answer = ""
-        rendered_format = prepared["expected_format"]
+        rendered_format = prepared["format_type"]
         if generate:
             selected = prepared["selection"]["selected_strategy"]
             instruction_text = self._load_active_instruction_text(selected)
@@ -921,7 +920,7 @@ class ApeOrchestrator:
                 prepared["history"],
                 context=prepared["rag_context"],
                 instruction_text=instruction_text,
-                fallback_format=prepared["expected_format"],
+                fallback_format=prepared["format_type"],
             )
         timings["synthesizer_llm"] = round((_time.monotonic() - synth_start) * 1000.0, 1)
         return self._persist_prepared_turn(prepared, answer, rendered_format, _time.monotonic())
@@ -950,15 +949,14 @@ class ApeOrchestrator:
                 "topic":                     prepared["topic"],
                 "selected_strategy":         selected,
                 "candidate_strategies":      prepared["candidate_strategies"],
-                "expected_format":           prepared["expected_format"],
-                "accepted_rendered_formats": prepared["accepted_rendered_formats"],
+                "format_type":               prepared["format_type"],
                 "rag_doc_ids":               [h["id"] for h in prepared["rag_hits"]],
                 "select_timings_ms":         dict(prepared["timings"]),
             }
 
             synth_start = _time.monotonic()
             answer_text = ""
-            rendered_format = prepared["expected_format"]
+            rendered_format = prepared["format_type"]
             try:
                 instruction_text = self._load_active_instruction_text(selected)
                 for evt in generate_response_stream(
@@ -969,7 +967,7 @@ class ApeOrchestrator:
                     prepared["history"],
                     context=prepared["rag_context"],
                     instruction_text=instruction_text,
-                    fallback_format=prepared["expected_format"],
+                    fallback_format=prepared["format_type"],
                 ):
                     if evt["type"] == "delta":
                         yield {"event": "delta", "text": evt["text"]}
@@ -1016,7 +1014,7 @@ class ApeOrchestrator:
 
         selection = prepared["selection"]
         suggested = selection["selected_strategy"]
-        compliance = self._compute_format_compliance(prepared["selected_strategy_doc"], rendered_format)
+        compliance = compute_format_compliance(suggested, rendered_format)
         instr_version = prepared["instruction_versions"].get(suggested, "v1")
         attribution_pk = make_attribution_pk(
             prepared["user_id_hash"],
@@ -1039,9 +1037,7 @@ class ApeOrchestrator:
             "topic":                      prepared["topic"],
             "selected_strategy":          suggested,
             "selection_method":           selection["selection_method"],
-            "suggested_format":           prepared["expected_format"],
-            "expected_format":            prepared["expected_format"],
-            "accepted_rendered_formats":  prepared["accepted_rendered_formats"],
+            "suggested_format":           prepared["format_type"],
             "rendered_format":            rendered_format,
             "format_compliance":          int(bool(compliance)),
             "ucb_at_selection":           selection["ucb_at_selection"],
@@ -1068,8 +1064,7 @@ class ApeOrchestrator:
                 "selected_strategy":         suggested,
                 "selection_method":          selection["selection_method"],
                 "ucb_at_selection":          selection["ucb_at_selection"],
-                "expected_format":           prepared["expected_format"],
-                "accepted_rendered_formats": prepared["accepted_rendered_formats"],
+                "format_type":               prepared["format_type"],
             },
         )
 
@@ -1382,32 +1377,9 @@ class ApeOrchestrator:
             raise NoActiveStrategiesError(intent, topic)
         return docs
 
-    def _strategy_format_info(self, strategy_doc: Dict[str, Any]) -> tuple[str, List[str]]:
-        strategy_id = strategy_doc.get("strategy_id") or strategy_doc.get("entity_id") or ""
-        format_type = strategy_doc.get("format_type") or strategy_doc.get("expected_format") or "paragraph"
-        accepted = [
-            str(v).strip()
-            for v in (strategy_doc.get("accepted_rendered_formats") or [])
-            if str(v).strip()
-        ]
-        if not accepted:
-            if strategy_id == "standard_llm":
-                accepted = ["*"]
-            elif format_type in {"comparison_table", "data_table"}:
-                accepted = ["comparison_table", "data_table"]
-            else:
-                accepted = [format_type]
-        if "*" not in accepted and format_type not in accepted:
-            accepted.insert(0, format_type)
-        deduped: List[str] = []
-        for value in accepted:
-            if value not in deduped:
-                deduped.append(value)
-        return format_type, deduped
-
-    def _compute_format_compliance(self, strategy_doc: Dict[str, Any], rendered_format: str) -> bool:
-        _, accepted = self._strategy_format_info(strategy_doc)
-        return "*" in accepted or rendered_format in accepted
+    def _strategy_format_type(self, strategy_doc: Dict[str, Any]) -> str:
+        """Return the selected strategy's MVP1 format metadata."""
+        return strategy_doc.get("format_type") or "paragraph"
 
     def _resolve_candidate_strategies(
         self, intent: str, topic: str, domain: str | None = None

@@ -64,7 +64,7 @@ from .analytics import (
     eligible_offers_for_user,
     recompute_all,
 )
-from .config import ConfigManager, backfill_strategy_format_aliases, seed_all
+from .config import ConfigManager, cleanup_strategy_format_metadata, seed_all
 from .models import (
     FeedbackRequest,
     FeedbackResponse,
@@ -129,7 +129,7 @@ def _build() -> ApeOrchestrator:
     if store.config.estimated_document_count() == 0:
         seed_all(store, domain=domain)
     else:
-        backfill_strategy_format_aliases(store)
+        cleanup_strategy_format_metadata(store)
 
     global STORE, CONFIG_MGR, RAG
     STORE = store
@@ -479,7 +479,6 @@ def upsert_strategy(req: StrategyUpsert):
     _guard_cfg().upsert_strategy(
         strategy_id=req.strategy_id,
         format_type=req.format_type,
-        accepted_rendered_formats=req.accepted_rendered_formats,
         changed_by=req.changed_by,
     )
     return {"status": "ok", "strategy_id": req.strategy_id}
