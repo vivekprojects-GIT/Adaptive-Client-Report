@@ -31,8 +31,8 @@ STRATEGY_INSTRUCTIONS: Dict[str, str] = {
     "analogy_explanation":      "Explain using a simple, concrete analogy.",
 
     # Comparison strategies
-    "comparison_table":         "Format as a markdown table comparing the options across relevant dimensions.",
-    "bullet_contrast":          "Use bullets to contrast the options point-by-point.",
+    "comparison_table":         "Produce a markdown table comparing the options across relevant dimensions. Return only the table.",
+    "bullet_contrast":          "Produce two parallel labelled bullet blocks with the same number of bullets. Do not use markdown tables, pipe characters, or table headers. Return only the two bullet blocks.",
 
     # Instructional strategies
     "numbered_steps":           "Provide numbered, sequential action steps.",

@@ -27,7 +27,11 @@ def test_streaming_turns_seed_and_flush_bandit_signals(monkeypatch):
             "signal": "deeper_question",
         }
 
-    def fake_stream(client, model, query, strategy, history, context=""):
+    seen = {}
+
+    def fake_stream(client, model, query, strategy, history, context="", instruction_text=None):
+        seen["strategy"] = strategy
+        seen["instruction_text"] = instruction_text
         yield {"type": "delta", "text": "hello"}
         yield {"type": "done", "rendered_format": "paragraph", "response": "hello"}
 
@@ -42,11 +46,13 @@ def test_streaming_turns_seed_and_flush_bandit_signals(monkeypatch):
 
     first_row = store.get_response(first_response_id)
     assert first_row["reward_status"] == "PENDING"
-    assert first_row["pending_signals"][0]["signal"] == "format_compliance_pass"
+    assert first_row["pending_signals"] == []
+    assert seen["instruction_text"]
 
     list(orch.handle_turn_streaming("alice", "Can you explain more?", session_id=first_session_id))
 
     finalized = store.get_response(first_response_id)
     assert finalized["reward_status"] == "APPLIED"
-    assert finalized["normalized_reward"] == 0.5
-    assert finalized["signal"] in {"pattern_engaged_positive", "format_compliance_pass"}
+    assert finalized["signal"] == "deeper_question"
+    assert finalized["normalized_reward"] is None
+    assert finalized["content_reward"] == 1.0

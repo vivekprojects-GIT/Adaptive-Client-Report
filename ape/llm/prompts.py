@@ -11,6 +11,8 @@ to audit; keep them readable.
 
 from __future__ import annotations
 
+from typing import Optional
+
 from ..strategies import STRATEGY_INSTRUCTIONS
 
 
@@ -127,13 +129,21 @@ Do not include any text outside the JSON object.\
 """
 
 
-def build_synthesizer_system_prompt(strategy: str, context: str = "") -> str:
+def build_synthesizer_system_prompt(
+    strategy: str,
+    context: str = "",
+    instruction_text: Optional[str] = None,
+) -> str:
     """Compose the synthesizer's system prompt from guardrails + strategy + wrapper.
 
     When `context` is provided (retrieved RAG passages), it is injected as
     grounding the model should prefer over its own prior knowledge.
     """
-    instruction = STRATEGY_INSTRUCTIONS.get(strategy, STRATEGY_INSTRUCTIONS["standard_llm"])
+    active_instruction = (instruction_text or "").strip()
+    instruction = active_instruction or STRATEGY_INSTRUCTIONS.get(
+        strategy,
+        STRATEGY_INSTRUCTIONS["standard_llm"],
+    )
     context_block = ""
     if context and context.strip():
         context_block = (
@@ -145,6 +155,8 @@ def build_synthesizer_system_prompt(strategy: str, context: str = "") -> str:
         "You are a knowledgeable assistant. Use prior turns when relevant.\n"
         "Write clean markdown with concise sections and bullets when useful.\n"
         "Do not use emojis, decorative symbols, or overly casual phrasing.\n"
+        "The selected response-format instruction below is mandatory; do not "
+        "substitute a different format just because it seems natural.\n"
         f"{instruction}\n"
         f"{context_block}"
         "\n"

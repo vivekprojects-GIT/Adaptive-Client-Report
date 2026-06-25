@@ -382,10 +382,14 @@ class ApeOrchestrator:
         answer = ""
         rendered_format = "paragraph"
         if generate:
+            instruction_text = self._load_active_instruction_text(
+                selection["selected_strategy"]
+            )
             rendered_format, answer = generate_response(
                 self.client, self.model, query,
                 selection["selected_strategy"], history,
                 context=rag_context,
+                instruction_text=instruction_text,
             )
         t = _tick("synthesizer_llm", t)
 
@@ -620,9 +624,11 @@ class ApeOrchestrator:
         answer_text = ""
         rendered_format = "paragraph"
         try:
+            instruction_text = self._load_active_instruction_text(suggested)
             for evt in generate_response_stream(
                 self.client, self.model, query, suggested, history,
                 context=rag_context,
+                instruction_text=instruction_text,
             ):
                 if evt["type"] == "delta":
                     # Note: this is the RAW LLM text including the JSON wrapper.
@@ -1012,6 +1018,19 @@ class ApeOrchestrator:
             })
             out[s] = (doc or {}).get("version", "v1")
         return out
+
+    def _load_active_instruction_text(self, strategy: str) -> Optional[str]:
+        """Return the active admin-managed instruction text for one strategy.
+
+        Falls back to the code catalog when the database has no active text.
+        """
+        doc = self.store.config.find_one({
+            "entity_type": "instruction",
+            "entity_id":   strategy,
+            "status":      "ACTIVE",
+        })
+        text = (doc or {}).get("instruction_text")
+        return text.strip() if isinstance(text, str) and text.strip() else None
 
 
 # ----------------------------------------------------------------------------

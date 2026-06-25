@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, Dict, Generator, List, Tuple
+from typing import Any, Dict, Generator, List, Optional, Tuple
 
 import anthropic
 
@@ -32,6 +32,7 @@ def generate_response(
     history: List[Dict[str, str]],
     max_tokens: int = 1500,
     context: str = "",
+    instruction_text: Optional[str] = None,
 ) -> Tuple[str, str]:
     """Run the synthesizer LLM call and parse its JSON wrapper.
 
@@ -45,7 +46,11 @@ def generate_response(
     response = client.messages.create(
         model=model,
         max_tokens=max_tokens,
-        system=build_synthesizer_system_prompt(strategy, context),
+        system=build_synthesizer_system_prompt(
+            strategy,
+            context,
+            instruction_text=instruction_text,
+        ),
         messages=messages,
     )
 
@@ -61,6 +66,7 @@ def generate_response_stream(
     history: List[Dict[str, str]],
     max_tokens: int = 1500,
     context: str = "",
+    instruction_text: Optional[str] = None,
 ) -> Generator[Dict[str, Any], None, None]:
     """Streaming variant of generate_response.
 
@@ -83,7 +89,11 @@ def generate_response_stream(
     with client.messages.stream(
         model=model,
         max_tokens=max_tokens,
-        system=build_synthesizer_system_prompt(strategy, context),
+        system=build_synthesizer_system_prompt(
+            strategy,
+            context,
+            instruction_text=instruction_text,
+        ),
         messages=messages,
     ) as stream:
         for text_chunk in stream.text_stream:
