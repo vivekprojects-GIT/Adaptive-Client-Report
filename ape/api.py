@@ -64,7 +64,7 @@ from .analytics import (
     eligible_offers_for_user,
     recompute_all,
 )
-from .config import ConfigManager, seed_all
+from .config import ConfigManager, backfill_strategy_format_aliases, seed_all
 from .models import (
     FeedbackRequest,
     FeedbackResponse,
@@ -80,7 +80,7 @@ from .models import (
     UcbConfigUpdate,
 )
 from .bandit.selection import set_ucb_params, get_ucb_params
-from .orchestrator import ApeOrchestrator, hash_user_id
+from .orchestrator import ApeOrchestrator, NoActiveStrategiesError, UnknownIntentError, hash_user_id
 from .rag import RAG_DOMAINS, RagStore
 from .store import MongoStore
 from .store.mongo_schema import (
@@ -128,6 +128,8 @@ def _build() -> ApeOrchestrator:
     # Seed default config if collections are empty
     if store.config.estimated_document_count() == 0:
         seed_all(store, domain=domain)
+    else:
+        backfill_strategy_format_aliases(store)
 
     global STORE, CONFIG_MGR, RAG
     STORE = store
@@ -242,13 +244,16 @@ async def post_turn(req: TurnRequest) -> TurnResponse:
     if ORCHESTRATOR is None:
         raise HTTPException(500, "Orchestrator not initialized")
 
-    result = await asyncio.to_thread(
-        ORCHESTRATOR.handle_turn,
-        user_id=req.user_id,
-        query=req.query,
-        session_id=req.session_id,
-        generate=req.generate_response,
-    )
+    try:
+        result = await asyncio.to_thread(
+            ORCHESTRATOR.handle_turn,
+            user_id=req.user_id,
+            query=req.query,
+            session_id=req.session_id,
+            generate=req.generate_response,
+        )
+    except (UnknownIntentError, NoActiveStrategiesError) as exc:
+        raise HTTPException(422, str(exc)) from exc
     return TurnResponse(**result)
 
 
@@ -271,6 +276,16 @@ async def post_turn_stream(req: TurnRequest):
     if ORCHESTRATOR is None:
         raise HTTPException(500, "Orchestrator not initialized")
 
+    try:
+        gen = await asyncio.to_thread(
+            ORCHESTRATOR.handle_turn_streaming,
+            user_id=req.user_id,
+            query=req.query,
+            session_id=req.session_id,
+        )
+    except (UnknownIntentError, NoActiveStrategiesError) as exc:
+        raise HTTPException(422, str(exc)) from exc
+
     def _sse_format(event: Dict[str, Any]) -> str:
         """Convert one event dict to the SSE wire format."""
         return f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
@@ -280,11 +295,6 @@ async def post_turn_stream(req: TurnRequest):
     # the event loop — keeps FastAPI's async event loop free to handle other
     # requests while one is streaming.
     async def event_gen():
-        gen = ORCHESTRATOR.handle_turn_streaming(
-            user_id=req.user_id,
-            query=req.query,
-            session_id=req.session_id,
-        )
         # Yield SSE-formatted events one at a time
         sentinel = object()
         try:
@@ -469,6 +479,7 @@ def upsert_strategy(req: StrategyUpsert):
     _guard_cfg().upsert_strategy(
         strategy_id=req.strategy_id,
         format_type=req.format_type,
+        accepted_rendered_formats=req.accepted_rendered_formats,
         changed_by=req.changed_by,
     )
     return {"status": "ok", "strategy_id": req.strategy_id}

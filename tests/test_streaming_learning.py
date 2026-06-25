@@ -29,7 +29,7 @@ def test_streaming_turns_seed_and_flush_bandit_signals(monkeypatch):
 
     seen = {}
 
-    def fake_stream(client, model, query, strategy, history, context="", instruction_text=None):
+    def fake_stream(client, model, query, strategy, history, context="", instruction_text=None, fallback_format=None):
         seen["strategy"] = strategy
         seen["instruction_text"] = instruction_text
         yield {"type": "delta", "text": "hello"}

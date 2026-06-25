@@ -75,6 +75,10 @@
   flex: 0 0 auto;
 }
 .form-row label.grow { flex: 1; min-width: 200px; }
+.form-row label.wide-label {
+  flex: 1 1 360px;
+  min-width: 260px;
+}
 .form-row label.checkbox {
   flex-direction: row;
   align-items: center;
@@ -87,6 +91,33 @@
   padding: 8px 0;
 }
 .form-row label.checkbox input { margin: 0; }
+.checkbox-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: 680px;
+}
+.inline-check {
+  display: inline-flex !important;
+  flex-direction: row !important;
+  align-items: center;
+  gap: 5px !important;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text) !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+}
+.inline-check input { margin: 0; }
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
 
 .admin-form input[type="text"],
 .admin-form input[type="number"],

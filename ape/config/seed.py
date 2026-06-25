@@ -55,13 +55,15 @@ def seed_all(store: MongoStore, domain: str = DEFAULT_DOMAIN, default_topic: str
     # ---- 2. Strategies + 3. Instructions --------------------------------
     for strategy, instruction_text in STRATEGY_INSTRUCTIONS.items():
         format_type = FORMAT_EXPECTATIONS.get(strategy, "paragraph")
+        accepted_formats = default_accepted_rendered_formats(strategy, format_type)
         store.upsert_config(
             entity_type="strategy",
             entity_id=strategy,
             fields={
-                "strategy_id":     strategy,
-                "format_type":     format_type,
-                "expected_format": format_type,
+                "strategy_id":                strategy,
+                "format_type":                format_type,
+                "expected_format":            format_type,
+                "accepted_rendered_formats":  accepted_formats,
             },
         )
         counts["strategies"] += 1
@@ -155,12 +157,88 @@ def seed_all(store: MongoStore, domain: str = DEFAULT_DOMAIN, default_topic: str
         {"$unset": {"raw_reward": ""}},
     )
 
+    backfill_strategy_format_aliases(store)
+
     return counts
 
 
 # ----------------------------------------------------------------------------
 # Helpers
 # ----------------------------------------------------------------------------
+
+def default_accepted_rendered_formats(strategy_id: str, format_type: str) -> list[str]:
+    """Default strategy-owned rendered-format aliases.
+
+    The strategy is the bandit arm. `format_type` is its primary target shape;
+    aliases only describe acceptable rendered labels for that same strategy.
+    """
+    if strategy_id == "standard_llm":
+        return ["*"]
+    if format_type in {"comparison_table", "data_table"}:
+        return ["comparison_table", "data_table"]
+    return [format_type or "paragraph"]
+
+
+def default_format_type_for_strategy(strategy_id: str) -> str:
+    return FORMAT_EXPECTATIONS.get(strategy_id, "paragraph")
+
+
+def normalize_strategy_format_type(strategy_id: str, format_type: str | None) -> str:
+    """Normalize legacy wildcard formats to concrete strategy-owned formats."""
+    if strategy_id == "standard_llm":
+        return "*"
+    if not format_type or format_type == "*":
+        return default_format_type_for_strategy(strategy_id)
+    return format_type
+
+
+def normalize_accepted_rendered_formats(
+    strategy_id: str,
+    format_type: str,
+    accepted: list[str] | None = None,
+) -> list[str]:
+    """Return a stable accepted-rendered-format list that includes format_type."""
+    format_type = normalize_strategy_format_type(strategy_id, format_type)
+    if strategy_id == "standard_llm":
+        return ["*"]
+    values = [str(v).strip() for v in (accepted or []) if str(v).strip()]
+    values = [v for v in values if v != "*"]
+    if not values:
+        values = default_accepted_rendered_formats(strategy_id, format_type)
+    if "*" not in values and format_type and format_type not in values:
+        values.insert(0, format_type)
+    seen: set[str] = set()
+    out: list[str] = []
+    for value in values:
+        if value not in seen:
+            seen.add(value)
+            out.append(value)
+    return out
+
+
+def backfill_strategy_format_aliases(store: MongoStore) -> int:
+    """Backfill aliases for existing strategy docs without overwriting admin choices."""
+    rows = list(store.config.find({"entity_type": "strategy"}))
+    updated = 0
+    for row in rows:
+        strategy_id = row.get("strategy_id") or row.get("entity_id")
+        format_type = normalize_strategy_format_type(
+            strategy_id,
+            row.get("format_type") or row.get("expected_format"),
+        )
+        accepted = row.get("accepted_rendered_formats")
+        normalized = normalize_accepted_rendered_formats(strategy_id, format_type, accepted)
+        if accepted != normalized or row.get("expected_format") != format_type:
+            store.config.update_one(
+                {"_id": row["_id"]},
+                {"$set": {
+                    "format_type": format_type,
+                    "expected_format": format_type,
+                    "accepted_rendered_formats": normalized,
+                }},
+            )
+            updated += 1
+    return updated
 
 def _intent_description(intent: str) -> str:
     return {

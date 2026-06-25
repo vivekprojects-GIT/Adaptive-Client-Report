@@ -41,7 +41,7 @@ def test_bullet_contrast_repairs_markdown_table_to_bullets():
     assert "|" not in response
 
 
-def test_table_strategy_normalizes_data_table_label():
+def test_table_strategy_preserves_data_table_label_for_alias_compliance():
     raw = """
     {
       "rendered_format": "data_table",
@@ -51,5 +51,5 @@ def test_table_strategy_normalizes_data_table_label():
 
     rendered_format, response = parse_generation_wrapper(raw, "pros_cons_table")
 
-    assert rendered_format == "comparison_table"
+    assert rendered_format == "data_table"
     assert "| Pros | Cons |" in response

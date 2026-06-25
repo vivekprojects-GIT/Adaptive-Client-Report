@@ -33,6 +33,7 @@ def generate_response(
     max_tokens: int = 1500,
     context: str = "",
     instruction_text: Optional[str] = None,
+    fallback_format: Optional[str] = None,
 ) -> Tuple[str, str]:
     """Run the synthesizer LLM call and parse its JSON wrapper.
 
@@ -55,7 +56,7 @@ def generate_response(
     )
 
     raw = _extract_text(response).strip()
-    return parse_generation_wrapper(raw, strategy)
+    return parse_generation_wrapper(raw, strategy, fallback_format=fallback_format)
 
 
 def generate_response_stream(
@@ -67,6 +68,7 @@ def generate_response_stream(
     max_tokens: int = 1500,
     context: str = "",
     instruction_text: Optional[str] = None,
+    fallback_format: Optional[str] = None,
 ) -> Generator[Dict[str, Any], None, None]:
     """Streaming variant of generate_response.
 
@@ -102,7 +104,11 @@ def generate_response_stream(
                 yield {"type": "delta", "text": text_chunk}
 
     raw = "".join(accumulated).strip()
-    rendered_format, response_text = parse_generation_wrapper(raw, strategy)
+    rendered_format, response_text = parse_generation_wrapper(
+        raw,
+        strategy,
+        fallback_format=fallback_format,
+    )
     yield {
         "type":            "done",
         "rendered_format": rendered_format,
@@ -111,14 +117,18 @@ def generate_response_stream(
     }
 
 
-def parse_generation_wrapper(text: str, strategy: str) -> Tuple[str, str]:
+def parse_generation_wrapper(
+    text: str,
+    strategy: str,
+    fallback_format: Optional[str] = None,
+) -> Tuple[str, str]:
     """Parse `{"rendered_format": "...", "response": "..."}` from LLM output.
 
     Falls back gracefully if the model didn't honor the wrapper:
       - JSON parse fails: return (fallback_format, raw_text).
       - JSON parses but rendered_format is unknown: coerce to "hybrid".
     """
-    fallback = _fallback_format(strategy)
+    fallback = _fallback_format(strategy, fallback_format=fallback_format)
 
     if not text:
         return fallback, ""
@@ -159,10 +169,6 @@ def coerce_response_to_strategy_format(
     selected strategy forbids them. Convert simple tables to labelled bullet
     blocks so the rendered output matches the selected arm.
     """
-    expected = FORMAT_EXPECTATIONS.get(strategy)
-    if expected == "comparison_table" and rendered_format == "data_table":
-        return "comparison_table", response_text
-
     if strategy != "bullet_contrast":
         return rendered_format, response_text
 
@@ -235,8 +241,15 @@ def _is_separator_cell(cell: str) -> bool:
     return compact == ""
 
 
-def _fallback_format(strategy: str) -> str:
-    """Per-strategy default rendered_format used when JSON parse fails."""
+def _fallback_format(strategy: str, fallback_format: Optional[str] = None) -> str:
+    """Per-strategy default rendered_format used when JSON parse fails.
+
+    Runtime callers pass the selected strategy's DB-owned `format_type`.
+    The hardcoded map remains only as a compatibility fallback for direct
+    parser callers and old tests.
+    """
+    if fallback_format:
+        return "paragraph" if fallback_format == "*" else fallback_format
     expected = FORMAT_EXPECTATIONS.get(strategy)
     if not expected or expected == "*":
         return "paragraph"

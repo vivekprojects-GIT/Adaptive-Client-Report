@@ -7,7 +7,9 @@ Per-turn flow (Path A — strategy selection):
         • Append classifier signal (LLM source) to its pending_signals
         • Run _finalize_response → resolver → max-magnitude reward
           (with ambiguity rule) → bandit cell update
-  A1. Validate intent (read APE_Config / intent entity)
+  A1. Validate intent against Mongo config; missing/inactive labels fall back
+      to the active `unmapped` intent and preserve the classifier label as
+      suggested_intent for admin review.
   A2. Read allowed strategies for (domain, intent, topic) (policy lookup)
   A3. Read strategy metadata + active instruction version
   A4. Query the user-personalized bandit state for this cell
@@ -80,7 +82,23 @@ from .store import (
     new_session_id,
     utcnow_iso,
 )
-from .strategies import INTENT_STRATEGIES, compute_format_compliance
+
+
+class UnknownIntentError(ValueError):
+    """Raised only when the `unmapped` fallback intent is unavailable."""
+
+    def __init__(self, intent: str) -> None:
+        self.intent = intent
+        super().__init__(f"Unknown intent: {intent}")
+
+
+class NoActiveStrategiesError(ValueError):
+    """Raised when an active intent has no active policy strategy arms."""
+
+    def __init__(self, intent: str, topic: str) -> None:
+        self.intent = intent
+        self.topic = topic
+        super().__init__(f"No active strategies for intent: {intent} topic: {topic}")
 
 
 # ── Signals that are decisive enough to finalize eagerly (no need to wait
@@ -715,6 +733,362 @@ class ApeOrchestrator:
     # PATH B — Reward update for an EXACT response_id
     # ==================================================================
 
+    def _prepare_turn_context(
+        self,
+        user_id: str,
+        query: str,
+        session_id: Optional[str],
+        history_limit: int,
+    ) -> Dict[str, Any]:
+        """Run the DB-first selection path shared by sync/stream turns."""
+        import time as _time
+
+        timings: Dict[str, float] = {}
+        t0 = _time.monotonic()
+
+        def _tick(label: str, start: float) -> float:
+            now = _time.monotonic()
+            timings[label] = round((now - start) * 1000.0, 1)
+            return now
+
+        ts = utcnow_iso()
+        user_id_hash = hash_user_id(user_id)
+        if not session_id:
+            session_id = new_session_id(user_id_hash)
+
+        history = self.store.history_for_llm(session_id, limit=history_limit)
+        t = _tick("load_history", t0)
+
+        cls = classify_and_detect(self.client, self.model, query, history, prev_format=None)
+        intent = cls["intent"]
+        domain = self.domain
+        topic = BANDIT_TOPIC
+        t = _tick("classifier_llm", t)
+
+        prev_pending = self.store.find_previous_pending_response(
+            user_id_hash=user_id_hash,
+            session_id=session_id,
+            max_age_sec=600,
+        )
+        if prev_pending is not None:
+            prev_id = prev_pending["response_id"]
+            if prev_pending.get("intent") == "unmapped":
+                self.store.mark_response_skipped(prev_id, user_id_hash, "unmapped_intent")
+            else:
+                llm_sig = cls.get("signal")
+                if llm_sig and llm_sig != "no_signal":
+                    self.store.append_pending_signal(prev_id, {
+                        "signal": llm_sig,
+                        "source": "llm",
+                        "ts":     utcnow_iso(),
+                    })
+                try:
+                    self._finalize_response(prev_id, user_id_hash)
+                except Exception as e:
+                    print(f"[orchestrator] finalize_response failed for {prev_id}: {e}", flush=True)
+        t = _tick("finalize_prev_response", t)
+
+        active_intent = self.store.get_active_config("intent", intent)
+        if intent == "unmapped" or active_intent is None:
+            suggested_intent = _suggested_intent_for(intent, cls, self.store, domain)
+            intent = "unmapped"
+            if self.store.get_active_config("intent", intent) is None:
+                raise UnknownIntentError(intent)
+        else:
+            suggested_intent = None
+        t = _tick("intent_validate", t)
+
+        strategy_docs = self._resolve_candidate_strategy_docs(domain, intent, topic)
+        candidate_strategies = [d["strategy_id"] for d in strategy_docs]
+        strategy_docs_by_id = {d["strategy_id"]: d for d in strategy_docs}
+        t = _tick("policy_lookup", t)
+
+        instruction_versions = self._load_active_instructions(candidate_strategies)
+        t = _tick("load_instructions", t)
+
+        bandit_rows = self.store.get_or_create_bandit_cell(
+            user_id_hash=user_id_hash,
+            domain=domain,
+            intent=intent,
+            topic=topic,
+            strategies=candidate_strategies,
+        )
+        t = _tick("load_bandit_cell", t)
+
+        order = {s: i for i, s in enumerate(candidate_strategies)}
+        bandit_rows = [r for r in bandit_rows if r.get("strategy") in order]
+        bandit_rows.sort(key=lambda r: order.get(r.get("strategy"), len(order)))
+        selected_row = select_strategy_from_rows(bandit_rows)
+        if selected_row is None:
+            raise NoActiveStrategiesError(intent, topic)
+
+        selection = build_selection_payload(
+            rows=bandit_rows,
+            selected_row=selected_row,
+            candidate_strategies=candidate_strategies,
+            policy_version=selected_row.get("policy_version", "v1"),
+        )
+        suggested = selection["selected_strategy"]
+        selected_strategy_doc = strategy_docs_by_id[suggested]
+        expected_format, accepted_formats = self._strategy_format_info(selected_strategy_doc)
+        selection["expected_format"] = expected_format
+        selection["accepted_rendered_formats"] = accepted_formats
+
+        cell_pk = {
+            "user_id_hash": user_id_hash,
+            "domain":       domain,
+            "intent":       intent,
+            "topic":        topic,
+        }
+        self.store.bump_strategy_count(cell_pk, suggested)
+        self.store.refresh_cell_ucb_cache(cell_pk)
+        t = _tick("ucb_select", t)
+
+        timings["select_and_handoff_total"] = round(
+            sum(v for k, v in timings.items() if k != "classifier_llm")
+            + timings.get("classifier_llm", 0.0),
+            1,
+        )
+        timings["select_and_handoff_excluding_classifier"] = round(
+            timings["select_and_handoff_total"] - timings.get("classifier_llm", 0.0),
+            1,
+        )
+
+        rag_hits = self._retrieve_context(query, domain)
+        rag_context = format_context(rag_hits)
+        t = _tick("rag_retrieve", t)
+
+        self.store.append_message(
+            message_id=new_message_id(),
+            user_id_hash=user_id_hash,
+            session_id=session_id,
+            role="user",
+            content=query,
+            ts=ts,
+        )
+        t = _tick("append_user_msg", t)
+
+        return {
+            "query": query,
+            "ts": ts,
+            "t0": t0,
+            "last_tick": t,
+            "timings": timings,
+            "user_id_hash": user_id_hash,
+            "session_id": session_id,
+            "history": history,
+            "classification": cls,
+            "domain": domain,
+            "intent": intent,
+            "suggested_intent": suggested_intent,
+            "topic": topic,
+            "candidate_strategies": candidate_strategies,
+            "selection": selection,
+            "selected_strategy_doc": selected_strategy_doc,
+            "expected_format": expected_format,
+            "accepted_rendered_formats": accepted_formats,
+            "instruction_versions": instruction_versions,
+            "rag_hits": rag_hits,
+            "rag_context": rag_context,
+            "response_id": new_response_id(),
+            "cell_pk": cell_pk,
+        }
+
+    def handle_turn(
+        self,
+        user_id: str,
+        query: str,
+        session_id: Optional[str] = None,
+        generate: bool = True,
+        history_limit: int = 30,
+    ) -> Dict[str, Any]:
+        import time as _time
+
+        prepared = self._prepare_turn_context(user_id, query, session_id, history_limit)
+        timings = prepared["timings"]
+
+        synth_start = _time.monotonic()
+        answer = ""
+        rendered_format = prepared["expected_format"]
+        if generate:
+            selected = prepared["selection"]["selected_strategy"]
+            instruction_text = self._load_active_instruction_text(selected)
+            rendered_format, answer = generate_response(
+                self.client,
+                self.model,
+                query,
+                selected,
+                prepared["history"],
+                context=prepared["rag_context"],
+                instruction_text=instruction_text,
+                fallback_format=prepared["expected_format"],
+            )
+        timings["synthesizer_llm"] = round((_time.monotonic() - synth_start) * 1000.0, 1)
+        return self._persist_prepared_turn(prepared, answer, rendered_format, _time.monotonic())
+
+    def handle_turn_streaming(
+        self,
+        user_id: str,
+        query: str,
+        session_id: Optional[str] = None,
+        history_limit: int = 30,
+    ):
+        """Prepare synchronously, then return a generator for SSE events."""
+        prepared = self._prepare_turn_context(user_id, query, session_id, history_limit)
+
+        def _events():
+            import time as _time
+
+            selection = prepared["selection"]
+            selected = selection["selected_strategy"]
+            yield {
+                "event":                     "metadata",
+                "response_id":               prepared["response_id"],
+                "session_id":                prepared["session_id"],
+                "domain":                    prepared["domain"],
+                "intent":                    prepared["intent"],
+                "topic":                     prepared["topic"],
+                "selected_strategy":         selected,
+                "candidate_strategies":      prepared["candidate_strategies"],
+                "expected_format":           prepared["expected_format"],
+                "accepted_rendered_formats": prepared["accepted_rendered_formats"],
+                "rag_doc_ids":               [h["id"] for h in prepared["rag_hits"]],
+                "select_timings_ms":         dict(prepared["timings"]),
+            }
+
+            synth_start = _time.monotonic()
+            answer_text = ""
+            rendered_format = prepared["expected_format"]
+            try:
+                instruction_text = self._load_active_instruction_text(selected)
+                for evt in generate_response_stream(
+                    self.client,
+                    self.model,
+                    query,
+                    selected,
+                    prepared["history"],
+                    context=prepared["rag_context"],
+                    instruction_text=instruction_text,
+                    fallback_format=prepared["expected_format"],
+                ):
+                    if evt["type"] == "delta":
+                        yield {"event": "delta", "text": evt["text"]}
+                    elif evt["type"] == "done":
+                        answer_text = evt["response"]
+                        rendered_format = evt["rendered_format"]
+            except Exception as exc:
+                yield {"event": "error", "message": str(exc)}
+                return
+
+            prepared["timings"]["synthesizer_llm"] = round(
+                (_time.monotonic() - synth_start) * 1000.0,
+                1,
+            )
+            result = self._persist_prepared_turn(
+                prepared,
+                answer_text,
+                rendered_format,
+                _time.monotonic(),
+            )
+            yield {
+                "event":                "done",
+                "response_id":          result["response_id"],
+                "session_id":           result["session_id"],
+                "assistant_message_id": result["assistant_message_id"],
+                "answer":               result["answer"],
+                "rendered_format":      result["rendered_format"],
+                "format_compliance":    result["format_compliance"],
+                "selection":            result["selection"],
+                "classification":       result["classification"],
+                "timings_ms":           result["timings_ms"],
+            }
+
+        return _events()
+
+    def _persist_prepared_turn(
+        self,
+        prepared: Dict[str, Any],
+        answer: str,
+        rendered_format: str,
+        t_start: float,
+    ) -> Dict[str, Any]:
+        import time as _time
+
+        selection = prepared["selection"]
+        suggested = selection["selected_strategy"]
+        compliance = self._compute_format_compliance(prepared["selected_strategy_doc"], rendered_format)
+        instr_version = prepared["instruction_versions"].get(suggested, "v1")
+        attribution_pk = make_attribution_pk(
+            prepared["user_id_hash"],
+            prepared["domain"],
+            prepared["intent"],
+            prepared["topic"],
+        )
+
+        self.store.write_pending_response({
+            "response_id":                prepared["response_id"],
+            "user_id_hash":               prepared["user_id_hash"],
+            "session_id_optional":        prepared["session_id"],
+            "ts":                         prepared["ts"],
+            "domain":                     prepared["domain"],
+            "intent":                     prepared["intent"],
+            "intent_confidence":          float(prepared["classification"].get("intent_confidence", 0.0)),
+            "suggested_intent":           prepared["suggested_intent"],
+            "rag_doc_ids":                [h["id"] for h in prepared["rag_hits"]],
+            "rag_hit_count":              len(prepared["rag_hits"]),
+            "topic":                      prepared["topic"],
+            "selected_strategy":          suggested,
+            "selection_method":           selection["selection_method"],
+            "suggested_format":           prepared["expected_format"],
+            "expected_format":            prepared["expected_format"],
+            "accepted_rendered_formats":  prepared["accepted_rendered_formats"],
+            "rendered_format":            rendered_format,
+            "format_compliance":          int(bool(compliance)),
+            "ucb_at_selection":           selection["ucb_at_selection"],
+            "policy_version":             selection["policy_version"],
+            "instruction_version":        instr_version,
+            "attribution_bandit_pk":      attribution_pk,
+            "attribution_bandit_sk":      suggested,
+            "pending_signals":            [],
+        })
+
+        assistant_msg_id = new_message_id()
+        self.store.append_message(
+            message_id=assistant_msg_id,
+            user_id_hash=prepared["user_id_hash"],
+            session_id=prepared["session_id"],
+            role="assistant",
+            content=answer,
+            ts=utcnow_iso(),
+            response_id=prepared["response_id"],
+            rendered_format=rendered_format,
+            meta={
+                "intent":                    prepared["intent"],
+                "topic":                     prepared["topic"],
+                "selected_strategy":         suggested,
+                "selection_method":          selection["selection_method"],
+                "ucb_at_selection":          selection["ucb_at_selection"],
+                "expected_format":           prepared["expected_format"],
+                "accepted_rendered_formats": prepared["accepted_rendered_formats"],
+            },
+        )
+
+        timings = prepared["timings"]
+        timings["post_writes"] = round((_time.monotonic() - t_start) * 1000.0, 1)
+        timings["total"] = round((_time.monotonic() - prepared["t0"]) * 1000.0, 1)
+
+        return {
+            "response_id":          prepared["response_id"],
+            "session_id":           prepared["session_id"],
+            "assistant_message_id": assistant_msg_id,
+            "classification":       prepared["classification"],
+            "selection":            selection,
+            "answer":               answer,
+            "rendered_format":      rendered_format,
+            "format_compliance":    int(bool(compliance)),
+            "timings_ms":           timings,
+        }
+
     def apply_feedback(
         self,
         user_id: str,
@@ -977,24 +1351,73 @@ class ApeOrchestrator:
     # Internal helpers
     # ==================================================================
 
+    def _resolve_candidate_strategy_docs(
+        self,
+        domain: str,
+        intent: str,
+        topic: str,
+    ) -> List[Dict[str, Any]]:
+        """Return active strategy config docs allowed by active policy rows."""
+        rows = self.store.get_policy_strategies(domain, intent, topic)
+        if not rows:
+            rows = self.store.get_policy_strategies(domain, intent, "_default")
+        if not rows:
+            raise NoActiveStrategiesError(intent, topic)
+
+        docs: List[Dict[str, Any]] = []
+        seen: set[str] = set()
+        for row in rows:
+            strategy_id = row.get("strategy_id")
+            if not strategy_id or strategy_id in seen:
+                continue
+            strategy_doc = self.store.get_active_config("strategy", strategy_id)
+            if strategy_doc is None:
+                continue
+            strategy_doc = dict(strategy_doc)
+            strategy_doc["strategy_id"] = strategy_doc.get("strategy_id") or strategy_id
+            docs.append(strategy_doc)
+            seen.add(strategy_id)
+
+        if not docs:
+            raise NoActiveStrategiesError(intent, topic)
+        return docs
+
+    def _strategy_format_info(self, strategy_doc: Dict[str, Any]) -> tuple[str, List[str]]:
+        strategy_id = strategy_doc.get("strategy_id") or strategy_doc.get("entity_id") or ""
+        format_type = strategy_doc.get("format_type") or strategy_doc.get("expected_format") or "paragraph"
+        accepted = [
+            str(v).strip()
+            for v in (strategy_doc.get("accepted_rendered_formats") or [])
+            if str(v).strip()
+        ]
+        if not accepted:
+            if strategy_id == "standard_llm":
+                accepted = ["*"]
+            elif format_type in {"comparison_table", "data_table"}:
+                accepted = ["comparison_table", "data_table"]
+            else:
+                accepted = [format_type]
+        if "*" not in accepted and format_type not in accepted:
+            accepted.insert(0, format_type)
+        deduped: List[str] = []
+        for value in accepted:
+            if value not in deduped:
+                deduped.append(value)
+        return format_type, deduped
+
+    def _compute_format_compliance(self, strategy_doc: Dict[str, Any], rendered_format: str) -> bool:
+        _, accepted = self._strategy_format_info(strategy_doc)
+        return "*" in accepted or rendered_format in accepted
+
     def _resolve_candidate_strategies(
         self, intent: str, topic: str, domain: str | None = None
     ) -> List[str]:
         """Look up the allowed strategies for (domain, intent, topic) from policies.
 
-        Falls back to the hardcoded INTENT_STRATEGIES catalog if no policy
-        rows exist (e.g. fresh DB or new intent the admin hasn't configured).
+        Uses active policy rows and active strategy docs only.
         """
         domain = domain or self.domain
-        # Try topic-specific policy first
-        rows = self.store.get_policy_strategies(domain, intent, topic)
-        if not rows:
-            # Fall back to _default topic
-            rows = self.store.get_policy_strategies(domain, intent, "_default")
-        if rows:
-            return sorted({r["strategy_id"] for r in rows})
-        # Last resort — hardcoded catalog
-        return INTENT_STRATEGIES.get(intent, INTENT_STRATEGIES["unmapped"])
+        return [d["strategy_id"] for d in self._resolve_candidate_strategy_docs(domain, intent, topic)]
 
     def _retrieve_context(self, query: str, domain: str) -> List[Dict[str, Any]]:
         """Retrieve domain-scoped RAG passages. Safe no-op when RAG is off,
