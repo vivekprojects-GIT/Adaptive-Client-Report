@@ -69,8 +69,8 @@ export default function BetaCurve({
           <span
             className="beta-params"
             title={
-              "Visualization only — the runtime bandit is UCB, which uses count + " +
-              "avg_reward, not α/β. We project (avg_reward + 1) / 2 onto a Beta " +
+              "Visualization only - the runtime bandit uses a selection score based on count + " +
+              "avg_reward, not alpha/beta. We project (avg_reward + 1) / 2 onto a Beta " +
               "distribution so the curve shape (peak + width) reflects the average + count."
             }
           >

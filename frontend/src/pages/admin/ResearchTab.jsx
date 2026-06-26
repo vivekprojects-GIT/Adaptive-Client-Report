@@ -7,7 +7,7 @@
  *   3. A validated library of papers (foundations → frontier), each in plain
  *      English. All links HTTP-checked to resolve.
  *
- * Lives here (not in the UCB Formula tab) so the UCB tab stays a focused tuner.
+ * Lives here so the Selection Score tab stays a focused tuner.
  */
 
 // ── Evolution roadmap: Now → Goal ────────────────────────────────────────────
@@ -228,7 +228,7 @@ const GROUPS = [
         p: "Defines UCB1 — score = average + 'how unsure am I' bonus. The exact algorithm we run.",
         u: "https://link.springer.com/article/10.1023/A:1013689704352" },
       { t: "Sutton & Barto (2018) — Reinforcement Learning: An Introduction, §2.7",
-        p: "Writes UCB with the single tunable dial c — the knob in the UCB Formula tab.",
+        p: "Writes UCB with the single tunable dial c - the knob in the Selection Score tab.",
         u: "http://incompleteideas.net/book/the-book-2nd.html" },
       { t: "Slivkins (2019) — Introduction to Multi-Armed Bandits",
         p: "Free, comprehensive modern monograph — the best single end-to-end reference.",

@@ -2,9 +2,9 @@ import { useEffect, useState } from "react";
 import { api } from "../../api.js";
 
 /**
- * UcbConfigTab — tune the UCB selection formula live (no redeploy).
+ * UcbConfigTab - tune the UCB-based selection score formula live (no redeploy).
  *
- *   ucb = avg_reward + c · width · √(2 · ln N / count)
+ *   selection_score = avg_reward + c * width * sqrt(2 * ln N / count)
  *
  *   c     (exploration_c)      — exploration constant. Lower = exploit sooner.
  *   width (reward_range_width) — reward range (b−a); 4 because rewards span [-2,+2].
@@ -47,7 +47,7 @@ export default function UcbConfigTab({ notify }) {
       });
       setC(String(res.exploration_c));
       setWidth(String(res.reward_range_width));
-      notify(`UCB updated — c=${res.exploration_c}, width=${res.reward_range_width} (applied live)`);
+      notify(`Selection score updated - c=${res.exploration_c}, width=${res.reward_range_width} (applied live)`);
     } catch (err) {
       notify("Save failed: " + err.message, "error");
     } finally {
@@ -64,18 +64,20 @@ export default function UcbConfigTab({ notify }) {
   return (
     <div className="admin-tab-content">
       <div className="admin-section">
-        <h2 className="admin-section-title">UCB selection formula</h2>
+        <h2 className="admin-section-title">Selection score formula</h2>
         <p className="admin-section-sub">
           Controls how the bandit balances <strong>exploration</strong> vs{" "}
           <strong>exploitation</strong> when picking a strategy. Round-robin always
           tries every arm once first; these knobs govern what happens after that.
+          The UI calls the computed number <strong>selection score</strong> so it is not
+          confused with reward.
           The research basis, papers, and roadmap now live in the{" "}
           <strong>Research</strong> tab.
         </p>
 
         <div className="reward-scale-pointer">
           <strong>Formula:</strong>{" "}
-          <code>ucb = avg_reward + c · width · √(2 · ln N / count)</code>
+          <code>selection_score = avg_reward + c * width * sqrt(2 * ln N / count)</code>
           <ul className="col-legend">
             <li><strong>c (exploration constant)</strong> — higher = more exploration (samples all strategies longer); lower = commits to the learned winner sooner.
               <em> c=1 is textbook-balanced; c≈0.25–0.5 suits sparse feedback.</em></li>

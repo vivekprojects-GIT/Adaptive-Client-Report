@@ -88,12 +88,12 @@ function renderMetaChips(msg) {
   if (meta.intent)            chips.push(chip("intent: "   + meta.intent));
   if (meta.selected_strategy) chips.push(chip("strategy: " + meta.selected_strategy));
   if (msg.rendered_format)    chips.push(chip("rendered: " + msg.rendered_format));
-  // Round-robin cold-start picks have no meaningful UCB score — show the
-  // selection method instead of a misleading "ucb: 0.00".
+  // Round-robin cold-start picks have no meaningful selection score. For UCB
+  // picks, label the number as a strategy selection score, not a reward.
   if (meta.selection_method === "round_robin") {
     chips.push(chip("pick: round-robin"));
   } else if (meta.ucb_at_selection != null) {
-    chips.push(chip(`ucb: ${Number(meta.ucb_at_selection).toFixed(2)}`));
+    chips.push(chip(`selection score: ${Number(meta.ucb_at_selection).toFixed(2)}`));
   }
   // Applied reward verdict — joined from ape_turn_record by the messages
   // API. Shows BOTH reward axes of the two-axis model:

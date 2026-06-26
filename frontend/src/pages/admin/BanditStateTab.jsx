@@ -78,7 +78,7 @@ export default function BanditStateTab({ notify }) {
       if (an !== bn) return an.localeCompare(bn);
       return b.total_pulls - a.total_pulls;
     });
-    // Sort arms within each cell by cached_ucb desc (= next-pick order)
+    // Sort arms within each cell by selection score desc (= next-pick order)
     for (const g of groups) {
       g.arms.sort((a, b) => b.cached_ucb - a.cached_ucb);
     }
@@ -111,9 +111,11 @@ export default function BanditStateTab({ notify }) {
         <p className="admin-section-sub">
           Read-only view of <code>ape_user_bandit_state</code> — every per-user cell
           with its arms' <code>count</code>, <code>avg_reward</code>, and
-          <code> cached_ucb</code>. Selection is <strong>round-robin first</strong>
-          (unpulled arms, in catalog order), <strong>then UCB</strong> — the arm with
-          the highest score wins the user's next <code>/turn</code> in that cell.
+          <strong> selection score</strong> (stored as <code>cached_ucb</code>).
+          Selection is <strong>round-robin first</strong> (unpulled arms, in catalog order),
+          then by the UCB-based <strong>selection score</strong>. The highest score wins
+          the user's next <code>/turn</code> in that cell. Selection score is
+          <strong> not reward</strong>; it is average reward plus an exploration bonus.
           <code> count</code> is the PULL counter (bumped at selection, not at reward).
           Useful for debugging "why did the bandit pick X" or recovering from a
           poisoned cell after a bad-feedback session.
@@ -206,7 +208,7 @@ export default function BanditStateTab({ notify }) {
                     <th className="num">Pulls</th>
                     <th className="num">μ-reward</th>
                     <th className="num">total_reward</th>
-                    <th className="num" title="UCB1 score. Highest wins on next /turn.">cached UCB</th>
+                    <th className="num" title="UCB-based selection priority, not reward. Highest wins on next /turn after cold-start.">Selection score</th>
                     <th>Last updated</th>
                     {hasUser && <th style={{ width: "100px" }}>Actions</th>}
                   </tr>
@@ -216,7 +218,7 @@ export default function BanditStateTab({ notify }) {
                     const isWinner = idx === 0;
                     return (
                       <tr key={a.strategy} className={isWinner ? "winner-row" : ""}>
-                        <td title={isWinner ? "Next pick — highest cached_ucb" : ""}>
+                        <td title={isWinner ? "Next pick - highest selection score" : ""}>
                           {isWinner ? <span className="winner-arrow">▶</span> : ""}
                         </td>
                         <td><code className="code-pill">{a.strategy}</code></td>

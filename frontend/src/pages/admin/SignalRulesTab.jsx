@@ -235,7 +235,7 @@ export default function SignalRulesTab({ notify }) {
           <li><strong>Evidence quality</strong> — how trustworthy this signal is for bandit learning (Stage 2 priors).
             <em> high = explicit/objective; medium = behavioral; low = inferred or ambiguous.</em></li>
           <li><strong>Consumers</strong> — downstream systems that read this signal.
-            <em> bandit = updates UCB rewards; instruction_quality = flags strategy issues; analytics = dashboards; retention = cohort analysis.</em></li>
+            <em> bandit = updates bandit reward learning; selection score is recalculated from reward plus exploration. instruction_quality = flags strategy issues; analytics = dashboards; retention = cohort analysis.</em></li>
           {source === "composite" && (
             <>
               <li><strong>Trigger pattern</strong> — human-readable description of detection rule (free text; detection logic lives in <code>ape/signals/composites.py</code>).

@@ -25,7 +25,7 @@ const TABS = [
   { id: "offers",       label: "Outreach" },
   { id: "signals",      label: "Signal Routing" },
   { id: "rewards",      label: "Reward Scale" },
-  { id: "ucb",          label: "UCB Formula" },
+  { id: "ucb",          label: "Selection Score" },
   { id: "bandit",       label: "Bandit State" },
   { id: "research",     label: "Research" },
   { id: "audit",        label: "Audit Log" },

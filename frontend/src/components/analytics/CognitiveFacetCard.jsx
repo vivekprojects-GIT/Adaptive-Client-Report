@@ -187,7 +187,7 @@ export default function CognitiveFacetCard({ facet, onInspectUser }) {
                       <th>Strategy</th>
                       <th className="num">Pulls</th>
                       <th className="num">μ reward</th>
-                      <th className="num" title="UCB score = avg_reward + c·√(2·ln N / count). Highest wins on the next /turn.">cached UCB</th>
+                      <th className="num" title="Selection score = avg_reward + exploration bonus. This is pick priority, not reward.">Selection score</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -202,8 +202,8 @@ export default function CognitiveFacetCard({ facet, onInspectUser }) {
                   </tbody>
                 </table>
                 <div className="ucb-formula-note">
-                  Runtime selection uses <code>cached_ucb = avg_reward + c·√(2·ln N / count)</code> —
-                  the rightmost column drives the next pick. The Beta curves above are a visualization;
+                  Runtime selection uses <code>selection_score = cached_ucb = avg_reward + c * sqrt(2 * ln N / count)</code>.
+                  This is pick priority, not reward; the rightmost column drives the next pick. The Beta curves above are a visualization;
                   they aren't read by the selection code.
                 </div>
               </>
