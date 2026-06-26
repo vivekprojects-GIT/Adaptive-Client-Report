@@ -18,7 +18,7 @@ const ROADMAP = [
     title: "Per-user UCB over response formats",
     summary: "Where we are today. A bandit learns which response shape each user prefers, per intent.",
     data: "Thumbs + LLM-detected signals → format reward (explicit ±2 / inferred ±1), keyed by (user, intent).",
-    formula: "ucb = avg + c · (b−a) · √(2 · ln N / count)",
+    formula: "selection_score = avg + c * (b-a) * sqrt(2 * ln N / count)",
     papers: "Auer 2002 · Sutton & Barto · Hoeffding · Lai & Robbins",
   },
   {
@@ -389,6 +389,69 @@ export default function ResearchTab() {
           the <strong>formula</strong> to use at each stage — followed by the
           validated paper library.
         </p>
+      </div>
+
+      {/* Selection score primer */}
+      <div className="admin-section">
+        <h2 className="admin-section-title">Selection score vs reward</h2>
+        <p className="admin-section-sub">
+          <strong>Selection score is not user satisfaction.</strong> It is the
+          bandit's pick-priority number: learned reward plus an exploration
+          bonus. Use <code>avg_reward</code>, <code>mu-reward</code>, and
+          <code> total_reward</code> to read actual reward. Use
+          <code> selection_score</code> to understand why the next strategy was
+          chosen.
+        </p>
+
+        <div className="reward-scale-pointer">
+          <strong>Runtime formula:</strong>{" "}
+          <code>selection_score = avg_reward + c * width * sqrt(2 * ln(N) / count)</code>
+          <ul className="col-legend">
+            <li><strong>avg_reward</strong> - learned average reward for that strategy.
+              <em> This is the reward part.</em></li>
+            <li><strong>exploration bonus</strong> - the uncertainty part from
+              <code> c * width * sqrt(2 * ln(N) / count)</code>.
+              <em> This can be high for strategies that have not been tested much.</em></li>
+            <li><strong>c</strong> - the exploration constant.
+              <em> The live value is configured in the Selection Score tab; Research only explains what it means.</em></li>
+          </ul>
+        </div>
+
+        <table className="usage-table">
+          <thead>
+            <tr><th>UI label</th><th>Meaning</th><th>How to interpret it</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>mu-reward</strong></td>
+              <td>Average reward learned from applied bandit signals.</td>
+              <td>Higher means that strategy has actually been rewarded more.</td>
+            </tr>
+            <tr>
+              <td><strong>total_reward</strong></td>
+              <td>Sum of all applied rewards for that arm.</td>
+              <td>Shows accumulated evidence, not next-pick priority.</td>
+            </tr>
+            <tr>
+              <td><strong>Selection score</strong></td>
+              <td>avg_reward plus exploration bonus.</td>
+              <td>Highest score wins the next pick after cold-start; it can rise even when reward stays flat.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div className="reward-scale-pointer">
+          <strong>Example:</strong> assume <code>c=1</code>, <code>width=4</code>,
+          total pulls <code>N=8</code>, and two strategies both have
+          <code> avg_reward=0</code>. A strategy tried once gets
+          <code>0 + 1 * 4 * sqrt(2 * ln(8) / 1) ~= 8.16</code>. A strategy tried
+          six times gets <code>0 + 1 * 4 * sqrt(2 * ln(8) / 6) ~= 3.33</code>.
+          The first strategy wins because the system is still exploring it, not
+          because the user rewarded it. If a user repeats the same question and
+          that signal is not consumed by the bandit reward axis, reward can stay
+          unchanged while selection score still changes through <code>N</code> and
+          <code>count</code>.
+        </div>
       </div>
 
       {/* ── RL family tree (orientation primer) ────────────────────────── */}
