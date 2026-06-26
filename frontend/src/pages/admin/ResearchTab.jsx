@@ -443,9 +443,10 @@ export default function ResearchTab() {
         <div className="reward-scale-pointer">
           <strong>Example:</strong> assume <code>c=1</code>, <code>width=4</code>,
           total pulls <code>N=8</code>, and two strategies both have
-          <code> avg_reward=0</code>. A strategy tried once gets
+          <code> avg_reward=0</code>. A strategy tried once gets{" "}
           <code>0 + 1 * 4 * sqrt(2 * ln(8) / 1) ~= 8.16</code>. A strategy tried
-          six times gets <code>0 + 1 * 4 * sqrt(2 * ln(8) / 6) ~= 3.33</code>.
+          six times gets{" "}
+          <code>0 + 1 * 4 * sqrt(2 * ln(8) / 6) ~= 3.33</code>.
           The first strategy wins because the system is still exploring it, not
           because the user rewarded it. If a user repeats the same question and
           that signal is not consumed by the bandit reward axis, reward can stay
@@ -459,7 +460,7 @@ export default function ResearchTab() {
         <h2 className="admin-section-title">First, the categories — where our work sits</h2>
         <p className="admin-section-sub">
           Everything here lives under <strong>Reinforcement Learning</strong> (learn
-          from reward feedback). But RL is a family — and we use the <em>simplest</em>
+          from reward feedback). But RL is a family — and we use the <em>simplest</em>{" "}
           branch. Here's the whole tree in plain words so anyone can place us.
         </p>
 
@@ -478,8 +479,8 @@ export default function ResearchTab() {
 
         <h3 className="admin-subhead">The one question that categorizes everything</h3>
         <p className="admin-section-sub">
-          <strong>Does your action change the next state?</strong> No → it's a
-          <strong> bandit</strong> (one-step). Yes → it's <strong>full RL</strong>
+          <strong>Does your action change the next state?</strong> No → it's a{" "}
+          <strong>bandit</strong> (one-step). Yes → it's <strong>full RL</strong>{" "}
           (sequential, plan over time). That single axis splits the whole field:
         </p>
         <table className="usage-table">
