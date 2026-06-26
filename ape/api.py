@@ -64,7 +64,7 @@ from .analytics import (
     eligible_offers_for_user,
     recompute_all,
 )
-from .config import ConfigManager, cleanup_strategy_format_metadata, seed_all
+from .config import ConfigManager, cleanup_non_canonical_intents, cleanup_strategy_format_metadata, seed_all
 from .models import (
     FeedbackRequest,
     FeedbackResponse,
@@ -130,6 +130,7 @@ def _build() -> ApeOrchestrator:
         seed_all(store, domain=domain)
     else:
         cleanup_strategy_format_metadata(store)
+        cleanup_non_canonical_intents(store)
 
     global STORE, CONFIG_MGR, RAG
     STORE = store

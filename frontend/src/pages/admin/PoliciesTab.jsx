@@ -90,6 +90,11 @@ export default function PoliciesTab({ notify }) {
     });
   }, [rows, intents]);
 
+  const strategyOptions = useMemo(
+    () => strats.map(strategyKey).filter(Boolean),
+    [strats],
+  );
+
   // ----- Quick-add: add one strategy to an existing (intent, topic) cell -----
   async function quickAdd(group, strategyId) {
     if (!strategyId) return;
@@ -121,10 +126,56 @@ export default function PoliciesTab({ notify }) {
     }
   }
 
+  async function saveGroup(group, desiredStrategies) {
+    if (!desiredStrategies.length) {
+      notify("Pick at least one candidate strategy before saving.", "error");
+      return;
+    }
+    const desired = new Set(desiredStrategies);
+    const existing = new Set(group.strategies);
+    const toAdd = [...desired].filter((sid) => !existing.has(sid));
+    const toRemove = [...existing].filter((sid) => !desired.has(sid));
+
+    try {
+      await Promise.all([
+        ...toAdd.map((strategy_id) => api.upsertPolicy({
+          domain: group.domain,
+          intent: group.intent,
+          topic: group.topic,
+          strategy_id,
+          policy_version: "v1",
+          exploration_constant: 1.0,
+        })),
+        ...toRemove.map((strategy_id) => api.deletePolicy(group.intent, group.topic, strategy_id)),
+      ]);
+      notify(`Updated ${group.intent}#${group.topic}`);
+      refresh();
+    } catch (err) {
+      notify("Update failed: " + err.message, "error");
+    }
+  }
+
+  async function deleteGroup(group) {
+    if (!group.strategies.length) {
+      notify("No policy rows to delete for this mapping.", "error");
+      return;
+    }
+    if (!window.confirm(`Delete all strategy mappings for ${group.intent}#${group.topic}?`)) return;
+    try {
+      await Promise.all(
+        group.strategies.map((strategyId) => api.deletePolicy(group.intent, group.topic, strategyId)),
+      );
+      notify(`Deleted mappings for ${group.intent}#${group.topic}`);
+      refresh();
+    } catch (err) {
+      notify("Delete failed: " + err.message, "error");
+    }
+  }
+
   // Helper: for a group, what strategies are NOT yet attached?
   function availableForGroup(group) {
     const have = new Set(group.strategies);
-    return strats.map(strategyKey).filter((sid) => sid && !have.has(sid));
+    return strategyOptions.filter((sid) => !have.has(sid));
   }
 
   // For "add a brand new intent → strategies row" at the top of the page
@@ -240,6 +291,9 @@ export default function PoliciesTab({ notify }) {
                 available={availableForGroup(g)}
                 onAdd={(sid) => quickAdd(g, sid)}
                 onRemove={(sid) => quickRemove(g, sid)}
+                onSave={(desired) => saveGroup(g, desired)}
+                onDeleteGroup={() => deleteGroup(g)}
+                allStrategies={strategyOptions}
                 perfByStrategy={perfByStrategy}
               />
             ))}
@@ -255,11 +309,40 @@ export default function PoliciesTab({ notify }) {
 // PolicyGroupCard — one row per (domain, intent, topic) showing all its
 // strategies as chips. Inline add (dropdown) + remove (× on chip).
 // ============================================================================
-function PolicyGroupCard({ group, available, onAdd, onRemove, perfByStrategy = {} }) {
+function PolicyGroupCard({
+  group,
+  available,
+  onAdd,
+  onRemove,
+  onSave,
+  onDeleteGroup,
+  allStrategies,
+  perfByStrategy = {},
+}) {
   const [picking, setPicking] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [draftStrategies, setDraftStrategies] = useState(group.strategies);
   const isDefault = group.topic === "_default";
   const hasStrategies = group.strategies.length > 0;
   const isOrphan = group.intentActive === false;
+
+  function beginEdit() {
+    setDraftStrategies(group.strategies);
+    setEditing(true);
+  }
+
+  function toggleDraft(strategyId) {
+    setDraftStrategies((current) => (
+      current.includes(strategyId)
+        ? current.filter((id) => id !== strategyId)
+        : [...current, strategyId]
+    ));
+  }
+
+  async function saveDraft() {
+    await onSave(draftStrategies);
+    setEditing(false);
+  }
 
   return (
     <div className={`policy-group ${!hasStrategies ? "policy-group-missing" : ""} ${isOrphan ? "policy-group-orphan" : ""}`}>
@@ -274,7 +357,54 @@ function PolicyGroupCard({ group, available, onAdd, onRemove, perfByStrategy = {
         <span className="policy-count">
           {group.strategies.length} {group.strategies.length === 1 ? "strategy" : "strategies"}
         </span>
+        <span className="policy-group-actions">
+          <button
+            type="button"
+            className="admin-row-btn"
+            onClick={editing ? () => setEditing(false) : beginEdit}
+          >
+            {editing ? "Cancel" : "Edit"}
+          </button>
+          <button
+            type="button"
+            className="admin-row-btn admin-row-btn-danger"
+            onClick={onDeleteGroup}
+            disabled={!hasStrategies}
+          >
+            Delete
+          </button>
+        </span>
       </div>
+
+      {editing && (
+        <div className="policy-edit-panel">
+          <div className="strategy-check-grid">
+            {allStrategies.map((sid) => (
+              <label key={sid} className="strategy-check">
+                <input
+                  type="checkbox"
+                  checked={draftStrategies.includes(sid)}
+                  onChange={() => toggleDraft(sid)}
+                />
+                <span className="strat-chip">{sid}</span>
+              </label>
+            ))}
+          </div>
+          <div className="policy-edit-actions">
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={saveDraft}
+              disabled={draftStrategies.length === 0}
+            >
+              Save mapping
+            </button>
+            <button type="button" className="btn-secondary" onClick={() => setEditing(false)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="policy-chip-row">
         {!hasStrategies && (

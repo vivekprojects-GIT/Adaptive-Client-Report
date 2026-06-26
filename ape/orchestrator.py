@@ -1232,7 +1232,9 @@ class ApeOrchestrator:
         if winner:
             signal_set.add(winner)
 
-        # Score every format-relevant signal in the pool: (signal, category, reward).
+        # Score every bandit-owned, format-relevant signal in the pool:
+        # (signal, category, reward). Signals whose consumers do not include
+        # "bandit" are analytics/content evidence only and must not move UCB.
         # USER evidence (ui / llm / composite) outranks MACHINE evidence
         # (derived: format_compliance, session lifecycle) — derived signals
         # only reach the bandit when no user signal fired. Without this split
@@ -1244,7 +1246,9 @@ class ApeOrchestrator:
         derived_candidates: List[tuple] = []
         for sig in signal_set:
             r = self.store.get_signal_routing(sig)
-            if r is None or not r.get("format_relevant"):
+            if r is None or "bandit" not in (r.get("consumers") or []):
+                continue
+            if not r.get("format_relevant"):
                 continue
             cat = r.get("format_category")
             if not cat:

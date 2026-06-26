@@ -892,6 +892,29 @@
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
+.policy-group-actions {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+.policy-edit-panel {
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+.policy-edit-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 10px;
+}
+.policy-edit-actions .btn-primary,
+.policy-edit-actions .btn-secondary {
+  padding: 7px 12px;
+  font-size: 12.5px;
+}
 
 .policy-chip-row {
   display: flex;

@@ -155,6 +155,7 @@ def seed_all(store: MongoStore, domain: str = DEFAULT_DOMAIN, default_topic: str
     )
 
     cleanup_strategy_format_metadata(store)
+    cleanup_non_canonical_intents(store)
 
     return counts
 
@@ -173,6 +174,25 @@ def cleanup_strategy_format_metadata(store: MongoStore) -> int:
         }},
     )
     return int(getattr(result, "modified_count", 0))
+
+
+def cleanup_non_canonical_intents(store: MongoStore) -> dict:
+    """Remove stale intent config and policy mappings outside the DECIDE set.
+
+    Runtime still falls unknown labels back to `unmapped`; this only keeps the
+    admin configuration surface aligned with the canonical MVP1 taxonomy.
+    """
+    allowed = set(INTENT_STRATEGIES.keys())
+    intents = store.config.delete_many({
+        "entity_type": "intent",
+        "entity_id": {"$nin": list(allowed)},
+    }).deleted_count
+    policies = store.config.delete_many({
+        "entity_type": "policy",
+        "intent": {"$nin": list(allowed)},
+    }).deleted_count
+    return {"intents_deleted": int(intents), "policies_deleted": int(policies)}
+
 
 def _intent_description(intent: str) -> str:
     return {

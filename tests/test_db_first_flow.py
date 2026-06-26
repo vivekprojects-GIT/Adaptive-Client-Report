@@ -181,6 +181,87 @@ def test_delete_intent_removes_policy_rows(monkeypatch):
     assert store.config.count_documents({"entity_type": "policy", "intent": "Decision"}) == 0
 
 
+def test_cleanup_non_canonical_intents_removes_stale_policy_rows(monkeypatch):
+    from ape.config.seed import cleanup_non_canonical_intents
+
+    store = _store(monkeypatch)
+    store.upsert_config(
+        "intent",
+        "Advisory",
+        {"intent_id": "Advisory", "description": "stale custom intent"},
+    )
+    store.upsert_config(
+        "policy",
+        "Advisory#_default#standard_llm",
+        {
+            "domain": "finance",
+            "intent": "Advisory",
+            "topic": "_default",
+            "strategy_id": "standard_llm",
+            "policy_version": "v1",
+            "exploration_constant": 1.0,
+        },
+    )
+
+    result = cleanup_non_canonical_intents(store)
+
+    assert result == {"intents_deleted": 1, "policies_deleted": 1}
+    assert store.get_active_config("intent", "Advisory") is None
+    assert store.config.count_documents({"entity_type": "policy", "intent": "Advisory"}) == 0
+
+
+def test_reask_same_question_is_analytics_only_for_bandit(monkeypatch):
+    import ape.orchestrator as orch_mod
+    from ape.orchestrator import ApeOrchestrator
+
+    store = _store(monkeypatch)
+    # Simulate a stale/misconfigured DB row: even if the signal accidentally has
+    # a format category, consumers=["analytics"] must keep it out of bandit UCB.
+    store.config.update_one(
+        {"entity_type": "signal_routing", "entity_id": "reask_same_question"},
+        {"$set": {
+            "format_relevant": True,
+            "format_category": "inferred_negative",
+            "consumers": ["analytics"],
+        }},
+    )
+
+    signals = ["no_signal", "reask_same_question"]
+
+    def fake_classify(client, model, query, history, prev_format=None):
+        return {
+            "intent": "Definitional",
+            "intent_confidence": 0.99,
+            "domain": "finance",
+            "topic": "_all",
+            "signal": signals.pop(0),
+        }
+
+    monkeypatch.setattr(orch_mod, "classify_and_detect", fake_classify)
+
+    orch = ApeOrchestrator(client=object(), model="fake", store=store, domain="finance")
+    first = orch.handle_turn("alice", "what is duration?", generate=False)
+    first_record = store.get_response(first["response_id"])
+
+    orch.handle_turn("alice", "what is duration?", session_id=first["session_id"], generate=False)
+
+    finalized = store.get_response(first["response_id"])
+    row = store.bandit_state.find_one({
+        "user_id_hash": first_record["user_id_hash"],
+        "domain": "finance",
+        "intent": "Definitional",
+        "topic": "_all",
+        "strategy": first_record["selected_strategy"],
+    })
+
+    assert finalized["signal"] == "reask_same_question"
+    assert finalized["reward_status"] == "APPLIED"
+    assert finalized.get("normalized_reward") is None
+    assert finalized["content_reward"] == -1.0
+    assert row["total_reward"] == 0.0
+    assert row["avg_reward"] == 0.0
+
+
 def test_turn_routes_raise_422_before_streaming_for_missing_strategy_config(monkeypatch):
     import ape.api as api_mod
     from ape.models import TurnRequest
