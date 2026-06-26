@@ -1777,6 +1777,19 @@
 .decision-q { display: block; font-weight: 600; }
 .decision-a { display: block; color: var(--text-secondary,#6b655d); margin-top: 1px; }
 
+.router-diagram {
+  margin: 10px 0 16px;
+  padding: 13px 15px;
+  border: 1px solid var(--border, #e7e2d9);
+  border-radius: 8px;
+  background: #fffdfa;
+  color: var(--text, #2d2a26);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-x: auto;
+  white-space: pre;
+}
+
 /* Research tab — "our unique approach" banner */
 .unique-banner {
   border: 1.5px solid #b5541f;

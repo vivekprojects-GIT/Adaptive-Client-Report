@@ -31,11 +31,11 @@ const ROADMAP = [
   },
   {
     stage: "Stage 2",
-    title: "Contextual bandit (personalization)",
-    summary: "Generalize across users and situations using features, so new users aren't cold-started from scratch.",
-    data: "A context vector x per turn: user-profile facets, conversation-history embedding, intent, time/device — plus the reward. Store (x, action, reward).",
-    formula: "LinUCB:  a* = argmaxₐ ( xₐᵀ θ̂ₐ + α · √(xₐᵀ Aₐ⁻¹ xₐ) ).  Scale up → NeuralUCB (a network replaces the linear map).",
-    papers: "Li et al. 2010 (LinUCB) · Zhou et al. 2020 (NeuralUCB) · Foster & Rakhlin 2020",
+    title: "Adaptive Router with Contextual Thompson Sampling",
+    summary: "Generalize across users and workloads, then route each prompt to the right execution path: direct LLM or heavy multi-agent workflow.",
+    data: "A low-dimensional context vector x per turn: prompt complexity, code/tool needs, user tier/profile, live latency/cost state, intent, topic, and outcome reward.",
+    formula: "For each arm: sample beta from posterior P(beta|D), score = x dot beta, route to argmax(sampled score). Reward = w1*quality - w2*latency - w3*cost.",
+    papers: "Agrawal & Goyal 2013 · Thompson Sampling tutorials · RouteLLM / LLM routing research",
   },
   {
     stage: "Stage 3",
@@ -187,6 +187,103 @@ const INDUSTRY_USAGE = [
   { co: "LinkedIn · Amazon · Booking · DoorDash · Uber", method: "Contextual bandits", use: "Feed/notification timing, layout, recommendations." },
   { co: "OpenAI · Anthropic · Google DeepMind", method: "RLHF (+ DPO, Constitutional AI)", use: "Aligning LLMs to AGGREGATE human preference (ChatGPT, Claude, Gemini)." },
   { co: "OpenAI / Google (consumer LLMs)", method: "Agentic memory (context, not weights)", use: "Per-USER adaptation — ChatGPT / Gemini 'Memory' features." },
+];
+
+const ADAPTIVE_ROUTER_COMPARISON = [
+  {
+    approach: "Static rules & cascades",
+    latency: "Ultra-low (<1ms)",
+    coldStart: "Excellent",
+    updates: "Poor - manual recoding",
+    personalization: "None",
+    complexity: "Very low",
+  },
+  {
+    approach: "Supervised classifiers",
+    latency: "Low (~10ms)",
+    coldStart: "Good with labels",
+    updates: "Poor - retraining needed",
+    personalization: "Low",
+    complexity: "Medium",
+  },
+  {
+    approach: "Embedding / k-NN routers",
+    latency: "Medium (~15-30ms)",
+    coldStart: "Good",
+    updates: "Excellent - drop in new data",
+    personalization: "Medium",
+    complexity: "Medium",
+  },
+  {
+    approach: "LinUCB routers",
+    latency: "Low (~5-10ms)",
+    coldStart: "Risky exploration",
+    updates: "Good, but slower drift handling",
+    personalization: "High",
+    complexity: "High",
+  },
+  {
+    approach: "Contextual Thompson Sampling",
+    latency: "Low (~5-10ms)",
+    coldStart: "Good with priors",
+    updates: "Excellent Bayesian adaptation",
+    personalization: "Very high",
+    complexity: "High",
+    us: true,
+  },
+];
+
+const ADAPTIVE_ROUTER_FUNCTIONS = [
+  {
+    title: "1. Orchestrator bypass",
+    body: "Easy prompts go to a fast direct model. The multi-agent orchestrator stays asleep, protecting cost and latency for high-volume routine traffic.",
+  },
+  {
+    title: "2. Agentic threshold learning",
+    body: "The router learns when a prompt is complex enough to justify agents. The reward can explicitly penalize overkill: quality minus latency and cost.",
+  },
+  {
+    title: "3. Latency shock control",
+    body: "Belief sampling explores safely, so only the top tier of complex prompts pays the 5-15 second multi-agent cost while ordinary prompts stay fast.",
+  },
+];
+
+const ADAPTIVE_ROUTER_NOTES = [
+  {
+    title: "Context vector",
+    body: "Keep it low-dimensional: token count, code/tool markers, structural complexity, intent/topic, user tier/profile, current API latency, error rate, and budget state.",
+  },
+  {
+    title: "Arms",
+    body: "Arm 0 can be direct LLM. Arm 1 can be multi-agent workflow. Later arms can be cheap model, mid-tier model, frontier reasoning, search-agent path, or code-agent path.",
+  },
+  {
+    title: "Reward",
+    body: "Reward = w1*quality - w2*latency - w3*cost. Quality can come from thumbs, regenerate, copy/no-reask signals, continuation quality, and sampled asynchronous judge scores.",
+  },
+  {
+    title: "Update loop",
+    body: "Do the Bayesian update in the background after outcome evidence arrives. This avoids adding feedback-processing latency to the user request path.",
+  },
+];
+
+const ADAPTIVE_ROUTER_RISKS = [
+  {
+    title: "Delayed and sparse rewards",
+    body: "LLM feedback can arrive minutes later or not at all. Use a queue/background worker and keep pending routing receipts so late evidence can still update the correct arm.",
+  },
+  {
+    title: "High-dimensional context",
+    body: "Raw 1536-dimensional embeddings are too heavy for gateway math. Use semantic buckets, compact classifiers, feature hashing, or a small projection first.",
+  },
+  {
+    title: "Cold start",
+    body: "Seed priors offline with a curated prompt set before sending live users through the router. Start with conservative priors for expensive multi-agent arms.",
+  },
+  {
+    title: "Implementation library",
+    body: "Prototype with a simple Python CTS package; move to Vowpal Wabbit or another optimized contextual-bandit runtime when gateway latency matters.",
+  },
 ];
 
 // ── Agentic path — ship-now alternative to the learned-reward-model track ─────
@@ -453,6 +550,155 @@ export default function ResearchTab() {
           unchanged while selection score still changes through <code>N</code> and{" "}
           <code>count</code>.
         </div>
+      </div>
+
+      {/* Adaptive Router roadmap */}
+      <div className="admin-section">
+        <h2 className="admin-section-title">Project Adaptive Router - Contextual TS master switch</h2>
+        <p className="admin-section-sub">
+          This is the Stage-2 extension of the current project. Today the app
+          learns which <strong>response strategy</strong> to use. The Adaptive
+          Router generalizes that idea into a fast gateway that decides whether
+          a prompt should get a cheap direct LLM response or wake up the heavy
+          multi-agent workflow.
+        </p>
+
+        <div className="unique-banner">
+          <div className="unique-tag">Project Adaptive Router</div>
+          <p>
+            The Contextual Thompson Sampling router is the intelligent master
+            switch in front of the whole system. It protects latency and budget
+            by deciding when the agentic machinery is truly worth turning on.
+          </p>
+          <div className="unique-fuse">
+            <span className="unique-chip">Arm 0 - Direct LLM<small>single model call, fast path, about 1x cost, good for routine prompts</small></span>
+            <span className="unique-plus">vs</span>
+            <span className="unique-chip">Arm 1 - Multi-agent workflow<small>orchestrator, search/code agents, reflection loops, about 30x+ cost</small></span>
+          </div>
+          <p className="unique-why">
+            The key research problem is the <strong>agentic threshold</strong>:
+            exactly when is a prompt complex enough to justify a slow,
+            expensive, multi-step agent loop? Contextual Thompson Sampling turns
+            that threshold into a learned reward-optimization problem instead of
+            a brittle hand-written rule.
+          </p>
+        </div>
+
+        <pre className="router-diagram" aria-label="Adaptive Router architecture diagram">
+{`[USER PROMPT]
+      |
+      v
+[Stage-2 Contextual TS Router]
+  - fast context evaluation
+  - samples beliefs for each arm
+  - picks best execution path
+      |
+      +-------------------------------+
+      |                               |
+      v                               v
+[Arm 0: Direct LLM]          [Arm 1: Multi-agent workflow]
+  - single model call          - orchestrator wakes up
+  - bypass agents              - search/code agents run
+  - ~500ms latency             - reflection/critic loops
+  - ~1x cost                   - ~5000ms+ latency, 30x+ cost
+      |                               |
+      +---------------+---------------+
+                      |
+                      v
+              [FINAL RESPONSE]
+                      |
+                      v
+       [Async offline reward engine]
+  Did Arm 0 fail? Was Arm 1 overkill?
+  Update Thompson Sampling beliefs.`}
+        </pre>
+
+        <h3 className="admin-subhead">The three critical functions</h3>
+        <div className="method-grid">
+          {ADAPTIVE_ROUTER_FUNCTIONS.map((x) => (
+            <div key={x.title} className="method-card fit-stage2best">
+              <div className="method-head">
+                <span className="method-name">{x.title}</span>
+              </div>
+              <div className="ref-note">{x.body}</div>
+            </div>
+          ))}
+        </div>
+
+        <h3 className="admin-subhead">How it maps into routing architecture</h3>
+        <div className="method-grid">
+          {ADAPTIVE_ROUTER_NOTES.map((x) => (
+            <div key={x.title} className="method-card fit-now">
+              <div className="method-head">
+                <span className="method-name">{x.title}</span>
+              </div>
+              <div className="ref-note">{x.body}</div>
+            </div>
+          ))}
+        </div>
+
+        <div className="reward-scale-pointer">
+          <strong>Core CTS loop:</strong>{" "}
+          <code>for each arm: sample beta ~ posterior; predicted_reward = x dot beta; choose argmax(predicted_reward)</code>.
+          After the response, the background reward engine updates the
+          posterior from quality, latency, cost, and user-feedback evidence.
+        </div>
+
+        <h3 className="admin-subhead">Industry comparison matrix</h3>
+        <table className="usage-table">
+          <thead>
+            <tr>
+              <th>Approach</th>
+              <th>Latency</th>
+              <th>Cold start</th>
+              <th>Model updates</th>
+              <th>Personalization</th>
+              <th>Complexity</th>
+            </tr>
+          </thead>
+          <tbody>
+            {ADAPTIVE_ROUTER_COMPARISON.map((r) => (
+              <tr key={r.approach} className={r.us ? "row-us" : ""}>
+                <td><strong>{r.approach}</strong></td>
+                <td>{r.latency}</td>
+                <td>{r.coldStart}</td>
+                <td>{r.updates}</td>
+                <td>{r.personalization}</td>
+                <td>{r.complexity}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        <h3 className="admin-subhead">Why CTS is the better Stage-2 router</h3>
+        <ul className="ref-list">
+          <li><strong>Vs supervised classifiers.</strong>
+            <span className="ref-note">Classifiers can be accurate, but they are brittle when model prices, model checkpoints, or traffic mix changes. CTS keeps adapting from live reward.</span></li>
+          <li><strong>Vs LinUCB.</strong>
+            <span className="ref-note">LinUCB is deterministic optimism: uncertain arms can get too much traffic. Thompson Sampling performs probability matching, sending traffic in proportion to the sampled chance an arm is actually best.</span></li>
+          <li><strong>Vs embedding / k-NN routers.</strong>
+            <span className="ref-note">Embedding routers are good for zero-calibration similarity, but they do not directly optimize live user satisfaction, latency spikes, outages, or budget pressure. CTS optimizes the actual reward function.</span></li>
+        </ul>
+
+        <h3 className="admin-subhead">Implementation strategy and risks</h3>
+        <div className="method-grid">
+          {ADAPTIVE_ROUTER_RISKS.map((x) => (
+            <div key={x.title} className="method-card fit-matches">
+              <div className="method-head">
+                <span className="method-name">{x.title}</span>
+              </div>
+              <div className="ref-note">{x.body}</div>
+            </div>
+          ))}
+        </div>
+
+        <p className="ref-note">
+          Status note: this section is roadmap research, not the current live
+          selector. The current app still uses the Stage-0 per-user strategy
+          bandit; Adaptive Router is the next routing layer that can sit in
+          front of direct LLM, search-agent, code-agent, and full multi-agent
+          paths.
+        </p>
       </div>
 
       {/* ── RL family tree (orientation primer) ────────────────────────── */}
