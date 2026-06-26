@@ -947,6 +947,105 @@
   color: var(--primary);
 }
 
+.strategy-check-panel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  padding: 12px 14px;
+}
+.strategy-check-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+  color: var(--text);
+  font-size: 13px;
+}
+.strategy-check-head span {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.strategy-check-grid,
+.strategy-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.strategy-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  padding: 5px 9px 5px 7px;
+  cursor: pointer;
+}
+.strategy-check input {
+  margin: 0;
+}
+.strategy-check small {
+  color: var(--muted);
+  font-size: 10.5px;
+  font-family: ui-monospace, "JetBrains Mono", Consolas, monospace;
+}
+.strategy-check:has(input:checked) {
+  border-color: rgba(79, 138, 77, 0.45);
+  background: rgba(79, 138, 77, 0.08);
+}
+.mapping-warning {
+  border: 1px solid rgba(181, 65, 65, 0.25);
+  border-left: 3px solid var(--danger);
+  border-radius: var(--radius-sm);
+  background: rgba(181, 65, 65, 0.07);
+  color: var(--text);
+  font-size: 12.5px;
+  line-height: 1.45;
+  padding: 9px 11px;
+  margin-top: 10px;
+}
+.mapping-warning code {
+  display: inline-block;
+  margin: 2px 4px;
+  background: var(--surface);
+  border: 1px solid rgba(181, 65, 65, 0.18);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+.mapping-warning-block {
+  margin: 0 0 12px;
+}
+.mapping-warning-inline {
+  color: var(--danger);
+  font-size: 12px;
+  font-weight: 600;
+}
+.admin-empty-compact {
+  padding: 12px;
+  text-align: left;
+}
+.policy-group-missing {
+  border-color: rgba(181, 65, 65, 0.28);
+  background: rgba(181, 65, 65, 0.05);
+}
+.policy-group-orphan {
+  border-color: rgba(181, 65, 65, 0.5);
+  background: rgba(181, 65, 65, 0.08);
+}
+.policy-alert {
+  border: 1px solid rgba(181, 65, 65, 0.28);
+  border-radius: var(--radius-pill);
+  background: rgba(181, 65, 65, 0.08);
+  color: var(--danger);
+  padding: 2px 8px;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 /* ─────────────────────────────────────────────────────────────────────
  * UserAutocomplete — reusable user-search input with live dropdown.
  * Used in BanditStateTab, StrategyPerformancePanel, and anywhere
@@ -1690,3 +1789,13 @@
 .rl-tag.us { background: #e3f0e2; color: #2f6b2e; }
 .rl-plain { font-size: 12.5px; color: var(--text-secondary,#6b655d); margin-top: 3px; line-height: 1.5; }
 .usage-table tr.row-us td { background: rgba(79,138,77,0.08); }
+
+/* Final admin warning-state overrides */
+.policy-group.policy-group-missing {
+  border-color: rgba(181, 65, 65, 0.28);
+  background: rgba(181, 65, 65, 0.05);
+}
+.policy-group.policy-group-orphan {
+  border-color: rgba(181, 65, 65, 0.5);
+  background: rgba(181, 65, 65, 0.08);
+}

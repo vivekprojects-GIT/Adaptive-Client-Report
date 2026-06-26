@@ -616,8 +616,17 @@ def delete_intent(intent_id: str, changed_by: str = "admin_user"):
     if not before:
         raise HTTPException(404, f"intent {intent_id} not found")
     n = STORE.delete_config(ENTITY_INTENT, intent_id)
+    policies_deleted = STORE.config.delete_many({
+        "entity_type": ENTITY_POLICY,
+        "intent": intent_id,
+    }).deleted_count
     _audit_delete(ENTITY_INTENT, intent_id, changed_by, before)
-    return {"status": "ok", "deleted": n, "intent_id": intent_id}
+    return {
+        "status": "ok",
+        "deleted": n,
+        "policies_deleted": policies_deleted,
+        "intent_id": intent_id,
+    }
 
 
 @app.delete("/config/strategies/{strategy_id}")

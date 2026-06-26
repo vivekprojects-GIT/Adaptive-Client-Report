@@ -165,6 +165,22 @@ def test_strategy_config_uses_format_type_metadata_only(monkeypatch):
     assert "expected_format" not in cleaned_doc
 
 
+def test_delete_intent_removes_policy_rows(monkeypatch):
+    import ape.api as api_mod
+
+    store = _store(monkeypatch)
+    monkeypatch.setattr(api_mod, "STORE", store)
+
+    assert store.config.count_documents({"entity_type": "policy", "intent": "Decision"}) > 0
+
+    result = api_mod.delete_intent("Decision")
+
+    assert result["status"] == "ok"
+    assert result["policies_deleted"] > 0
+    assert store.get_active_config("intent", "Decision") is None
+    assert store.config.count_documents({"entity_type": "policy", "intent": "Decision"}) == 0
+
+
 def test_turn_routes_raise_422_before_streaming_for_missing_strategy_config(monkeypatch):
     import ape.api as api_mod
     from ape.models import TurnRequest

@@ -2,6 +2,16 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "../../api.js";
 import StrategyPerformancePanel from "./StrategyPerformancePanel.jsx";
 
+const DEFAULT_DOMAIN = "finance";
+
+function intentKey(row) {
+  return row.intent_id || row.entity_id;
+}
+
+function strategyKey(row) {
+  return row.strategy_id || row.entity_id;
+}
+
 /**
  * PoliciesTab — Intent → candidate-strategies mapping.
  *
@@ -39,6 +49,7 @@ export default function PoliciesTab({ notify }) {
 
   // ----- Group policies by (domain, intent, topic) -----
   const grouped = useMemo(() => {
+    const activeIntentIds = new Set(intents.map(intentKey).filter(Boolean));
     const map = new Map();
     for (const r of rows) {
       const key = `${r.domain}|${r.intent}|${r.topic}`;
@@ -49,11 +60,26 @@ export default function PoliciesTab({ notify }) {
           topic:  r.topic,
           strategies: [],
           rows: [],
+          intentActive: activeIntentIds.has(r.intent),
         });
       }
       const g = map.get(key);
       g.strategies.push(r.strategy_id);
       g.rows.push(r);
+      g.intentActive = activeIntentIds.has(r.intent);
+    }
+    for (const intent of activeIntentIds) {
+      const key = `${DEFAULT_DOMAIN}|${intent}|_default`;
+      if (!map.has(key)) {
+        map.set(key, {
+          domain: DEFAULT_DOMAIN,
+          intent,
+          topic: "_default",
+          strategies: [],
+          rows: [],
+          intentActive: true,
+        });
+      }
     }
     // Sort: intent name asc, then _default first within intent
     return Array.from(map.values()).sort((a, b) => {
@@ -62,7 +88,7 @@ export default function PoliciesTab({ notify }) {
       if (b.topic === "_default") return  1;
       return a.topic.localeCompare(b.topic);
     });
-  }, [rows]);
+  }, [rows, intents]);
 
   // ----- Quick-add: add one strategy to an existing (intent, topic) cell -----
   async function quickAdd(group, strategyId) {
@@ -98,7 +124,7 @@ export default function PoliciesTab({ notify }) {
   // Helper: for a group, what strategies are NOT yet attached?
   function availableForGroup(group) {
     const have = new Set(group.strategies);
-    return strats.map((s) => s.strategy_id).filter((sid) => !have.has(sid));
+    return strats.map(strategyKey).filter((sid) => sid && !have.has(sid));
   }
 
   // For "add a brand new intent → strategies row" at the top of the page
@@ -110,7 +136,7 @@ export default function PoliciesTab({ notify }) {
     if (!newIntent || !newStrategy) return;
     try {
       await api.upsertPolicy({
-        domain:               "finance",
+        domain:               DEFAULT_DOMAIN,
         intent:               newIntent,
         topic:                newTopic.trim() || "_default",
         strategy_id:          newStrategy,
@@ -171,7 +197,10 @@ export default function PoliciesTab({ notify }) {
             Intent
             <select value={newIntent} onChange={(e) => setNewIntent(e.target.value)}>
               <option value="">(pick)</option>
-              {intents.map((x) => <option key={x.intent_id} value={x.intent_id}>{x.intent_id}</option>)}
+              {intents.map((x) => {
+                const id = intentKey(x);
+                return <option key={id} value={id}>{id}</option>;
+              })}
             </select>
           </label>
           <label>
@@ -182,7 +211,10 @@ export default function PoliciesTab({ notify }) {
             Strategy
             <select value={newStrategy} onChange={(e) => setNewStrat(e.target.value)}>
               <option value="">(pick)</option>
-              {strats.map((s) => <option key={s.strategy_id} value={s.strategy_id}>{s.strategy_id}</option>)}
+              {strats.map((s) => {
+                const id = strategyKey(s);
+                return <option key={id} value={id}>{id}</option>;
+              })}
             </select>
           </label>
           <button
@@ -226,21 +258,30 @@ export default function PoliciesTab({ notify }) {
 function PolicyGroupCard({ group, available, onAdd, onRemove, perfByStrategy = {} }) {
   const [picking, setPicking] = useState("");
   const isDefault = group.topic === "_default";
+  const hasStrategies = group.strategies.length > 0;
+  const isOrphan = group.intentActive === false;
 
   return (
-    <div className="policy-group">
+    <div className={`policy-group ${!hasStrategies ? "policy-group-missing" : ""} ${isOrphan ? "policy-group-orphan" : ""}`}>
       <div className="policy-group-head">
         <span className="intent-chip">{group.intent}</span>
         <span className="dot-sep">·</span>
         <span className={`topic-chip ${isDefault ? "topic-default" : ""}`}>
           {isDefault ? "all topics (_default)" : group.topic}
         </span>
+        {isOrphan && <span className="policy-alert">intent inactive or missing</span>}
+        {!isOrphan && !hasStrategies && <span className="policy-alert">needs strategy mapping</span>}
         <span className="policy-count">
           {group.strategies.length} {group.strategies.length === 1 ? "strategy" : "strategies"}
         </span>
       </div>
 
       <div className="policy-chip-row">
+        {!hasStrategies && (
+          <span className="mapping-warning-inline">
+            No candidate strategies yet.
+          </span>
+        )}
         {group.strategies.map((sid) => {
           const perf = perfByStrategy[sid];
           const tier = (perf?.tier || "").toLowerCase();
