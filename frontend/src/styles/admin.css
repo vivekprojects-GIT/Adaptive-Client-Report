@@ -1822,3 +1822,365 @@
   border-color: rgba(181, 65, 65, 0.5);
   background: rgba(181, 65, 65, 0.08);
 }
+
+/* ============================================================
+   Admin UX refresh
+   ============================================================ */
+
+.admin-tab-content {
+  gap: 20px;
+}
+
+.admin-section,
+.strategy-perf-block,
+.bandit-cell,
+.policy-group,
+.weights-section,
+.admin-table-wrap {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(23, 32, 51, 0.04);
+}
+
+.admin-section {
+  padding: 22px;
+  overflow: visible;
+}
+
+.admin-section::before {
+  height: 0;
+  background: transparent;
+}
+
+.admin-section-head {
+  align-items: flex-start;
+  margin-bottom: 8px;
+}
+
+.admin-section-title {
+  margin: 0;
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 750;
+  letter-spacing: 0;
+}
+
+.admin-section-sub {
+  max-width: 920px;
+  margin: 8px 0 16px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.col-legend,
+.reward-scale-pointer,
+.iq-action-hint {
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--primary);
+  border-radius: 8px;
+  color: var(--text-secondary);
+}
+
+.col-legend li strong {
+  color: var(--text);
+}
+
+.admin-form {
+  gap: 12px;
+}
+
+.form-row,
+.policy-add-row,
+.strategy-perf-controls {
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.policy-add-row,
+.strategy-perf-controls,
+.weights-section,
+.policy-edit-panel,
+.strategy-check-panel {
+  background: #f8fafc;
+  border-color: var(--border);
+  border-radius: 8px;
+}
+
+.form-row label,
+.policy-add-row label,
+.strategy-perf-controls label {
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.admin-form input[type="text"],
+.admin-form input[type="number"],
+.admin-form select,
+.admin-form textarea,
+.policy-add-row label input,
+.policy-add-row label select,
+.strategy-perf-controls input,
+.instructions-filter select {
+  min-height: 36px;
+  background: #fff;
+  border-color: var(--border-strong);
+  border-radius: 7px;
+  box-shadow: none;
+}
+
+.admin-form input:focus,
+.admin-form select:focus,
+.admin-form textarea:focus,
+.policy-add-row label input:focus,
+.policy-add-row label select:focus,
+.strategy-perf-controls input:focus,
+.instructions-filter select:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.14);
+}
+
+.btn-primary,
+.btn-secondary,
+.admin-row-btn,
+.admin-form .btn-secondary {
+  border-radius: 7px;
+  box-shadow: none;
+}
+
+.btn-primary {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-fg);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--primary-hover);
+  border-color: var(--primary-hover);
+}
+
+.btn-primary:disabled {
+  background: #cbd5e1;
+  border-color: #cbd5e1;
+  color: #fff;
+}
+
+.btn-secondary,
+.admin-row-btn,
+.admin-form .btn-secondary {
+  background: #fff;
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.btn-secondary:hover:not(:disabled),
+.admin-row-btn:hover:not(:disabled),
+.admin-form .btn-secondary:hover:not(:disabled) {
+  background: #eef2f7;
+  border-color: #94a3b8;
+  color: var(--text);
+}
+
+.admin-row-btn.admin-row-btn-danger {
+  color: var(--danger);
+}
+
+.admin-row-btn.admin-row-btn-danger:hover:not(:disabled) {
+  background: #fff1f1;
+  border-color: #f0aaa6;
+  color: var(--danger);
+}
+
+.admin-table-wrap {
+  overflow: auto;
+}
+
+.admin-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 13px;
+}
+
+.admin-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+
+.admin-table th,
+.admin-table td {
+  padding: 11px 14px;
+  border-bottom-color: var(--border);
+}
+
+.admin-table tbody tr:hover td {
+  background: #f8fbfd;
+}
+
+.admin-row-actions {
+  gap: 8px;
+}
+
+.status-chip,
+.code-pill,
+.intent-chip,
+.strat-chip,
+.topic-chip,
+.tier-chip,
+.consumer-pill,
+.source-badge,
+.policy-chip {
+  border: 1px solid rgba(23, 32, 51, 0.06);
+  box-shadow: none;
+}
+
+.intent-chip {
+  background: #e7f5f3;
+  color: #0f625d;
+}
+
+.strat-chip {
+  background: #eef2ff;
+  color: #3730a3;
+}
+
+.topic-chip {
+  background: #fff7e6;
+  color: #9a5b00;
+}
+
+.policy-group {
+  padding: 14px;
+}
+
+.policy-group:hover {
+  border-color: #b8c4d4;
+  box-shadow: 0 8px 24px rgba(23, 32, 51, 0.07);
+}
+
+.policy-group-head {
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.policy-count {
+  color: #64748b;
+  font-size: 10.5px;
+  font-weight: 800;
+}
+
+.policy-group-actions {
+  margin-left: 0;
+}
+
+.policy-chip {
+  background: #eef2ff;
+  color: #3730a3;
+  border-radius: 999px;
+  padding: 4px 5px 4px 11px;
+}
+
+.policy-add select {
+  background: #fff;
+  border-color: var(--border-strong);
+  border-style: solid;
+  color: var(--text-secondary);
+}
+
+.strategy-check {
+  border-radius: 999px;
+  background: #fff;
+}
+
+.strategy-check:has(input:checked) {
+  background: #e7f5f3;
+  border-color: #8ccdc5;
+}
+
+.mapping-warning,
+.policy-group.policy-group-missing,
+.policy-group.policy-group-orphan {
+  border-color: #f0aaa6;
+  background: #fff7f7;
+}
+
+.policy-alert {
+  background: #fff1f1;
+  border-color: #f0aaa6;
+  color: var(--danger);
+}
+
+.admin-empty {
+  background: #f8fafc;
+  border-color: var(--border);
+  border-radius: 8px;
+}
+
+.tier-chip.tier-high,
+.policy-chip-tier-high {
+  background: #e7f7ef !important;
+  color: #166342 !important;
+}
+
+.tier-chip.tier-medium,
+.policy-chip-tier-medium {
+  background: #fff7e6 !important;
+  color: #9a5b00 !important;
+}
+
+.tier-chip.tier-low,
+.policy-chip-tier-low {
+  background: #fff1f1 !important;
+  color: var(--danger) !important;
+}
+
+.tier-chip.tier-exploring,
+.policy-chip-tier-exploring {
+  background: #eef2f7 !important;
+  color: #64748b !important;
+}
+
+.perf-bar-track {
+  background: #e2e8f0;
+}
+
+.perf-bar-fill.tier-high { background: #228b5e; }
+.perf-bar-fill.tier-medium { background: #d97706; }
+.perf-bar-fill.tier-low { background: #c2413c; }
+.perf-bar-fill.tier-exploring { background: #94a3b8; }
+
+@media (max-width: 760px) {
+  .admin-section {
+    padding: 18px;
+  }
+
+  .policy-add-row,
+  .strategy-perf-controls {
+    align-items: stretch;
+  }
+
+  .policy-add-row label,
+  .policy-add-row label input,
+  .policy-add-row label select,
+  .policy-add-row .btn-primary {
+    width: 100%;
+  }
+
+  .policy-group-head {
+    align-items: flex-start;
+  }
+
+  .policy-count,
+  .policy-group-actions {
+    margin-left: 0;
+  }
+}
