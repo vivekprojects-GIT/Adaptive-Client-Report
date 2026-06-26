@@ -450,7 +450,7 @@ export default function ResearchTab() {
           The first strategy wins because the system is still exploring it, not
           because the user rewarded it. If a user repeats the same question and
           that signal is not consumed by the bandit reward axis, reward can stay
-          unchanged while selection score still changes through <code>N</code> and
+          unchanged while selection score still changes through <code>N</code> and{" "}
           <code>count</code>.
         </div>
       </div>
