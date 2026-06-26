@@ -43,13 +43,14 @@ class ConfigManager:
     # Intent management
     # ------------------------------------------------------------------
     def upsert_intent(self, intent_id: str, description: str = "", changed_by: str = "system") -> None:
-        before = self.store.get_active_config(ENTITY_INTENT, intent_id)
+        before = self.store.get_config(ENTITY_INTENT, intent_id)
         self.store.upsert_config(
             entity_type=ENTITY_INTENT,
             entity_id=intent_id,
             fields={"intent_id": intent_id, "description": description},
+            status=_preserved_status(before),
         )
-        after = self.store.get_active_config(ENTITY_INTENT, intent_id)
+        after = self.store.get_config(ENTITY_INTENT, intent_id)
         self.store.log_admin_action(
             action_type="UPSERT_INTENT",
             entity_type=ENTITY_INTENT,
@@ -68,7 +69,7 @@ class ConfigManager:
         format_type: str,
         changed_by: str = "system",
     ) -> None:
-        before = self.store.get_active_config(ENTITY_STRATEGY, strategy_id)
+        before = self.store.get_config(ENTITY_STRATEGY, strategy_id)
         self.store.upsert_config(
             entity_type=ENTITY_STRATEGY,
             entity_id=strategy_id,
@@ -76,6 +77,7 @@ class ConfigManager:
                 "strategy_id": strategy_id,
                 "format_type": format_type,
             },
+            status=_preserved_status(before),
         )
         self.store.config.update_many(
             {"entity_type": ENTITY_STRATEGY, "entity_id": strategy_id},
@@ -84,7 +86,7 @@ class ConfigManager:
                 "expected_format": "",
             }},
         )
-        after = self.store.get_active_config(ENTITY_STRATEGY, strategy_id)
+        after = self.store.get_config(ENTITY_STRATEGY, strategy_id)
         self.store.log_admin_action(
             action_type="UPSERT_STRATEGY",
             entity_type=ENTITY_STRATEGY,
@@ -177,7 +179,7 @@ class ConfigManager:
         changed_by: str = "system",
     ) -> None:
         entity_id = f"{intent}#{topic}#{strategy_id}"
-        before = self.store.get_active_config(ENTITY_POLICY, entity_id)
+        before = self.store.get_config(ENTITY_POLICY, entity_id)
         self.store.upsert_config(
             entity_type=ENTITY_POLICY,
             entity_id=entity_id,
@@ -190,8 +192,9 @@ class ConfigManager:
                 "exploration_constant": exploration_constant,
                 "ucb_algorithm":        "UCB",
             },
+            status=_preserved_status(before),
         )
-        after = self.store.get_active_config(ENTITY_POLICY, entity_id)
+        after = self.store.get_config(ENTITY_POLICY, entity_id)
         self.store.log_admin_action(
             action_type="UPSERT_POLICY",
             entity_type=ENTITY_POLICY,
@@ -220,7 +223,7 @@ class ConfigManager:
         time_window_sec: Optional[int] = None,
         changed_by: str = "system",
     ) -> None:
-        before = self.store.get_signal_routing(signal_name)
+        before = self.store.get_config(ENTITY_SIGNAL_RULE, signal_name)
         # Preserve existing extended fields if the caller didn't supply them
         # (so edits from the basic form don't clobber feature_id, etc.).
         fields = {
@@ -264,8 +267,9 @@ class ConfigManager:
             entity_type=ENTITY_SIGNAL_RULE,
             entity_id=signal_name,
             fields=fields,
+            status=_preserved_status(before),
         )
-        after = self.store.get_signal_routing(signal_name)
+        after = self.store.get_config(ENTITY_SIGNAL_RULE, signal_name)
         self.store.log_admin_action(
             action_type="UPSERT_SIGNAL_RULE",
             entity_type=ENTITY_SIGNAL_RULE,
@@ -284,7 +288,7 @@ class ConfigManager:
         normalized_reward: float,
         changed_by: str = "system",
     ) -> None:
-        before = self.store.get_reward_scale(category)
+        before = self.store.get_config(ENTITY_REWARD_RULE, category)
         self.store.upsert_config(
             entity_type=ENTITY_REWARD_RULE,
             entity_id=category,
@@ -292,8 +296,9 @@ class ConfigManager:
                 "reward_category":   category,
                 "normalized_reward": float(normalized_reward),
             },
+            status=_preserved_status(before),
         )
-        after = self.store.get_reward_scale(category)
+        after = self.store.get_config(ENTITY_REWARD_RULE, category)
         self.store.log_admin_action(
             action_type="UPSERT_REWARD_VALUE",
             entity_type=ENTITY_REWARD_RULE,
@@ -369,3 +374,7 @@ def _clean(doc: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     out = dict(doc)
     out.pop("_id", None)
     return out
+
+
+def _preserved_status(before: Optional[Dict[str, Any]]) -> str:
+    return str((before or {}).get("status") or STATUS_ACTIVE)

@@ -81,6 +81,7 @@ function RowWithActions({ row, columns, onEdit, onDelete, deleteConfirm, hasActi
         <td className="admin-row-actions">
           {onEdit && (
             <button
+              type="button"
               className="admin-row-btn"
               onClick={() => onEdit(row)}
               disabled={busy}
@@ -91,6 +92,7 @@ function RowWithActions({ row, columns, onEdit, onDelete, deleteConfirm, hasActi
           )}
           {onDelete && (
             <button
+              type="button"
               className="admin-row-btn admin-row-btn-danger"
               onClick={handleDelete}
               disabled={busy}

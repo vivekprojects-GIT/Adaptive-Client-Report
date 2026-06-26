@@ -181,6 +181,138 @@ def test_delete_intent_removes_policy_rows(monkeypatch):
     assert store.config.count_documents({"entity_type": "policy", "intent": "Decision"}) == 0
 
 
+def test_delete_paused_config_rows(monkeypatch):
+    import ape.api as api_mod
+
+    store = _store(monkeypatch)
+    monkeypatch.setattr(api_mod, "STORE", store)
+
+    store.upsert_config(
+        "intent",
+        "PausedIntent",
+        {"intent_id": "PausedIntent", "description": "paused"},
+        status="INACTIVE",
+    )
+    assert api_mod.delete_intent("PausedIntent")["deleted"] == 1
+
+    store.upsert_config(
+        "strategy",
+        "paused_strategy",
+        {"strategy_id": "paused_strategy", "format_type": "paragraph"},
+        status="INACTIVE",
+    )
+    assert api_mod.delete_strategy("paused_strategy")["deleted"] == 1
+
+    store.upsert_config(
+        "signal_routing",
+        "paused_signal",
+        {
+            "signal_name": "paused_signal",
+            "format_relevant": False,
+            "content_relevant": True,
+            "format_category": None,
+            "content_category": "inferred_negative",
+        },
+        status="INACTIVE",
+    )
+    assert api_mod.delete_signal_rule("paused_signal")["deleted"] == 1
+
+    store.upsert_config(
+        "reward_scale",
+        "paused_reward",
+        {"reward_category": "paused_reward", "normalized_reward": -1.0},
+        status="INACTIVE",
+    )
+    assert api_mod.delete_reward_value("paused_reward")["deleted"] == 1
+
+    store.upsert_config(
+        "policy",
+        "PausedIntent#_default#paused_strategy",
+        {
+            "domain": "finance",
+            "intent": "PausedIntent",
+            "topic": "_default",
+            "strategy_id": "paused_strategy",
+            "policy_version": "v1",
+            "exploration_constant": 1.0,
+        },
+        status="INACTIVE",
+    )
+    assert api_mod.delete_policy("PausedIntent", "_default", "paused_strategy")["deleted"] == 1
+
+    store.upsert_config(
+        "offer_policy",
+        "paused_topic",
+        {"domain": "finance", "offer_type": "paused", "description": "paused"},
+        status="INACTIVE",
+    )
+    assert api_mod.delete_offer("paused_topic")["deleted"] == 1
+
+
+def test_edit_paused_config_rows_preserves_status(monkeypatch):
+    import ape.api as api_mod
+    from ape.config.manager import ConfigManager
+
+    store = _store(monkeypatch)
+    monkeypatch.setattr(api_mod, "STORE", store)
+    cfg = ConfigManager(store)
+
+    store.upsert_config(
+        "intent",
+        "PausedIntent",
+        {"intent_id": "PausedIntent", "description": "old"},
+        status="INACTIVE",
+    )
+    cfg.upsert_intent("PausedIntent", "new")
+    intent = store.get_config("intent", "PausedIntent")
+    assert intent["status"] == "INACTIVE"
+    assert intent["description"] == "new"
+
+    store.upsert_config(
+        "strategy",
+        "paused_strategy",
+        {"strategy_id": "paused_strategy", "format_type": "paragraph"},
+        status="INACTIVE",
+    )
+    cfg.upsert_strategy("paused_strategy", "comparison_table")
+    strategy = store.get_config("strategy", "paused_strategy")
+    assert strategy["status"] == "INACTIVE"
+    assert strategy["format_type"] == "comparison_table"
+
+    store.upsert_config(
+        "policy",
+        "PausedIntent#_default#paused_strategy",
+        {
+            "domain": "finance",
+            "intent": "PausedIntent",
+            "topic": "_default",
+            "strategy_id": "paused_strategy",
+            "policy_version": "v1",
+            "exploration_constant": 1.0,
+        },
+        status="INACTIVE",
+    )
+    cfg.upsert_policy("finance", "PausedIntent", "_default", "paused_strategy", exploration_constant=2.0)
+    policy = store.get_config("policy", "PausedIntent#_default#paused_strategy")
+    assert policy["status"] == "INACTIVE"
+    assert policy["exploration_constant"] == 2.0
+
+    store.upsert_config(
+        "offer_policy",
+        "paused_topic",
+        {"domain": "finance", "offer_type": "old", "description": "old"},
+        status="INACTIVE",
+    )
+    api_mod.upsert_offer({
+        "topic": "paused_topic",
+        "offer_type": "new",
+        "description": "new",
+    })
+    offer = store.get_config("offer_policy", "paused_topic")
+    assert offer["status"] == "INACTIVE"
+    assert offer["offer_type"] == "new"
+
+
 def test_cleanup_non_canonical_intents_removes_stale_policy_rows(monkeypatch):
     from ape.config.seed import cleanup_non_canonical_intents
 

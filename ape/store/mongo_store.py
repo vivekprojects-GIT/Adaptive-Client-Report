@@ -255,6 +255,23 @@ class MongoStore:
             {"entity_type": entity_type, "entity_id": entity_id, "status": STATUS_ACTIVE}
         )
 
+    def get_config(
+        self,
+        entity_type: str,
+        entity_id: str,
+        version: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Return a config document regardless of status.
+
+        Admin edit/delete screens show ACTIVE and paused rows, so those paths
+        need a status-agnostic lookup. Runtime paths should keep using
+        get_active_config() or list_active_config().
+        """
+        q: Dict[str, Any] = {"entity_type": entity_type, "entity_id": entity_id}
+        if version is not None:
+            q["version"] = version
+        return self.config.find_one(q)
+
     def delete_config(
         self,
         entity_type: str,

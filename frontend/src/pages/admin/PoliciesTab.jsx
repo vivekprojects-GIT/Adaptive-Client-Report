@@ -430,6 +430,7 @@ function PolicyGroupCard({
                 <span className="chip-perf">{perf.performance_pct.toFixed(0)}</span>
               )}
               <button
+                type="button"
                 className="chip-x"
                 onClick={() => onRemove(sid)}
                 title={`Remove ${sid} from this cell`}

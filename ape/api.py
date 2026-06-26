@@ -609,11 +609,22 @@ def _audit_delete(entity_type: str, entity_id: str, changed_by: str, before: Opt
     )
 
 
+def _find_config_for_delete(entity_type: str, entity_id: str, version: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """Return an admin-visible config doc regardless of ACTIVE/INACTIVE state.
+
+    Runtime lookups intentionally use get_active_config(), but delete buttons in
+    admin tables must also work for paused rows because those rows stay visible.
+    """
+    if STORE is None:
+        return None
+    return STORE.get_config(entity_type, entity_id, version=version)
+
+
 @app.delete("/config/intents/{intent_id}")
 def delete_intent(intent_id: str, changed_by: str = "admin_user"):
     if STORE is None:
         raise HTTPException(500, "Store not initialized")
-    before = STORE.get_active_config(ENTITY_INTENT, intent_id)
+    before = _find_config_for_delete(ENTITY_INTENT, intent_id)
     if not before:
         raise HTTPException(404, f"intent {intent_id} not found")
     n = STORE.delete_config(ENTITY_INTENT, intent_id)
@@ -634,7 +645,7 @@ def delete_intent(intent_id: str, changed_by: str = "admin_user"):
 def delete_strategy(strategy_id: str, changed_by: str = "admin_user"):
     if STORE is None:
         raise HTTPException(500, "Store not initialized")
-    before = STORE.get_active_config(ENTITY_STRATEGY, strategy_id)
+    before = _find_config_for_delete(ENTITY_STRATEGY, strategy_id)
     if not before:
         raise HTTPException(404, f"strategy {strategy_id} not found")
     n = STORE.delete_config(ENTITY_STRATEGY, strategy_id)
@@ -648,7 +659,7 @@ def delete_strategy(strategy_id: str, changed_by: str = "admin_user"):
 def delete_signal_rule(signal_name: str, changed_by: str = "admin_user"):
     if STORE is None:
         raise HTTPException(500, "Store not initialized")
-    before = STORE.get_active_config(ENTITY_SIGNAL_RULE, signal_name)
+    before = _find_config_for_delete(ENTITY_SIGNAL_RULE, signal_name)
     if not before:
         raise HTTPException(404, f"signal_rule {signal_name} not found")
     n = STORE.delete_config(ENTITY_SIGNAL_RULE, signal_name)
@@ -660,7 +671,7 @@ def delete_signal_rule(signal_name: str, changed_by: str = "admin_user"):
 def delete_reward_value(category: str, changed_by: str = "admin_user"):
     if STORE is None:
         raise HTTPException(500, "Store not initialized")
-    before = STORE.get_active_config(ENTITY_REWARD_RULE, category)
+    before = _find_config_for_delete(ENTITY_REWARD_RULE, category)
     if not before:
         raise HTTPException(404, f"reward_scale {category} not found")
     n = STORE.delete_config(ENTITY_REWARD_RULE, category)
@@ -679,7 +690,7 @@ def delete_policy(
     if STORE is None:
         raise HTTPException(500, "Store not initialized")
     entity_id = f"{intent}#{topic}#{strategy_id}"
-    before = STORE.get_active_config(ENTITY_POLICY, entity_id)
+    before = _find_config_for_delete(ENTITY_POLICY, entity_id)
     if not before:
         raise HTTPException(404, f"policy {entity_id} not found")
     n = STORE.delete_config(ENTITY_POLICY, entity_id)
@@ -829,13 +840,14 @@ def upsert_offer(payload: Dict[str, Any]):
         "weight_followup":          _opt_float("weight_followup"),
     }
     changed_by = payload.get("changed_by", "admin_user")
-    before = STORE.get_active_config(ENTITY_OFFER_POLICY, topic)
+    before = STORE.get_config(ENTITY_OFFER_POLICY, topic)
+    status = payload.get("status") or (before or {}).get("status") or STATUS_ACTIVE
 
     STORE.upsert_config(
         entity_type=ENTITY_OFFER_POLICY,
         entity_id=topic,
         fields=fields,
-        status=payload.get("status", STATUS_ACTIVE),
+        status=status,
     )
     STORE.log_admin_action(
         action_type="UPSERT" if before is None else "UPDATE",
@@ -843,7 +855,7 @@ def upsert_offer(payload: Dict[str, Any]):
         entity_id=topic,
         changed_by=changed_by,
         before=before,
-        after={**fields, "status": payload.get("status", STATUS_ACTIVE)},
+        after={**fields, "status": status},
     )
     return {"status": "ok", "topic": topic, "offer_type": offer_type}
 
@@ -852,7 +864,7 @@ def upsert_offer(payload: Dict[str, Any]):
 def delete_offer(topic: str, changed_by: str = "admin_user"):
     if STORE is None:
         raise HTTPException(500, "Store not initialized")
-    before = STORE.get_active_config(ENTITY_OFFER_POLICY, topic)
+    before = _find_config_for_delete(ENTITY_OFFER_POLICY, topic)
     if not before:
         raise HTTPException(404, f"offer for topic {topic} not found")
     n = STORE.delete_config(ENTITY_OFFER_POLICY, topic)

@@ -54,6 +54,7 @@ export default function StatusPill({ entityType, entityId, version, status, onCh
   return (
     <span className="status-pill-wrap">
       <button
+        type="button"
         className={`status-pill status-pill-${current.toLowerCase()}`}
         onClick={() => setOpen((v) => !v)}
         disabled={busy}
@@ -68,12 +69,14 @@ export default function StatusPill({ entityType, entityId, version, status, onCh
       {open && !busy && (
         <span className="status-pill-menu">
           <button
+            type="button"
             className="status-pill-menu-item"
             onClick={flip}
           >
             {nextLabel}
           </button>
           <button
+            type="button"
             className="status-pill-menu-item status-pill-menu-cancel"
             onClick={() => setOpen(false)}
           >
