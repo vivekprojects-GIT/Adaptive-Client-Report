@@ -468,47 +468,15 @@ class MongoStore:
         return updated
 
     def refresh_cell_ucb_cache(self, attribution_pk: Dict[str, str]) -> int:
-        """Recompute cached_ucb for every strategy row in the cell.
+        """No-op — the selection-score cache has been removed.
 
-        Selection no longer reads this cache — it computes UCB live (see
-        ape/bandit/selection.py). The cache is maintained purely for the
-        admin/analytics display, using the SAME UCB1 formula so what's
-        displayed matches what selection computes:
-
-            ucb = avg_reward + c * 4 * sqrt(2 * ln(N) / count)
-
-        The 4 is the reward range width (rewards span [-2, +2]) and c is the
-        exploration constant (UCB_EXPLORATION_C, 0.25) — both pulled from
-        ape/bandit/selection.py so display and selection never diverge.
-
-        Unpulled arms (count = 0) get COLD_START_UCB_SCORE so they sort
-        to the top of "next pick" displays, mirroring round-robin.
+        Selection computes the score live (ape/bandit/selection.py), and the
+        admin/analytics displays now also compute it live per request (see
+        display_selection_score), so there is nothing to cache. Kept as a
+        no-op so existing call sites don't need to change; stored `cached_ucb`
+        fields are vestigial and ignored.
         """
-        from ..bandit.selection import get_ucb_params
-
-        params = get_ucb_params()
-        c, width = params["c"], params["width"]
-
-        rows = list(self.bandit_state.find(attribution_pk))
-        N = sum(int(r["count"]) for r in rows)
-        if N == 0:
-            return 0
-
-        ln_N = math.log(N) if N > 1 else 0.0
-        updates = 0
-        for r in rows:
-            cnt = int(r["count"])
-            if cnt == 0:
-                new_ucb = COLD_START_UCB_SCORE
-            else:
-                avg = float(r.get("total_reward", 0.0)) / cnt
-                new_ucb = avg + c * width * math.sqrt(2.0 * ln_N / cnt)
-            self.bandit_state.update_one(
-                {"_id": r["_id"]},
-                {"$set": {"cached_ucb": new_ucb, "last_updated_at": utcnow_iso()}},
-            )
-            updates += 1
-        return updates
+        return 0
 
     # ==================================================================
     # TURN RECORD (response-level journal with attribution)

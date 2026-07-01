@@ -100,6 +100,25 @@ def _cell_n_total(rows: List[Dict[str, Any]]) -> int:
     return sum(int(r.get("count", 0)) for r in rows)
 
 
+# Display sentinel for unpulled arms (count == 0): they sort to the top of
+# "next pick" tables, mirroring round-robin. compute_ucb returns +inf for
+# count == 0, which serializes badly, so display uses this instead.
+COLD_START_DISPLAY_SCORE = 999.0
+
+
+def display_selection_score(count: int, total_reward: float, n_total: int) -> float:
+    """LIVE selection score for admin/analytics display — no cache.
+
+    Same value the selector uses (compute_ucb with the live c/width params),
+    computed on demand so it always reflects the current config and data.
+    Unpulled arms return the cold-start display sentinel.
+    """
+    count = int(count)
+    if count == 0:
+        return COLD_START_DISPLAY_SCORE
+    return round(compute_ucb(count, float(total_reward), int(n_total)), 4)
+
+
 # ----------------------------------------------------------------------------
 # Selection — round-robin first, then live-UCB argmax
 # ----------------------------------------------------------------------------

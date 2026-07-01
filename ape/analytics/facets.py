@@ -25,6 +25,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
+from ..bandit.selection import display_selection_score
 from ..store import MongoStore
 
 
@@ -244,7 +245,13 @@ def compute_cognitive_facets(
                     "name":       r["strategy"],
                     "count":      int(r["count"]),
                     "avg_reward": round(float(r["avg_reward"]), 3),
-                    "cached_ucb": round(float(r.get("cached_ucb", 0.0)), 3),
+                    # Live selection score (no cache) — computed from the cell's
+                    # N (total_count) with the current c/width params.
+                    "cached_ucb": display_selection_score(
+                        int(r["count"]),
+                        float(r.get("total_reward", float(r["avg_reward"]) * int(r["count"]))),
+                        total_count,
+                    ),
                     "unique_users": r.get("_unique_users_for_strategy"),
                 }
                 for r in pulled

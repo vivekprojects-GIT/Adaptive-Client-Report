@@ -941,6 +941,14 @@ def admin_bandit_state(user_id: Optional[str] = None, only_pulled: bool = True):
     user_hashes = {r.get("user_id_hash") for r in rows if r.get("user_id_hash")}
     name_map = STORE.get_display_names(user_hashes) if user_hashes else {}
 
+    # Selection score is computed LIVE (no cache) — per cell, N = sum of counts,
+    # then compute_ucb with the current c/width. Always reflects the live config.
+    from .bandit.selection import display_selection_score
+    cell_n: Dict[tuple, int] = {}
+    for r in rows:
+        key = (r.get("user_id_hash"), r.get("domain"), r.get("intent"), r.get("topic"))
+        cell_n[key] = cell_n.get(key, 0) + int(r.get("count", 0))
+
     return [
         {
             "user_id_hash":    r.get("user_id_hash"),
@@ -952,7 +960,12 @@ def admin_bandit_state(user_id: Optional[str] = None, only_pulled: bool = True):
             "count":           int(r.get("count", 0)),
             "total_reward":    round(float(r.get("total_reward", 0.0)), 4),
             "avg_reward":      round(float(r.get("avg_reward", 0.0)), 4),
-            "cached_ucb":      round(float(r.get("cached_ucb", 0.0)), 4),
+            "cached_ucb":      display_selection_score(
+                                   r.get("count", 0),
+                                   r.get("total_reward", 0.0),
+                                   cell_n[(r.get("user_id_hash"), r.get("domain"),
+                                           r.get("intent"), r.get("topic"))],
+                               ),
             "policy_version":  r.get("policy_version"),
             "ucb_algorithm":   r.get("ucb_algorithm"),
             "last_updated_at": r.get("last_updated_at"),
