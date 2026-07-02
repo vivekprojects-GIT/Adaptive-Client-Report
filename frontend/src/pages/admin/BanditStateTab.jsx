@@ -111,7 +111,8 @@ export default function BanditStateTab({ notify }) {
         <p className="admin-section-sub">
           Read-only view of <code>ape_user_bandit_state</code> — every per-user cell
           with its arms' <code>count</code>, <code>avg_reward</code>, and
-          <strong> selection score</strong> (stored as <code>cached_ucb</code>).
+          <strong> selection score</strong> (computed <strong>live</strong> per request from
+          the current count, avg_reward, and c/width — <em>not</em> a stored value).
           Selection is <strong>round-robin first</strong> (unpulled arms, in catalog order),
           then by the UCB-based <strong>selection score</strong>. The highest score wins
           the user's next <code>/turn</code> in that cell. Selection score is

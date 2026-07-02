@@ -356,20 +356,44 @@ def list_session_messages(session_id: str, user_id: str, limit: int = 200):
     rows = STORE.list_session_messages(session_id, limit=limit, user_id_hash=user_id_hash)
 
     # Join each assistant message's applied reward from ape_turn_record so
-    # the UI can show what every previous answer earned (signal + value).
+    # the UI can show what every previous answer earned (signal + value), plus
+    # the LIVE selection score of the strategy that was chosen for that answer.
     resp_ids = [r.get("response_id") for r in rows if r.get("response_id")]
     if resp_ids:
-        verdicts = {
+        from .bandit.selection import display_selection_score
+        tr = {
             t["response_id"]: t
             for t in STORE.turn_record.find(
                 {"response_id": {"$in": resp_ids}},
                 {"response_id": 1, "reward_status": 1, "signal": 1,
                  "reward_category": 1, "normalized_reward": 1,
-                 "content_category": 1, "content_reward": 1},
+                 "content_category": 1, "content_reward": 1,
+                 "attribution_bandit_pk": 1, "attribution_bandit_sk": 1,
+                 "selection_method": 1},
             )
         }
+
+        # Compute the selected strategy's selection score LIVE (no snapshot):
+        # batch-load the current bandit-cell state for every referenced cell,
+        # then score each cell's arms with the current c/width params.
+        cells: Dict[tuple, Dict[str, Any]] = {}
+        for t in tr.values():
+            pk = t.get("attribution_bandit_pk")
+            if pk:
+                key = (pk.get("user_id_hash"), pk.get("domain"),
+                       pk.get("intent"), pk.get("topic"))
+                cells.setdefault(key, pk)
+        live_scores: Dict[tuple, float] = {}   # (cell_key, strategy) -> score
+        for key, pk in cells.items():
+            cell_rows = list(STORE.bandit_state.find(
+                pk, {"strategy": 1, "count": 1, "total_reward": 1}))
+            n = sum(int(x.get("count", 0)) for x in cell_rows)
+            for x in cell_rows:
+                live_scores[(key, x["strategy"])] = display_selection_score(
+                    x.get("count", 0), x.get("total_reward", 0.0), n)
+
         for r in rows:
-            t = verdicts.get(r.get("response_id"))
+            t = tr.get(r.get("response_id"))
             if t:
                 r["reward_status"]     = t.get("reward_status")
                 r["applied_signal"]    = t.get("signal")
@@ -378,6 +402,15 @@ def list_session_messages(session_id: str, user_id: str, limit: int = 200):
                 r["normalized_reward"] = t.get("normalized_reward")
                 r["content_category"]  = t.get("content_category")
                 r["content_reward"]    = t.get("content_reward")
+                # Historical fact: how the pick was made (round-robin vs ucb).
+                r["selection_method"]  = t.get("selection_method")
+                # Live score of the chosen strategy in its current cell state.
+                pk = t.get("attribution_bandit_pk")
+                sk = t.get("attribution_bandit_sk")
+                if pk and sk:
+                    key = (pk.get("user_id_hash"), pk.get("domain"),
+                           pk.get("intent"), pk.get("topic"))
+                    r["live_selection_score"] = live_scores.get((key, sk))
 
     return [_clean(r) for r in rows]
 

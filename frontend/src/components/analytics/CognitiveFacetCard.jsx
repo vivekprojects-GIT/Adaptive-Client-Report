@@ -202,9 +202,9 @@ export default function CognitiveFacetCard({ facet, onInspectUser }) {
                   </tbody>
                 </table>
                 <div className="ucb-formula-note">
-                  Runtime selection uses <code>selection_score = cached_ucb = avg_reward + c * sqrt(2 * ln N / count)</code>.
-                  This is pick priority, not reward; the rightmost column drives the next pick. The Beta curves above are a visualization;
-                  they aren't read by the selection code.
+                  Runtime selection uses <code>selection_score = avg_reward + c * width * sqrt(2 * ln N / count)</code>,
+                  computed live (no cache) from the current params. This is pick priority, not reward; the rightmost column
+                  drives the next pick. The Beta curves above are a visualization; they aren't read by the selection code.
                 </div>
               </>
             )}

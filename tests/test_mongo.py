@@ -42,7 +42,7 @@ def main():
     counts = seed_all(store, domain="finance")
     assert counts["intents"]      > 0
     assert counts["strategies"]   > 0
-    assert counts["signal_rules"] >= 10
+    assert counts["signal_rules"] >= 9   # vg 9-signal catalog
     assert counts["reward_rules"] >= 4
     print(f"✓ Seed: {counts}")
 
@@ -67,8 +67,9 @@ def main():
                     "definition_plus_example", "definition_with_pointer"],
     )
     assert len(rows) == 4
-    assert all(r["count"] == 0 for r in rows)
-    assert all(r["cached_ucb"] >= 100.0 for r in rows)  # cold-start
+    assert all(r["count"] == 0 for r in rows)   # cold-start: unpulled arms
+    # No cached_ucb is stored — the selection score is computed live.
+    assert all("cached_ucb" not in r for r in rows)
     print(f"✓ Bandit cell lazy-created with {len(rows)} strategy rows at cold-start")
 
     # ---- 4. Path A write a PENDING response ----------------------------
@@ -117,21 +118,24 @@ def main():
     assert rewarded["reward_status"] == "APPLIED"
     print("✓ Response marked APPLIED")
 
-    # Apply the bandit update
+    # Apply the bandit update. Per the pull-counter model, a reward adds to
+    # total_reward but does NOT bump count (count is the PULL counter, bumped
+    # at selection). avg = total_reward / max(count, 1).
+    store.bump_strategy_count(attribution_pk, "definition_plus_example")  # simulate the pull
     updated_row = store.update_strategy_reward(
         attribution_pk=attribution_pk,
         attribution_sk="definition_plus_example",
         normalized_reward=1.0,
     )
-    assert updated_row["count"]        == 1
+    assert updated_row["count"]        == 1   # bumped by the pull, not the reward
     assert updated_row["total_reward"] == 1.0
     assert updated_row["avg_reward"]   == 1.0
-    print(f"✓ Bandit row updated: count=1, avg=1.0")
+    print("✓ Bandit row updated: count=1 (pull), total_reward=1.0, avg=1.0")
 
-    # Refresh UCB cache
+    # Selection score is computed live (no cache) — refresh is a no-op now.
     refreshed = store.refresh_cell_ucb_cache(attribution_pk)
-    assert refreshed == 4   # 4 strategies in the cell
-    print(f"✓ Refreshed cached_ucb for {refreshed} strategies in cell")
+    assert refreshed == 0   # no-op: nothing cached, score computed live
+    print("✓ refresh_cell_ucb_cache is a no-op (selection score computed live)")
 
     # ---- 6. Double-reward prevention -----------------------------------
     second_attempt = store.mark_response_rewarded(

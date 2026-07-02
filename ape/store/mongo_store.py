@@ -17,10 +17,11 @@ Critical invariants enforced by this layer:
   - reward_status starts at PENDING (Path A write) and transitions to
     APPLIED (Path B write). A conditional update prevents double-rewarding.
 
-  - cached_ucb is a serving cache. format_count + total_reward + avg_reward
-    are the source of truth. After every reward, Path B recomputes
-    cached_ucb for ALL strategies in the same cell (because the explore
-    bonus depends on N = sum of counts in the cell).
+  - NO selection-score cache. count + total_reward + avg_reward are the
+    persisted source of truth; the selection score (UCB) is computed LIVE at
+    selection time (ape/bandit/selection.py) and at display time
+    (display_selection_score), always from the current c/width params.
+    refresh_cell_ucb_cache is a no-op; any stored `cached_ucb` is vestigial.
 
   - Raw queries are NOT stored. Only classification + attribution metadata.
 """
@@ -374,11 +375,12 @@ class MongoStore:
                     "strategy":     s,
                 },
                 {
+                    # No cached_ucb — the selection score is computed live at
+                    # selection/display time, never stored (no cache).
                     "$setOnInsert": {
                         "count":              0,
                         "total_reward":       0.0,
                         "avg_reward":         COLD_START_AVG_REWARD,
-                        "cached_ucb":         COLD_START_UCB_SCORE,
                         "policy_version":     policy_version,
                         "ucb_algorithm":      "UCB",
                         "last_updated_at":    utcnow_iso(),
