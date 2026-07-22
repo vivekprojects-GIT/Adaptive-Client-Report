@@ -178,8 +178,6 @@ export function useApe() {
     // ----------------------------------------------------------------
     let streamBuf = "";
     let finalResult = null;
-    let lastPaint = 0;
-    const PAINT_INTERVAL_MS = 60;
 
     const updateBubble = (text, isFinal) => {
       setPendingMessages([
@@ -237,14 +235,7 @@ export function useApe() {
             }
           } else if (payload.event === "delta") {
             streamBuf += payload.text;
-            // Throttle repaints (~60ms) instead of re-rendering on every token.
-            // Message.jsx renders completed markdown blocks and leaves the
-            // trailing partial block as plain text, so nothing snaps mid-build.
-            const now = Date.now();
-            if (now - lastPaint >= PAINT_INTERVAL_MS) {
-              lastPaint = now;
-              updateBubble(extractDisplayText(streamBuf), false);
-            }
+            updateBubble(extractDisplayText(streamBuf), false);
           } else if (payload.event === "done") {
             finalResult = payload;
             updateBubble(payload.answer || extractDisplayText(streamBuf), true);
