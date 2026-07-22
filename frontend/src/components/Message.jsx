@@ -18,15 +18,15 @@ export default function Message({ message, isLastAssistant, showMeta, onFeedback
   // For user messages: escape and keep as plain text in the bubble.
   // For assistant: render markdown (headings, lists, tables, code).
   //
-  // While streaming, the model now emits plain markdown (no JSON envelope), so
-  // each chunk is directly renderable — we markdown-render progressively rather
-  // than showing escaped placeholder text and only formatting at the end.
-  // Before any text arrives we still show the spinner.
-  const streamingEmpty = isPlaceholder && !(message.content || "").trim();
+  // While streaming we render BLOCK BY BLOCK: everything up to the last blank
+  // line is a completed block and is safe to markdown-render (it can no longer
+  // change), while the trailing partial block stays plain text. That stops a
+  // half-built table or an unclosed ** from rendering and then snapping into
+  // place — the completed part above it never reflows.
   const html = isUser
     ? escapeHtml(message.content)
-    : streamingEmpty
-      ? `<div class="placeholder-text"><span class="spinner"></span>Thinking…</div>`
+    : isPlaceholder
+      ? renderStreaming(message.content)
       : renderMarkdown(message.content);
 
   return (
@@ -82,6 +82,32 @@ export default function Message({ message, isLastAssistant, showMeta, onFeedback
       )}
     </div>
   );
+}
+
+/**
+ * Block-by-block streaming render.
+ *
+ * Split the buffer at the last blank line: everything before it is a set of
+ * COMPLETED markdown blocks (they can't change any more, so render them), and
+ * the remainder is the block still being written (keep it as plain text until
+ * it's finished). This is what prevents the "snap" — a table only appears once
+ * its block is complete, instead of rendering as loose pipes and then
+ * reflowing when the separator row arrives.
+ */
+function renderStreaming(content) {
+  const text = content || "";
+  if (!text.trim()) {
+    return `<div class="placeholder-text"><span class="spinner"></span>Thinking…</div>`;
+  }
+  const cut = text.lastIndexOf("\n\n");
+  const committed = cut === -1 ? "" : text.slice(0, cut);
+  const tail      = cut === -1 ? text : text.slice(cut + 2);
+
+  const committedHtml = committed ? renderMarkdown(committed) : "";
+  const tailHtml = tail.trim()
+    ? `<div class="stream-tail">${escapeHtml(tail)}</div>`
+    : "";
+  return committedHtml + tailHtml;
 }
 
 // ---------- Chip rendering ----------
