@@ -103,8 +103,15 @@ function renderStreaming(content) {
     return `<div class="placeholder-text"><span class="spinner"></span>Thinking…</div>`;
   }
   const cut = text.lastIndexOf("\n");
-  const committed = cut === -1 ? "" : text.slice(0, cut);
-  const tail      = cut === -1 ? text : text.slice(cut + 1);
+  const committedRaw = cut === -1 ? "" : text.slice(0, cut);
+  const tail         = cut === -1 ? text : text.slice(cut + 1);
+
+  // Even among the COMPLETE lines, a table that has its header row but not yet
+  // its `|---|` separator is not a renderable table — the markdown renderer
+  // would fall through and print the header as raw pipes. Hold that nascent
+  // block back (like the tail) until the separator lands, so the reader never
+  // sees a lone `| Aspect | ... |` row. This mirrors Claude's own UI.
+  const committed = withoutNascentTable(committedRaw);
 
   const committedHtml = committed ? renderMarkdown(committed) : "";
   const visibleTail = cleanStreamTail(tail);
@@ -124,6 +131,33 @@ function renderStreaming(content) {
  * ordinary prose we keep the text (so it still types through smoothly) and
  * just drop the inline markers.
  */
+/**
+ * Drop a trailing table that hasn't reached a valid state yet.
+ *
+ * A markdown table needs a header row AND a `|---|` separator row. While
+ * streaming, the header line completes one frame before the separator, so for
+ * that window the committed text ends in table rows with no separator — which
+ * the renderer would spill as raw pipes. We find the trailing run of `|`-lines
+ * and, if it contains no separator, hide the whole run until the separator
+ * arrives. Once the separator lands the block renders as a real table.
+ */
+function withoutNascentTable(committed) {
+  if (!committed || committed.indexOf("|") === -1) return committed;
+  const lines = committed.split("\n");
+  let i = lines.length;
+  while (i > 0 && /^\s*\|/.test(lines[i - 1])) i--;
+  const trailing = lines.slice(i);
+  if (trailing.length === 0) return committed;       // no trailing table block
+  if (trailing.some(isTableSeparatorLine)) return committed;  // valid table
+  return lines.slice(0, i).join("\n");               // header-only → hide it
+}
+
+function isTableSeparatorLine(line) {
+  const s = (line || "").trim();
+  if (!(s.startsWith("|") && s.endsWith("|"))) return false;
+  return /-/.test(s) && /^\|[\s:|-]+\|$/.test(s);
+}
+
 function cleanStreamTail(tail) {
   const t = tail || "";
   if (!t.trim()) return "";
