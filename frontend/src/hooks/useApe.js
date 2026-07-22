@@ -178,8 +178,24 @@ export function useApe() {
     // ----------------------------------------------------------------
     let streamBuf = "";
     let finalResult = null;
-    let lastPaint = 0;
-    const PAINT_INTERVAL_MS = 60;
+
+    // --- render batching -------------------------------------------------
+    // Deltas arrive faster than the browser can paint, so we don't re-render
+    // per chunk. Instead we coalesce onto the next animation frame: many
+    // deltas landing inside one ~16ms frame collapse into a single repaint.
+    // (Message.jsx then renders only the COMPLETED markdown blocks, keeping
+    // the trailing partial block as plain text, so nothing snaps mid-build.)
+    let rafId = null;
+    const scheduleRender = () => {
+      if (rafId !== null) return;                       // already queued
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        updateBubble(extractDisplayText(streamBuf), false);
+      });
+    };
+    const cancelRender = () => {
+      if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
+    };
 
     const updateBubble = (text, isFinal) => {
       setPendingMessages([
@@ -236,17 +252,11 @@ export function useApe() {
               setSessionId(payload.session_id);
             }
           } else if (payload.event === "delta") {
-            streamBuf += payload.text;
-            // Throttle repaints (~60ms) instead of re-rendering on every token.
-            // Message.jsx renders completed markdown blocks and leaves the
-            // trailing partial block as plain text, so nothing snaps mid-build.
-            const now = Date.now();
-            if (now - lastPaint >= PAINT_INTERVAL_MS) {
-              lastPaint = now;
-              updateBubble(extractDisplayText(streamBuf), false);
-            }
+            streamBuf += payload.text;      // always accumulate
+            scheduleRender();               // repaint at most once per frame
           } else if (payload.event === "done") {
             finalResult = payload;
+            cancelRender();                 // drop any queued partial repaint
             updateBubble(payload.answer || extractDisplayText(streamBuf), true);
           } else if (payload.event === "error") {
             throw new Error(payload.message || "stream error");
@@ -269,6 +279,8 @@ export function useApe() {
       setError(err.message);
       setPendingMessages([]);
     } finally {
+      // Drop any frame still queued so it can't repaint after teardown.
+      cancelRender();
       if (mountedRef.current) setSending(false);
       // This turn's controller is done; clear it so unmount doesn't abort a
       // controller that's no longer active.
