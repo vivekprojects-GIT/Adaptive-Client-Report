@@ -267,10 +267,14 @@ export function useApe() {
       if (!finalResult) throw new Error("stream ended without 'done' event");
 
       if (!mountedRef.current) return;        // navigated away — don't touch state
-      setPendingMessages([]);
+      // Keep the optimistic bubbles on screen while the canonical history is
+      // fetched, then swap atomically. Clearing them BEFORE the fetch made the
+      // just-streamed answer vanish for the whole Mongo round-trip (the UI
+      // flashed back to the stale conversation) and reappear when rows landed.
       const rows = await api.loadSessionMessages(finalResult.session_id, userId);
       if (!mountedRef.current) return;
       setMessages(rows || []);
+      setPendingMessages([]);
       refreshSessions();
     } catch (err) {
       // AbortError is expected when the user navigates away mid-stream.
