@@ -17,16 +17,10 @@ export default function Message({ message, isLastAssistant, showMeta, onFeedback
 
   // For user messages: escape and keep as plain text in the bubble.
   // For assistant: render markdown (headings, lists, tables, code).
-  //
-  // While streaming, the model now emits plain markdown (no JSON envelope), so
-  // each chunk is directly renderable — we markdown-render progressively rather
-  // than showing escaped placeholder text and only formatting at the end.
-  // Before any text arrives we still show the spinner.
-  const streamingEmpty = isPlaceholder && !(message.content || "").trim();
   const html = isUser
     ? escapeHtml(message.content)
-    : streamingEmpty
-      ? `<div class="placeholder-text"><span class="spinner"></span>Thinking…</div>`
+    : isPlaceholder
+      ? `<div class="placeholder-text"><span class="spinner"></span>${escapeHtml(message.content)}</div>`
       : renderMarkdown(message.content);
 
   return (
