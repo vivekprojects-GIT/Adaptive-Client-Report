@@ -18,11 +18,10 @@ export default function Message({ message, isLastAssistant, showMeta, onFeedback
   // For user messages: escape and keep as plain text in the bubble.
   // For assistant: render markdown (headings, lists, tables, code).
   //
-  // While streaming we render BLOCK BY BLOCK: everything up to the last blank
-  // line is a completed block and is safe to markdown-render (it can no longer
-  // change), while the trailing partial block stays plain text. That stops a
-  // half-built table or an unclosed ** from rendering and then snapping into
-  // place — the completed part above it never reflows.
+  // While streaming we render LINE BY LINE: every complete line is safe to
+  // markdown-render, while the partially-typed last line is held back (see
+  // renderStreaming). That keeps raw syntax off the screen without freezing a
+  // whole table as plain text until it finishes.
   const html = isUser
     ? escapeHtml(message.content)
     : isPlaceholder
@@ -85,29 +84,54 @@ export default function Message({ message, isLastAssistant, showMeta, onFeedback
 }
 
 /**
- * Block-by-block streaming render.
+ * Line-by-line streaming render.
  *
- * Split the buffer at the last blank line: everything before it is a set of
- * COMPLETED markdown blocks (they can't change any more, so render them), and
- * the remainder is the block still being written (keep it as plain text until
- * it's finished). This is what prevents the "snap" — a table only appears once
- * its block is complete, instead of rendering as loose pipes and then
- * reflowing when the separator row arrives.
+ * Markdown is a LINE-based syntax, so we split the buffer at the last newline:
+ * every COMPLETE line is safe to render, and only the partially-typed final
+ * line is held back as plain text.
+ *
+ * Splitting on blank lines instead (block-level) looks correct but breaks
+ * tables badly: a markdown table contains no blank lines, so the whole table
+ * counts as one unfinished block and stays raw — the reader watches
+ * `|---|---|` separators and `**stars**` for the entire stream. Line-level
+ * granularity renders the table as soon as its separator row completes, then
+ * grows it row by row, which is how chat assistants behave.
  */
 function renderStreaming(content) {
   const text = content || "";
   if (!text.trim()) {
     return `<div class="placeholder-text"><span class="spinner"></span>Thinking…</div>`;
   }
-  const cut = text.lastIndexOf("\n\n");
+  const cut = text.lastIndexOf("\n");
   const committed = cut === -1 ? "" : text.slice(0, cut);
-  const tail      = cut === -1 ? text : text.slice(cut + 2);
+  const tail      = cut === -1 ? text : text.slice(cut + 1);
 
   const committedHtml = committed ? renderMarkdown(committed) : "";
-  const tailHtml = tail.trim()
-    ? `<div class="stream-tail">${escapeHtml(tail)}</div>`
+  const visibleTail = cleanStreamTail(tail);
+  const tailHtml = visibleTail
+    ? `<div class="stream-tail">${escapeHtml(visibleTail)}</div>`
     : "";
   return committedHtml + tailHtml;
+}
+
+/**
+ * Clean the partially-typed final line before showing it.
+ *
+ * That line is raw markdown, so displaying it verbatim leaks syntax at the
+ * reader: a half-typed table separator shows as `|---|---|`, and an unclosed
+ * bold shows its `**`. A table row mid-build is pure scaffolding with nothing
+ * readable in it, so it is hidden entirely until the line completes; for
+ * ordinary prose we keep the text (so it still types through smoothly) and
+ * just drop the inline markers.
+ */
+function cleanStreamTail(tail) {
+  const t = tail || "";
+  if (!t.trim()) return "";
+  if (/^\s*\|/.test(t)) return "";            // table row / separator — hide
+  return t
+    .replace(/^\s*#{1,6}\s*/, "")             // heading marker being typed
+    .replace(/\*\*/g, "")                     // unclosed bold
+    .replace(/`/g, "");                       // unclosed code span
 }
 
 // ---------- Chip rendering ----------
