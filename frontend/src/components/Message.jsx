@@ -1,4 +1,5 @@
 import { escapeHtml, renderMarkdown } from "../utils/markdown.js";
+import { renderStreaming } from "../utils/streamRender.js";
 
 /**
  * One message — Claude Desktop style.
@@ -81,91 +82,6 @@ export default function Message({ message, isLastAssistant, showMeta, onFeedback
       )}
     </div>
   );
-}
-
-/**
- * Line-by-line streaming render.
- *
- * Markdown is a LINE-based syntax, so we split the buffer at the last newline:
- * every COMPLETE line is safe to render, and only the partially-typed final
- * line is held back as plain text.
- *
- * Splitting on blank lines instead (block-level) looks correct but breaks
- * tables badly: a markdown table contains no blank lines, so the whole table
- * counts as one unfinished block and stays raw — the reader watches
- * `|---|---|` separators and `**stars**` for the entire stream. Line-level
- * granularity renders the table as soon as its separator row completes, then
- * grows it row by row, which is how chat assistants behave.
- */
-function renderStreaming(content) {
-  const text = content || "";
-  if (!text.trim()) {
-    return `<div class="placeholder-text"><span class="spinner"></span>Thinking…</div>`;
-  }
-  const cut = text.lastIndexOf("\n");
-  const committedRaw = cut === -1 ? "" : text.slice(0, cut);
-  const tail         = cut === -1 ? text : text.slice(cut + 1);
-
-  // Even among the COMPLETE lines, a table that has its header row but not yet
-  // its `|---|` separator is not a renderable table — the markdown renderer
-  // would fall through and print the header as raw pipes. Hold that nascent
-  // block back (like the tail) until the separator lands, so the reader never
-  // sees a lone `| Aspect | ... |` row. This mirrors Claude's own UI.
-  const committed = withoutNascentTable(committedRaw);
-
-  const committedHtml = committed ? renderMarkdown(committed) : "";
-  const visibleTail = cleanStreamTail(tail);
-  const tailHtml = visibleTail
-    ? `<div class="stream-tail">${escapeHtml(visibleTail)}</div>`
-    : "";
-  return committedHtml + tailHtml;
-}
-
-/**
- * Clean the partially-typed final line before showing it.
- *
- * That line is raw markdown, so displaying it verbatim leaks syntax at the
- * reader: a half-typed table separator shows as `|---|---|`, and an unclosed
- * bold shows its `**`. A table row mid-build is pure scaffolding with nothing
- * readable in it, so it is hidden entirely until the line completes; for
- * ordinary prose we keep the text (so it still types through smoothly) and
- * just drop the inline markers.
- */
-/**
- * Drop a trailing table that hasn't reached a valid state yet.
- *
- * A markdown table needs a header row AND a `|---|` separator row. While
- * streaming, the header line completes one frame before the separator, so for
- * that window the committed text ends in table rows with no separator — which
- * the renderer would spill as raw pipes. We find the trailing run of `|`-lines
- * and, if it contains no separator, hide the whole run until the separator
- * arrives. Once the separator lands the block renders as a real table.
- */
-function withoutNascentTable(committed) {
-  if (!committed || committed.indexOf("|") === -1) return committed;
-  const lines = committed.split("\n");
-  let i = lines.length;
-  while (i > 0 && /^\s*\|/.test(lines[i - 1])) i--;
-  const trailing = lines.slice(i);
-  if (trailing.length === 0) return committed;       // no trailing table block
-  if (trailing.some(isTableSeparatorLine)) return committed;  // valid table
-  return lines.slice(0, i).join("\n");               // header-only → hide it
-}
-
-function isTableSeparatorLine(line) {
-  const s = (line || "").trim();
-  if (!(s.startsWith("|") && s.endsWith("|"))) return false;
-  return /-/.test(s) && /^\|[\s:|-]+\|$/.test(s);
-}
-
-function cleanStreamTail(tail) {
-  const t = tail || "";
-  if (!t.trim()) return "";
-  if (/^\s*\|/.test(t)) return "";            // table row / separator — hide
-  return t
-    .replace(/^\s*#{1,6}\s*/, "")             // heading marker being typed
-    .replace(/\*\*/g, "")                     // unclosed bold
-    .replace(/`/g, "");                       // unclosed code span
 }
 
 // ---------- Chip rendering ----------
