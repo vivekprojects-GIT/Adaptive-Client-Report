@@ -34,12 +34,20 @@ Running log of session outcomes, newest first. For standup reference.
   by cloning back from the HF Space remote; `.env` recreated. This standup doc
   was a casualty — recreated today.
 
+- **Migrated to react-markdown + remark-gfm** (later same day). The static
+  regex renderer was whack-a-mole: links, blockquotes, dividers, strikethrough,
+  and task lists all showed as raw text. Now full CommonMark + GFM renders
+  correctly — links are clickable (new tab), verified live in the browser
+  against the Roth-vs-Traditional + IRS-link query. Streaming guards survived
+  unchanged (they're text-level, renderer-agnostic). Also fixed end-of-stream
+  flash (answer vanished during the Mongo history refetch) and a latent bug
+  where the old renderer bolded text inside code blocks. 21 tests, all through
+  the real parser. Bundle 121 → 168 kB gzip.
+
 ### Known gaps / honest caveats
-- The minimal markdown renderer has **no link support** (`[text](url)` passes
-  through as text) — pinned by a test so adding it is a conscious decision.
-- Long code blocks appear whole when the fence closes (safe pause-then-pop),
-  not character by character — full incremental code rendering would need a
-  stateful parser (e.g. react-markdown).
+- Code blocks appear whole when the fence closes (safe pause-then-pop), not
+  character by character — deliberate holdback.
+- Math/LaTeX would need `remark-math` (not added; models rarely emit it here).
 
 ### Earlier in this workstream (recent sessions)
 - Reward model ported from vg_mvp_v1.0: two-axis (content/format), explicit ±2
