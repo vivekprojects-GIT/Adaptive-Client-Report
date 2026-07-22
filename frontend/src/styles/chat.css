@@ -855,3 +855,10 @@
     max-width: 88%;
   }
 }
+
+/* Streaming: the trailing, not-yet-complete markdown block.
+   Kept as plain text so a half-built table/bold never renders then snaps. */
+.stream-tail {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
