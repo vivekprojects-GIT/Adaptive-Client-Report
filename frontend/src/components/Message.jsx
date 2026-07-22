@@ -1,5 +1,23 @@
-import { escapeHtml, renderMarkdown } from "../utils/markdown.js";
-import { renderStreaming } from "../utils/streamRender.js";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { splitStreaming } from "../utils/streamRender.js";
+
+// Full CommonMark + GFM (tables, strikethrough, task lists, autolinks) via
+// react-markdown — replaces the old hand-rolled regex renderer, so any
+// standard markdown the model emits renders correctly without per-syntax
+// patches. Links open in a new tab.
+const MD_PLUGINS = [remarkGfm];
+const MD_COMPONENTS = {
+  a: (props) => <a {...props} target="_blank" rel="noopener noreferrer" />,
+};
+
+function Markdown({ children }) {
+  return (
+    <ReactMarkdown remarkPlugins={MD_PLUGINS} components={MD_COMPONENTS}>
+      {children}
+    </ReactMarkdown>
+  );
+}
 
 /**
  * One message — Claude Desktop style.
@@ -16,25 +34,22 @@ export default function Message({ message, isLastAssistant, showMeta, onFeedback
   const isPlaceholder = !!message._placeholder;
   const thumbsLocked = !!ratedSignal;
 
-  // For user messages: escape and keep as plain text in the bubble.
-  // For assistant: render markdown (headings, lists, tables, code).
+  // User messages: plain text in the bubble (React escapes automatically).
+  // Assistant messages: full markdown via react-markdown.
   //
   // While streaming we render LINE BY LINE: every complete line is safe to
-  // markdown-render, while the partially-typed last line is held back (see
-  // renderStreaming). That keeps raw syntax off the screen without freezing a
-  // whole table as plain text until it finishes.
-  const html = isUser
-    ? escapeHtml(message.content)
-    : isPlaceholder
-      ? renderStreaming(message.content)
-      : renderMarkdown(message.content);
-
+  // markdown-render, while the partially-typed last line is held back and
+  // sanitized (see splitStreaming). That keeps raw syntax off the screen
+  // without freezing a whole table as plain text until it finishes.
   return (
     <div className={`msg ${isUser ? "user" : "assistant"}`}>
-      <div
-        className="msg-content"
-        dangerouslySetInnerHTML={{ __html: html }}
-      />
+      <div className="msg-content">
+        {isUser
+          ? message.content
+          : isPlaceholder
+            ? <StreamingContent content={message.content} />
+            : <Markdown>{message.content}</Markdown>}
+      </div>
 
       {!isUser && showMeta && message.meta && (
         <div className="meta-strip">{renderMetaChips(message)}</div>
@@ -81,6 +96,28 @@ export default function Message({ message, isLastAssistant, showMeta, onFeedback
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * The in-flight assistant bubble. splitStreaming decides which prefix of the
+ * buffer is safe to parse (buffering half-open tables/fences) and sanitizes
+ * the still-typing line; this component just renders those two pieces.
+ */
+function StreamingContent({ content }) {
+  const { thinking, committed, tail } = splitStreaming(content);
+  if (thinking) {
+    return (
+      <div className="placeholder-text">
+        <span className="spinner" />Thinking…
+      </div>
+    );
+  }
+  return (
+    <>
+      {committed ? <Markdown>{committed}</Markdown> : null}
+      {tail ? <div className="stream-tail">{tail}</div> : null}
+    </>
   );
 }
 

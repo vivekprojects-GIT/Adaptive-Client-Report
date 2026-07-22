@@ -1,7 +1,7 @@
 /**
- * Progressive Markdown rendering for a reply that is still streaming.
+ * Progressive Markdown display for a reply that is still streaming.
  *
- * The renderer commits COMPLETE LINES instead of waiting for complete
+ * The UI commits COMPLETE LINES instead of waiting for complete
  * blank-line-delimited blocks, while buffering or sanitizing incomplete
  * Markdown structures so raw syntax is never exposed to the reader.
  *
@@ -20,37 +20,44 @@
  *          (`withoutNascentTable`)
  *      and sanitize the single in-progress line (`cleanStreamTail`).
  *
- * This module is pure (no React) so it can be unit-tested directly — see
+ * This module is TEXT-LEVEL and renderer-agnostic: it decides WHAT markdown is
+ * safe to parse right now, not how to turn it into HTML. The actual rendering
+ * is react-markdown (see Message.jsx), so the split survives any renderer
+ * upgrade. Pure (no React) so it unit-tests directly — see
  * streamRender.test.mjs.
  */
 
-import { escapeHtml, renderMarkdown } from "./markdown.js";
-
-export function renderStreaming(content) {
+/**
+ * Split the stream buffer into what may render now vs. what must wait.
+ *
+ * Returns:
+ *   { thinking: true }                      — buffer is still empty
+ *   { thinking: false, committed, tail }    — `committed` is markdown that is
+ *     safe to hand to the parser; `tail` is the sanitized plain-text remnant
+ *     of the line still being typed ("" when there is nothing showable).
+ */
+export function splitStreaming(content) {
   const text = content || "";
   if (!text.trim()) {
-    return `<div class="placeholder-text"><span class="spinner"></span>Thinking…</div>`;
+    return { thinking: true, committed: "", tail: "" };
   }
 
   const cut = text.lastIndexOf("\n");
   const committedRaw = cut === -1 ? "" : text.slice(0, cut);
-  const tail         = cut === -1 ? text : text.slice(cut + 1);
+  const tailRaw      = cut === -1 ? text : text.slice(cut + 1);
 
   // Among the complete lines, hold back any structure that is not yet in a
-  // renderable state, so the markdown renderer never spills its raw syntax.
+  // renderable state, so the parser never receives half-open syntax.
   const committed = commitStableMarkdown(committedRaw);
 
   // If the buffer ends inside an open code fence, the in-progress line is code,
   // not prose — hide it along with the fence instead of showing it as text.
   const insideFence =
-    withoutOpenCodeFence(committedRaw) !== committedRaw || /^\s*```/.test(tail);
+    withoutOpenCodeFence(committedRaw) !== committedRaw ||
+    /^\s*```/.test(tailRaw);
 
-  const committedHtml = committed ? renderMarkdown(committed) : "";
-  const visibleTail = insideFence ? "" : cleanStreamTail(tail);
-  const tailHtml = visibleTail
-    ? `<div class="stream-tail">${escapeHtml(visibleTail)}</div>`
-    : "";
-  return committedHtml + tailHtml;
+  const tail = insideFence ? "" : cleanStreamTail(tailRaw);
+  return { thinking: false, committed, tail };
 }
 
 /**
@@ -66,11 +73,11 @@ export function commitStableMarkdown(committed) {
 /**
  * Hold back an unterminated ``` code fence.
  *
- * The renderer only turns a fence into <pre><code> once BOTH its opening and
- * closing ``` lines are present. While the fence is still open, the committed
- * prefix ends with `` ```lang `` and code lines that would render as loose
- * escaped text. Cut the prefix at the last unmatched opening fence so the code
- * block stays hidden until it closes, then renders whole.
+ * A fence renders as a code block only once BOTH its opening and closing ```
+ * lines are present. While the fence is still open, the committed prefix ends
+ * with `` ```lang `` and code lines that would render as loose text. Cut the
+ * prefix at the last unmatched opening fence so the code block stays hidden
+ * until it closes, then renders whole.
  */
 export function withoutOpenCodeFence(committed) {
   if (!committed || committed.indexOf("```") === -1) return committed;
@@ -93,9 +100,9 @@ export function withoutOpenCodeFence(committed) {
  * A markdown table needs both a header row and a separator row to render.
  * While streaming, the header line completes one frame before the separator,
  * so for that window the committed text ends in table rows with no separator —
- * which the renderer would spill as raw pipes. Find the trailing run of
- * `|`-lines and, if none of them is a separator, hide the whole run until the
- * separator arrives. Once it lands, the block renders as a real table.
+ * which would show as raw pipes. Find the trailing run of `|`-lines and, if
+ * none of them is a separator, hide the whole run until the separator arrives.
+ * Once it lands, the block renders as a real table.
  */
 export function withoutNascentTable(committed) {
   if (!committed || committed.indexOf("|") === -1) return committed;
@@ -120,7 +127,8 @@ export function isTableSeparatorLine(line) {
  * That line is raw markdown, so printing it verbatim leaks syntax: a half-typed
  * separator shows as `|---|`, an unclosed bold shows its `**`. A table row
  * mid-build is pure scaffolding, so it is hidden outright; ordinary prose keeps
- * typing through smoothly with only its inline markers dropped.
+ * typing through smoothly with only its (possibly unclosed) inline markers
+ * dropped.
  */
 export function cleanStreamTail(tail) {
   const t = tail || "";
@@ -128,6 +136,9 @@ export function cleanStreamTail(tail) {
   if (/^\s*\|/.test(t)) return "";            // table row / separator — hide
   return t
     .replace(/^\s*#{1,6}\s*/, "")             // heading marker being typed
+    .replace(/^\s*>\s?/, "")                  // blockquote marker being typed
     .replace(/\*\*/g, "")                     // unclosed bold
+    .replace(/(^|[^*])\*(?!\*)/g, "$1")       // unclosed single-star italic
+    .replace(/~~/g, "")                       // unclosed strikethrough
     .replace(/`/g, "");                       // unclosed code span / fence
 }

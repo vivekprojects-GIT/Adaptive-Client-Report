@@ -1,20 +1,28 @@
 /**
  * Regression tests for progressive (streaming) markdown rendering.
  *
- * Run with:  npm test   (node --test, no dependencies)
+ * Run with:  npm test   (node --test, no extra dev deps)
  *
  * The invariant under test: at EVERY prefix of the stream, the visible output
  * must contain no raw markdown syntax — no `|---|` separators, no `**`, no
- * `#` heading markers, no ``` fences — and the final render must equal the
- * normal completed-message render.
+ * `#` heading markers, no ``` fences — and the final frame must contain the
+ * same structure as the completed-message render.
+ *
+ * Frames are rendered through the REAL production parser (react-markdown +
+ * remark-gfm, via react-dom/server), so these tests exercise exactly what the
+ * browser shows, not a simulation.
  */
 
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { renderMarkdown } from "./markdown.js";
+import React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+
 import {
-  renderStreaming,
+  splitStreaming,
   withoutOpenCodeFence,
   withoutNascentTable,
   isTableSeparatorLine,
@@ -23,31 +31,50 @@ import {
 
 // ---------- helpers ----------
 
+/** Render markdown exactly like Message.jsx's <Markdown> does. */
+function renderMd(md) {
+  return renderToStaticMarkup(
+    React.createElement(ReactMarkdown, { remarkPlugins: [remarkGfm] }, md),
+  );
+}
+
+/** One streaming frame as HTML: committed markdown + sanitized tail. */
+function renderFrame(buf) {
+  const { thinking, committed, tail } = splitStreaming(buf);
+  if (thinking) return "<thinking/>";
+  return (
+    (committed ? renderMd(committed) : "") +
+    (tail ? `<div class="stream-tail">${tail}</div>` : "")
+  );
+}
+
 /** Visible text of a rendered frame: strip all HTML tags. */
 function visibleText(html) {
   return html.replace(/<[^>]+>/g, "");
 }
 
-/** Assert no raw markdown syntax is visible at ANY prefix of `answer`. */
-function assertNoLeaksAtEveryPrefix(answer, { allowBackticks = false } = {}) {
+/** Assert no raw markdown syntax is visible at ANY prefix of `answer`.
+ *  Rendered code blocks are exempt: characters like ** or | inside
+ *  <pre><code> are literal code content, not leaked markdown syntax.
+ *  (The old regex renderer even bolded text inside code blocks — a bug
+ *  react-markdown fixes, which is why the exemption is needed now.) */
+function assertNoLeaksAtEveryPrefix(answer) {
   for (let i = 1; i <= answer.length; i++) {
-    const frame = renderStreaming(answer.slice(0, i));
+    const frame = renderFrame(answer.slice(0, i))
+      .replace(/<pre>[\s\S]*?<\/pre>/g, "");
     const v = visibleText(frame);
     assert.ok(!/\|\s*:?-{3,}/.test(v), `frame ${i}: leaked table separator:\n${v}`);
     assert.ok(!v.includes("**"), `frame ${i}: leaked ** stars:\n${v}`);
     assert.ok(!/(^|\n)\s*#{1,6}\s/.test(v), `frame ${i}: leaked # heading marker:\n${v}`);
-    if (!allowBackticks) {
-      assert.ok(!v.includes("```"), `frame ${i}: leaked \`\`\` fence:\n${v}`);
-    }
+    assert.ok(!v.includes("```"), `frame ${i}: leaked \`\`\` fence:\n${v}`);
   }
 }
 
-/** The stream's final frame must contain the same structure as the
- *  completed-message render (renderMarkdown of the full text). */
-function assertFinalMatchesCompleted(answer, tags) {
-  const done = renderMarkdown(answer);
+/** The completed-message render must contain the expected structural tags. */
+function assertFinalHas(answer, tags) {
+  const done = renderMd(answer);
   for (const t of tags) {
-    assert.ok(done.includes(t), `completed render missing ${t}`);
+    assert.ok(done.includes(t), `completed render missing ${t}:\n${done}`);
   }
 }
 
@@ -64,26 +91,23 @@ const TABLE = [
 
 test("table: no raw pipes/stars at any prefix", () => {
   assertNoLeaksAtEveryPrefix(TABLE);
-  // the header row must never be visible as raw text
   for (let i = 1; i <= TABLE.length; i++) {
-    const v = visibleText(renderStreaming(TABLE.slice(0, i)));
+    const v = visibleText(renderFrame(TABLE.slice(0, i)));
     assert.ok(!v.includes("Aspect | Roth"), `frame ${i}: raw header row visible`);
   }
 });
 
 test("table: renders as <table> once separator lands, then grows row by row", () => {
   const sepEnd = TABLE.indexOf("\n", TABLE.indexOf("|----"));
-  // one char after the separator's newline: table must exist
-  const after = renderStreaming(TABLE.slice(0, sepEnd + 2));
+  const after = renderFrame(TABLE.slice(0, sepEnd + 2));
   assert.ok(after.includes("<table>"), "table absent right after separator");
-  // before the separator line completes: no table, and no raw header either
-  const before = renderStreaming(TABLE.slice(0, TABLE.indexOf("|----") - 1));
+  const before = renderFrame(TABLE.slice(0, TABLE.indexOf("|----") - 1));
   assert.ok(!before.includes("<table>"));
   assert.ok(!visibleText(before).includes("|"));
 });
 
 test("table: completed render intact", () => {
-  assertFinalMatchesCompleted(TABLE, ["<table>", "<thead>", "<strong>"]);
+  assertFinalHas(TABLE, ["<table>", "<thead>", "<strong>"]);
 });
 
 // ---------- code fences ----------
@@ -101,18 +125,16 @@ const CODE = [
 
 test("code fence: fence and body hidden until the fence closes", () => {
   assertNoLeaksAtEveryPrefix(CODE);
-  // while the fence is open, none of the code body may be visible
   const openIdx = CODE.indexOf("print(x)") + 4; // mid-body
-  const v = visibleText(renderStreaming(CODE.slice(0, openIdx)));
+  const v = visibleText(renderFrame(CODE.slice(0, openIdx)));
   assert.ok(!v.includes("compute"), "code body visible while fence open");
-  // after the closing fence line, the block renders as <pre><code>
   const closeIdx = CODE.indexOf("```", CODE.indexOf("python")) + 4;
-  const html = renderStreaming(CODE.slice(0, closeIdx));
-  assert.ok(html.includes("<pre><code"), "closed fence did not render");
+  const html = renderFrame(CODE.slice(0, closeIdx));
+  assert.ok(html.includes("<pre>"), "closed fence did not render");
 });
 
 test("code fence: completed render intact", () => {
-  assertFinalMatchesCompleted(CODE, ["<pre><code"]);
+  assertFinalHas(CODE, ["<pre>", "<code"]);
 });
 
 // ---------- lists ----------
@@ -133,12 +155,12 @@ const LISTS = [
 test("lists: no raw markers at any prefix; items appear as lines complete", () => {
   assertNoLeaksAtEveryPrefix(LISTS);
   const afterFirstItem = LISTS.indexOf("money") + 6;
-  const html = renderStreaming(LISTS.slice(0, afterFirstItem));
+  const html = renderFrame(LISTS.slice(0, afterFirstItem));
   assert.ok(html.includes("<ul>"), "first completed bullet did not render");
 });
 
 test("lists: completed render intact", () => {
-  assertFinalMatchesCompleted(LISTS, ["<ul>", "<ol>", "<strong>", "<code>"]);
+  assertFinalHas(LISTS, ["<ul>", "<ol>", "<strong>", "<code>"]);
 });
 
 // ---------- headings ----------
@@ -154,30 +176,45 @@ const HEADINGS = [
 test("headings: marker never visible; renders as <h*> when line completes", () => {
   assertNoLeaksAtEveryPrefix(HEADINGS);
   const afterH1 = HEADINGS.indexOf("\n") + 2;
-  assert.ok(renderStreaming(HEADINGS.slice(0, afterH1)).includes("<h1>"));
+  assert.ok(renderFrame(HEADINGS.slice(0, afterH1)).includes("<h1>"));
 });
 
 test("headings: completed render intact", () => {
-  assertFinalMatchesCompleted(HEADINGS, ["<h1>", "<h2>"]);
+  assertFinalHas(HEADINGS, ["<h1>", "<h2>"]);
 });
 
-// ---------- inline code + links ----------
+// ---------- previously-unsupported syntax, now real ----------
 
-test("inline code: backticks stripped from in-progress line, rendered when complete", () => {
-  const md = "Use `npm run build` to compile.";
-  // mid-line: tail shows text without backticks
-  const mid = visibleText(renderStreaming(md.slice(0, 10)));
+test("links render as real <a> anchors", () => {
+  assertFinalHas("See [the docs](https://example.com) for more.", ['<a href="https://example.com"']);
+});
+
+test("blockquotes render as <blockquote>", () => {
+  assertFinalHas("> Price is what you pay.\n\nWisdom.", ["<blockquote>"]);
+});
+
+test("horizontal rules render as <hr>", () => {
+  assertFinalHas("Part one.\n\n---\n\nPart two.", ["<hr"]);
+});
+
+test("strikethrough renders as <del> (GFM)", () => {
+  assertFinalHas("This is ~~wrong~~ right.", ["<del>"]);
+});
+
+test("task lists render as checkboxes (GFM)", () => {
+  assertFinalHas("- [ ] Choose a broker\n- [x] Open account", ['type="checkbox"']);
+});
+
+test("inline code: backticks stripped mid-line, rendered when complete", () => {
+  const mid = visibleText(renderFrame("Use `npm ru"));
   assert.ok(!mid.includes("`"));
-  // completed line renders <code>
-  assert.ok(renderMarkdown(md).includes("<code>npm run build</code>"));
+  assertFinalHas("Use `npm run build` to compile.", ["<code>npm run build</code>"]);
 });
 
-test("links: renderer has no [text](url) support — documents current behavior", () => {
-  // The minimal renderer deliberately does not convert links; they pass
-  // through as literal text. This test pins that so a future renderer
-  // upgrade consciously flips it.
-  const html = renderMarkdown("See [the docs](https://example.com).");
-  assert.ok(!html.includes("<a "), "renderer unexpectedly grew link support — update streaming holdback if needed");
+test("single-star italic: no lone star flash on the in-progress line", () => {
+  const v = visibleText(renderFrame("emphasis on *ke"));
+  assert.ok(!v.includes("*"), `lone star visible: ${v}`);
+  assertFinalHas("emphasis on *key terms* here", ["<em>"]);
 });
 
 // ---------- unit tests for the helpers ----------
@@ -206,12 +243,15 @@ test("cleanStreamTail: hides table rows, strips inline markers", () => {
   assert.equal(cleanStreamTail("| a | b"), "");
   assert.equal(cleanStreamTail("## Head"), "Head");
   assert.equal(cleanStreamTail("some **bo"), "some bo");
+  assert.equal(cleanStreamTail("a *wor"), "a wor");
+  assert.equal(cleanStreamTail("> quo"), "quo");
   assert.equal(cleanStreamTail("run `np"), "run np");
 });
 
 // ---------- spinner ----------
 
-test("empty buffer shows the thinking placeholder", () => {
-  assert.ok(renderStreaming("").includes("Thinking"));
-  assert.ok(renderStreaming("   ").includes("Thinking"));
+test("empty buffer reports thinking state", () => {
+  assert.equal(splitStreaming("").thinking, true);
+  assert.equal(splitStreaming("   ").thinking, true);
+  assert.equal(splitStreaming("hi").thinking, false);
 });
