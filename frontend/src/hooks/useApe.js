@@ -3,64 +3,48 @@ import { api } from "../api.js";
 import { usePersistedState } from "./usePersistedState.js";
 
 /**
- * Strip the synthesizer's JSON wrapper from a streaming buffer so we can
- * show clean text while tokens arrive.
+ * Display text for the streaming buffer.
  *
- * The synthesizer emits:
- *   {"rendered_format": "...", "response": "...the actual text..."}
+ * The synthesizer now emits PLAIN MARKDOWN (no JSON envelope), so each chunk is
+ * directly renderable and we can markdown-render progressively as it arrives —
+ * exactly how a chat assistant streams. No parsing/unescaping needed.
  *
- * During streaming the JSON may be incomplete. We use these heuristics:
- *   1. If the buffer is well-formed JSON with a `response` field → return it
- *   2. If we can see `"response":` followed by an opening quote, extract
- *      from there to the buffer end and unescape it
- *   3. If the buffer doesn't look like JSON yet (e.g. starts with ```), strip
- *      code-fence prefix
- *   4. Otherwise return the raw buffer (worst case: user sees a flash of
- *      `{"rendered_format": ...` for a few hundred ms — `done` cleans it up)
+ * The only handling left is a legacy guard: if an older model still emits the
+ * `{"rendered_format": ..., "response": "..."}` wrapper, scrape the `response`
+ * field so the user never sees raw JSON. Normal markdown passes through
+ * untouched.
  */
 function extractDisplayText(buf) {
   if (!buf) return "";
-  let s = buf.trimStart();
-  // Strip code fences
-  if (s.startsWith("```")) {
-    s = s.replace(/^```[a-zA-Z]*\n?/, "");
-    if (s.endsWith("```")) s = s.slice(0, -3);
-  }
-  // Fast path: complete JSON
+  const s = buf.trimStart();
+
+  // Plain markdown (the normal path) — show it as-is.
+  if (!s.startsWith("{")) return buf;
+
+  // --- legacy JSON-envelope fallback ---
   try {
     const parsed = JSON.parse(s);
     if (parsed && typeof parsed.response === "string") return parsed.response;
-  } catch { /* not yet complete — fall through */ }
+  } catch { /* incomplete JSON — fall through to partial scrape */ }
 
-  // Find `"response":` and pull everything after the opening quote
   const m = s.match(/"response"\s*:\s*"/);
   if (m) {
-    const start = m.index + m[0].length;
     let out = "";
-    let i = start;
-    while (i < s.length) {
+    for (let i = m.index + m[0].length; i < s.length; i++) {
       const ch = s[i];
       if (ch === "\\" && i + 1 < s.length) {
         const next = s[i + 1];
-        if (next === "n") out += "\n";
-        else if (next === "t") out += "\t";
-        else if (next === '"') out += '"';
-        else if (next === "\\") out += "\\";
-        else out += next;
-        i += 2;
+        out += next === "n" ? "\n" : next === "t" ? "\t" : next;
+        i += 1;
       } else if (ch === '"') {
-        // Reached the closing quote — done
         return out;
       } else {
         out += ch;
-        i += 1;
       }
     }
-    return out;   // still streaming, no closing quote yet
+    return out;
   }
-
-  // No "response" field visible yet — show the raw text (will get replaced)
-  return s;
+  return buf;
 }
 
 /**

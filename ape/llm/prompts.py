@@ -119,13 +119,16 @@ RULES:
 """
 
 
+# Plain-markdown output contract. The model answers DIRECTLY in markdown —
+# no JSON envelope. This is what lets the UI render the answer progressively
+# while it streams (a partial JSON object cannot be parsed, so a wrapper would
+# force us to buffer the whole reply before rendering). The rendered_format is
+# inferred server-side from the markdown's shape instead of being self-declared.
 SYNTHESIZER_OUTPUT_CONTRACT = """\
-OUTPUT FORMAT — wrap your reply as a single JSON object, NOTHING else:
-  {"rendered_format": "<one of: paragraph, bulleted_list, numbered_steps, \
-comparison_table, data_table, decision_recommendation, analogy_explainer, hybrid>",
-   "response": "<the actual answer in markdown>"}
-Choose `rendered_format` HONESTLY based on the SHAPE of `response`.
-Do not include any text outside the JSON object.\
+OUTPUT FORMAT — reply with the answer itself, as plain markdown.
+Do NOT wrap it in JSON. Do NOT add a preamble, and do not fence the whole
+reply in a code block (fences are fine for actual code snippets).
+Start directly with the answer.\
 """
 
 

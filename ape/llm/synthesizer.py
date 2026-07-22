@@ -2,11 +2,16 @@
 Synthesizer LLM call — generates the user-facing response.
 
 Uses the strategy instruction as the only varying part of the system prompt.
-The LLM is required to wrap its output as `{"rendered_format": "...",
-"response": "..."}` so we can audit format compliance.
+The model answers DIRECTLY in markdown (no JSON envelope), so the UI can render
+the reply progressively as it streams — a partial JSON object can't be parsed,
+which is why a wrapper would force buffering the whole reply first.
 
-If the LLM ignores the wrapper, we fall back to per-strategy default
-`rendered_format` and treat the raw text as the response.
+`rendered_format` is therefore INFERRED server-side from the markdown's shape
+(see `detect_rendered_format`) rather than self-declared by the model.
+
+`parse_generation_wrapper` is kept as a backward-compatible fallback: if a model
+still emits the old `{"rendered_format": ..., "response": ...}` envelope, we
+unwrap it instead of showing raw JSON to the user.
 """
 
 from __future__ import annotations
@@ -35,11 +40,11 @@ def generate_response(
     instruction_text: Optional[str] = None,
     fallback_format: Optional[str] = None,
 ) -> Tuple[str, str]:
-    """Run the synthesizer LLM call and parse its JSON wrapper.
+    """Run the synthesizer LLM call and finalize its plain-markdown output.
 
-    Returns (rendered_format, response_text). If parsing fails, falls back
-    to (per-strategy-default, raw_text). `context` carries retrieved RAG
-    passages injected into the system prompt as grounding.
+    Returns (rendered_format, response_text) — the format is inferred from the
+    markdown's shape. `context` carries retrieved RAG passages injected into
+    the system prompt as grounding.
     """
     messages: List[Dict[str, str]] = [dict(m) for m in history]
     messages.append({"role": "user", "content": query})
@@ -56,7 +61,7 @@ def generate_response(
     )
 
     raw = _extract_text(response).strip()
-    return parse_generation_wrapper(raw, strategy, fallback_format=fallback_format)
+    return finalize_generation(raw, strategy, fallback_format=fallback_format)
 
 
 def generate_response_stream(
@@ -78,10 +83,10 @@ def generate_response_stream(
         "rendered_format": "...",
         "response": "...full text..."}        once at the end (final state)
 
-    Uses Anthropic's native streaming API. We accumulate the raw text, then
-    parse the JSON wrapper at the end exactly like the non-streaming path.
-    During streaming we emit the *raw* text (which is JSON-ish) — the UI
-    detects when the "response": "..." field begins and only shows from there.
+    Uses Anthropic's native streaming API. Because the model answers in plain
+    markdown (no JSON envelope), each delta is DIRECTLY renderable — the UI can
+    markdown-render progressively instead of buffering. We still accumulate so
+    the final `done` event can infer rendered_format from the complete shape.
     """
     messages: List[Dict[str, str]] = [dict(m) for m in history]
     messages.append({"role": "user", "content": query})
@@ -104,7 +109,7 @@ def generate_response_stream(
                 yield {"type": "delta", "text": text_chunk}
 
     raw = "".join(accumulated).strip()
-    rendered_format, response_text = parse_generation_wrapper(
+    rendered_format, response_text = finalize_generation(
         raw,
         strategy,
         fallback_format=fallback_format,
@@ -115,6 +120,85 @@ def generate_response_stream(
         "response":        response_text,
         "raw":             raw,
     }
+
+
+def detect_rendered_format(text: str, fallback: str = "paragraph") -> str:
+    """Infer `rendered_format` from the SHAPE of the generated markdown.
+
+    Replaces the model self-declaring its format inside a JSON envelope. Purely
+    structural — semantic formats (decision_recommendation, analogy_explainer)
+    can't be detected from shape, so those fall back to the strategy's expected
+    format supplied by the caller.
+    """
+    if not text or not text.strip():
+        return fallback
+
+    lines = text.strip().splitlines()
+    has_table = any(
+        line.strip().startswith("|") and line.strip().endswith("|")
+        for line in lines
+    ) and any(_is_table_separator_line(line) for line in lines)
+    # Numbered steps appear either as a plain list ("1. Step") or as numbered
+    # headings ("## 1. Step"), which models use often — treat both as steps.
+    has_numbered = any(
+        re.match(r"^\s*(?:#{1,6}\s+)?\d+[.)]\s+\S", line) for line in lines
+    )
+    has_bullets = any(re.match(r"^\s*[-*+]\s+\S", line) for line in lines)
+
+    # A table plus other structure reads as a mixed/hybrid answer.
+    if has_table and (has_numbered or has_bullets):
+        return "hybrid"
+    if has_table:
+        return "comparison_table"
+    if has_numbered:
+        return "numbered_steps"
+    if has_bullets:
+        return "bulleted_list"
+    return fallback
+
+
+def _is_table_separator_line(line: str) -> bool:
+    """True for a markdown table separator row like `|---|:---:|`."""
+    s = line.strip()
+    if not (s.startswith("|") and s.endswith("|")):
+        return False
+    cells = [c.strip() for c in s.strip("|").split("|")]
+    return bool(cells) and all(
+        c and set(c) <= set("-: ") and "-" in c for c in cells
+    )
+
+
+def finalize_generation(
+    text: str,
+    strategy: str,
+    fallback_format: Optional[str] = None,
+) -> Tuple[str, str]:
+    """Turn raw model output into (rendered_format, response_text).
+
+    Primary path: the model replied in plain markdown → infer the format from
+    its shape. Legacy path: if it still emitted the old JSON envelope, unwrap
+    it so the user never sees raw JSON.
+    """
+    fallback = _fallback_format(strategy, fallback_format=fallback_format)
+    raw = (text or "").strip()
+    if not raw:
+        return fallback, ""
+
+    # Legacy envelope guard — only if it really looks like the old wrapper.
+    if raw.startswith("{") or raw.startswith("```"):
+        probe = raw
+        if probe.startswith("```"):
+            probe = re.sub(r"^```[a-zA-Z]*\n", "", probe).strip()
+            if probe.endswith("```"):
+                probe = probe[:-3].strip()
+        parsed = _try_parse_json(probe)
+        if isinstance(parsed, dict) and "response" in parsed:
+            return parse_generation_wrapper(
+                raw, strategy, fallback_format=fallback_format
+            )
+
+    detected = detect_rendered_format(raw, fallback=fallback)
+    return coerce_response_to_strategy_format(strategy, detected, raw)
 
 
 def parse_generation_wrapper(
