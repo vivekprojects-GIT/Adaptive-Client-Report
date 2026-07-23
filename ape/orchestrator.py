@@ -501,10 +501,7 @@ class ApeOrchestrator:
         Yields a sequence of event dicts (the API layer converts these to SSE):
 
           {"event":"metadata", ...}   — once, after selection completes
-          {"event":"snapshot", "text":"..."}  — many, while the synthesizer
-                                        streams; CUMULATIVE — each carries the
-                                        full text so far (client replaces, not
-                                        appends)
+          {"event":"delta", "text":"..."}   — many, while synthesizer streams
           {"event":"done",   ...}     — once, after writes complete (includes
                                         response_id, rendered_format, full
                                         answer, timings_ms)
@@ -642,16 +639,9 @@ class ApeOrchestrator:
         }
 
         # ---- Synthesizer streaming ----
-        # CUMULATIVE protocol: each `snapshot` event carries the FULL text so
-        # far, not just the new chunk. The client replaces its buffer instead
-        # of appending, which makes the stream self-describing — any single
-        # event is enough to repaint the whole answer (simpler client, robust
-        # to a missed repaint). Trade-off: O(n^2) bytes on the wire, acceptable
-        # at chat-answer sizes.
         synth_t0 = _time.monotonic()
         answer_text = ""
         rendered_format = "paragraph"
-        parts: List[str] = []
         try:
             instruction_text = self._load_active_instruction_text(suggested)
             for evt in generate_response_stream(
@@ -660,8 +650,10 @@ class ApeOrchestrator:
                 instruction_text=instruction_text,
             ):
                 if evt["type"] == "delta":
-                    parts.append(evt["text"])
-                    yield {"event": "snapshot", "text": "".join(parts)}
+                    # Note: this is the RAW LLM text including the JSON wrapper.
+                    # The frontend strips the wrapper for display; we still
+                    # forward each chunk so admins can see progress.
+                    yield {"event": "delta", "text": evt["text"]}
                 elif evt["type"] == "done":
                     answer_text = evt["response"]
                     rendered_format = evt["rendered_format"]
@@ -965,7 +957,6 @@ class ApeOrchestrator:
             synth_start = _time.monotonic()
             answer_text = ""
             rendered_format = prepared["format_type"]
-            parts: List[str] = []
             try:
                 instruction_text = self._load_active_instruction_text(selected)
                 for evt in generate_response_stream(
@@ -979,9 +970,7 @@ class ApeOrchestrator:
                     fallback_format=prepared["format_type"],
                 ):
                     if evt["type"] == "delta":
-                        # Cumulative protocol — see run_turn_stream.
-                        parts.append(evt["text"])
-                        yield {"event": "snapshot", "text": "".join(parts)}
+                        yield {"event": "delta", "text": evt["text"]}
                     elif evt["type"] == "done":
                         answer_text = evt["response"]
                         rendered_format = evt["rendered_format"]

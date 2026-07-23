@@ -251,16 +251,9 @@ export function useApe() {
             if (payload.session_id && payload.session_id !== sessionId) {
               setSessionId(payload.session_id);
             }
-          } else if (payload.event === "snapshot") {
-            // Cumulative protocol: the event carries the FULL text so far —
-            // replace the buffer wholesale instead of appending.
-            streamBuf = payload.text;
-            scheduleRender();               // repaint at most once per frame
           } else if (payload.event === "delta") {
-            // Legacy incremental protocol (kept so the UI still works against
-            // an older backend during a rolling deploy).
-            streamBuf += payload.text;
-            scheduleRender();
+            streamBuf += payload.text;      // always accumulate
+            scheduleRender();               // repaint at most once per frame
           } else if (payload.event === "done") {
             finalResult = payload;
             cancelRender();                 // drop any queued partial repaint
