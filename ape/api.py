@@ -264,15 +264,15 @@ async def post_turn_stream(req: TurnRequest):
 
     Event sequence:
       metadata  — once, with the picked strategy + response_id (after selection)
-      delta     — many, each carrying a chunk of raw LLM text
+      snapshot  — many; CUMULATIVE — each carries the full text so far, so the
+                  client REPLACES its buffer instead of appending
       done      — once, with final answer + rendered_format + timings
       error     — if anything blew up mid-stream
 
     The frontend should:
       1. Parse the metadata event → store response_id + selected_strategy
-      2. Append delta.text chunks to a live message bubble as they arrive
-         (strip the JSON wrapper for display — see useApe.js)
-      3. On done, replace the bubble with the cleanly-parsed `answer`.
+      2. On each snapshot, replace the live bubble's text with snapshot.text
+      3. On done, replace the bubble with the authoritative `answer`.
     """
     if ORCHESTRATOR is None:
         raise HTTPException(500, "Orchestrator not initialized")
