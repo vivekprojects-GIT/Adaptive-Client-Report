@@ -20,10 +20,15 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
 
 import {
+  extractOpenCodeFence,
+  repairMarkdownTables,
   splitStreaming,
   withoutOpenCodeFence,
+  withoutOpenMathBlock,
   withoutNascentTable,
   isTableSeparatorLine,
   cleanStreamTail,
@@ -34,18 +39,29 @@ import {
 /** Render markdown exactly like Message.jsx's <Markdown> does. */
 function renderMd(md) {
   return renderToStaticMarkup(
-    React.createElement(ReactMarkdown, { remarkPlugins: [remarkGfm] }, md),
+    React.createElement(ReactMarkdown, {
+      remarkPlugins: [remarkGfm, [remarkMath, { singleDollarTextMath: false }]],
+      rehypePlugins: [[rehypeKatex, { strict: false, throwOnError: false }]],
+    }, repairMarkdownTables(md)),
   );
 }
 
 /** One streaming frame as HTML: committed markdown + sanitized tail. */
 function renderFrame(buf) {
-  const { thinking, committed, tail } = splitStreaming(buf);
+  const { thinking, committed, tail, liveCode } = splitStreaming(buf);
   if (thinking) return "<thinking/>";
   return (
     (committed ? renderMd(committed) : "") +
+    (liveCode ? `<pre class="stream-code"><code>${escapeHtml(liveCode.code)}</code></pre>` : "") +
     (tail ? `<div class="stream-tail">${tail}</div>` : "")
   );
+}
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
 /** Visible text of a rendered frame: strip all HTML tags. */
@@ -61,12 +77,13 @@ function visibleText(html) {
 function assertNoLeaksAtEveryPrefix(answer) {
   for (let i = 1; i <= answer.length; i++) {
     const frame = renderFrame(answer.slice(0, i))
-      .replace(/<pre>[\s\S]*?<\/pre>/g, "");
+      .replace(/<pre(?:\s[^>]*)?>[\s\S]*?<\/pre>/g, "");
     const v = visibleText(frame);
     assert.ok(!/\|\s*:?-{3,}/.test(v), `frame ${i}: leaked table separator:\n${v}`);
     assert.ok(!v.includes("**"), `frame ${i}: leaked ** stars:\n${v}`);
     assert.ok(!/(^|\n)\s*#{1,6}\s/.test(v), `frame ${i}: leaked # heading marker:\n${v}`);
     assert.ok(!v.includes("```"), `frame ${i}: leaked \`\`\` fence:\n${v}`);
+    assert.ok(!v.includes("$$"), `frame ${i}: leaked $$ math fence:\n${v}`);
   }
 }
 
@@ -123,14 +140,17 @@ const CODE = [
   "Done.",
 ].join("\n");
 
-test("code fence: fence and body hidden until the fence closes", () => {
+test("code fence: body streams inside a live code block without raw fences", () => {
   assertNoLeaksAtEveryPrefix(CODE);
   const openIdx = CODE.indexOf("print(x)") + 4; // mid-body
-  const v = visibleText(renderFrame(CODE.slice(0, openIdx)));
-  assert.ok(!v.includes("compute"), "code body visible while fence open");
+  const html = renderFrame(CODE.slice(0, openIdx));
+  const v = visibleText(html);
+  assert.ok(html.includes('class="stream-code"'), "live code block absent while fence open");
+  assert.ok(v.includes("compute"), "code body did not stream inside live code block");
+  assert.ok(!v.includes("```"), "raw code fence visible while streaming");
   const closeIdx = CODE.indexOf("```", CODE.indexOf("python")) + 4;
-  const html = renderFrame(CODE.slice(0, closeIdx));
-  assert.ok(html.includes("<pre>"), "closed fence did not render");
+  const closed = renderFrame(CODE.slice(0, closeIdx));
+  assert.ok(closed.includes("<pre>"), "closed fence did not render");
 });
 
 test("code fence: completed render intact", () => {
@@ -205,6 +225,27 @@ test("task lists render as checkboxes (GFM)", () => {
   assertFinalHas("- [ ] Choose a broker\n- [x] Open account", ['type="checkbox"']);
 });
 
+// ---------- math ----------
+
+const MATH = [
+  "The score is:",
+  "",
+  "$$",
+  "UCB = \\bar{x} + c \\sqrt{\\frac{2\\ln N}{n}}",
+  "$$",
+  "",
+  "Then pick the largest score.",
+].join("\n");
+
+test("math block: no raw $$ while streaming; completed render uses KaTeX", () => {
+  assertNoLeaksAtEveryPrefix(MATH);
+  const mid = MATH.indexOf("\\frac") + 5;
+  const during = renderFrame(MATH.slice(0, mid));
+  assert.ok(!visibleText(during).includes("$$"), "raw math fence visible while open");
+  const done = renderMd(MATH);
+  assert.ok(done.includes("katex-display"), "completed math block did not render with KaTeX");
+});
+
 test("inline code: backticks stripped mid-line, rendered when complete", () => {
   const mid = visibleText(renderFrame("Use `npm ru"));
   assert.ok(!mid.includes("`"));
@@ -225,11 +266,32 @@ test("withoutOpenCodeFence: hides only an unterminated fence", () => {
   assert.equal(withoutOpenCodeFence("no fences"), "no fences");
 });
 
+test("extractOpenCodeFence: returns live code body and stable prefix", () => {
+  assert.deepEqual(extractOpenCodeFence("a\n```js\ncode", "tail"), {
+    before: "a",
+    language: "js",
+    code: "code\ntail",
+  });
+  assert.equal(extractOpenCodeFence("a\n```js\ncode\n```"), null);
+});
+
+test("withoutOpenMathBlock: hides only an unterminated display math block", () => {
+  assert.equal(withoutOpenMathBlock("a\n$$\nx"), "a");
+  assert.equal(withoutOpenMathBlock("a\n$$\nx\n$$"), "a\n$$\nx\n$$");
+});
+
 test("withoutNascentTable: hides header-only, keeps valid table", () => {
   assert.equal(withoutNascentTable("x\n| a | b |"), "x");
   const valid = "x\n| a | b |\n|---|---|";
   assert.equal(withoutNascentTable(valid), valid);
   assert.equal(withoutNascentTable("plain"), "plain");
+});
+
+test("repairMarkdownTables: converts malformed pipe blocks into GFM tables", () => {
+  const broken = "x\n| a | b |\n| 1 | 2 |\ny";
+  const repaired = repairMarkdownTables(broken);
+  assert.equal(repaired, "x\n| a | b |\n|---|---|\n| 1 | 2 |\ny");
+  assert.ok(renderMd(broken).includes("<table>"));
 });
 
 test("isTableSeparatorLine", () => {

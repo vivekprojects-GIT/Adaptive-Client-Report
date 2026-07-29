@@ -331,10 +331,17 @@
   color: inherit;
   font-size: 13px;
 }
+.msg.assistant .msg-content .md-table-scroll {
+  width: 100%;
+  overflow-x: auto;
+  margin: 1em 0;
+  border-radius: var(--radius-md);
+}
 .msg.assistant .msg-content table {
   border-collapse: collapse;
-  margin: 1em 0;
+  margin: 0;
   width: 100%;
+  min-width: 480px;
 }
 .msg.assistant .msg-content th,
 .msg.assistant .msg-content td {
@@ -352,6 +359,49 @@
   padding-left: 16px;
   margin: 1em 0;
   color: var(--text-secondary);
+}
+.msg.assistant .msg-content .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 6px 0;
+}
+.msg.assistant .msg-content .math-display {
+  max-width: 100%;
+}
+.stream-code-block {
+  margin: 1em 0;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  background: var(--code-block-bg);
+  color: var(--code-block-fg);
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.08);
+}
+.stream-code-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  background: rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.72);
+  font-size: 11px;
+  font-family: ui-monospace, "JetBrains Mono", Consolas, monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.stream-code-block pre {
+  margin: 0;
+  padding: 14px 16px;
+  overflow-x: auto;
+  font-size: 13px;
+  line-height: 1.55;
+}
+.stream-code-block code {
+  background: none;
+  padding: 0;
+  border-radius: 0;
+  color: inherit;
+  font-family: ui-monospace, "JetBrains Mono", Consolas, monospace;
 }
 
 /* Placeholder (Thinking…) */
@@ -765,8 +815,9 @@
   padding: 18px 20px;
   box-shadow: var(--shadow-sm);
 }
-.msg.assistant .msg-content table {
-  overflow: hidden;
+.msg.assistant .msg-content .md-table-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
   border-radius: var(--radius-md);
   box-shadow: 0 0 0 1px var(--border);
 }

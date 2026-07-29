@@ -39,25 +39,33 @@
 export function splitStreaming(content) {
   const text = content || "";
   if (!text.trim()) {
-    return { thinking: true, committed: "", tail: "" };
+    return { thinking: true, committed: "", tail: "", liveCode: null };
   }
 
   const cut = text.lastIndexOf("\n");
   const committedRaw = cut === -1 ? "" : text.slice(0, cut);
   const tailRaw      = cut === -1 ? text : text.slice(cut + 1);
+  const liveCode = extractOpenCodeFence(committedRaw, tailRaw);
+  const committedSource = liveCode ? liveCode.before : committedRaw;
 
   // Among the complete lines, hold back any structure that is not yet in a
   // renderable state, so the parser never receives half-open syntax.
-  const committed = commitStableMarkdown(committedRaw);
+  const committed = commitStableMarkdown(committedSource);
 
   // If the buffer ends inside an open code fence, the in-progress line is code,
   // not prose — hide it along with the fence instead of showing it as text.
-  const insideFence =
-    withoutOpenCodeFence(committedRaw) !== committedRaw ||
-    /^\s*```/.test(tailRaw);
+  const startsFence = /^\s*```/.test(tailRaw);
 
-  const tail = insideFence ? "" : cleanStreamTail(tailRaw);
-  return { thinking: false, committed, tail };
+  const tail = liveCode || startsFence ? "" : cleanStreamTail(tailRaw);
+  return {
+    thinking: false,
+    committed,
+    tail,
+    liveCode: liveCode ? {
+      language: liveCode.language,
+      code: liveCode.code,
+    } : null,
+  };
 }
 
 /**
@@ -67,7 +75,44 @@ export function splitStreaming(content) {
  * otherwise look like a nascent table.
  */
 export function commitStableMarkdown(committed) {
-  return withoutNascentTable(withoutOpenCodeFence(committed));
+  return withoutNascentTable(
+    repairMarkdownTables(
+      withoutOpenMathBlock(
+        withoutOpenCodeFence(committed),
+      ),
+    ),
+  );
+}
+
+export function extractOpenCodeFence(committed, tail = "") {
+  if (!committed || committed.indexOf("```") === -1) return null;
+  const lines = committed.split("\n");
+  let open = false;
+  let lastOpenIdx = -1;
+  let language = "";
+
+  for (let i = 0; i < lines.length; i++) {
+    const fence = lines[i].match(/^\s*```(.*)$/);
+    if (!fence) continue;
+    if (!open) {
+      open = true;
+      lastOpenIdx = i;
+      language = (fence[1] || "").trim().split(/\s+/)[0] || "";
+    } else {
+      open = false;
+      lastOpenIdx = -1;
+      language = "";
+    }
+  }
+
+  if (!open || lastOpenIdx < 0) return null;
+  const codeLines = lines.slice(lastOpenIdx + 1);
+  const code = tail ? [...codeLines, tail].join("\n") : codeLines.join("\n");
+  return {
+    before: lines.slice(0, lastOpenIdx).join("\n"),
+    language,
+    code,
+  };
 }
 
 /**
@@ -80,18 +125,78 @@ export function commitStableMarkdown(committed) {
  * until it closes, then renders whole.
  */
 export function withoutOpenCodeFence(committed) {
-  if (!committed || committed.indexOf("```") === -1) return committed;
+  const open = extractOpenCodeFence(committed);
+  return open ? open.before : committed;
+}
+
+export function withoutOpenMathBlock(committed) {
+  if (!committed || committed.indexOf("$$") === -1) return committed;
   const lines = committed.split("\n");
   let open = false;
   let lastOpenIdx = -1;
+
   for (let i = 0; i < lines.length; i++) {
-    if (/^\s*```/.test(lines[i])) {
+    if (/^\s*\$\$\s*$/.test(lines[i])) {
       if (!open) { open = true; lastOpenIdx = i; }
       else { open = false; }
     }
   }
-  if (!open) return committed;                 // every fence is closed
-  return lines.slice(0, lastOpenIdx).join("\n"); // hide the open fence
+
+  return open ? lines.slice(0, lastOpenIdx).join("\n") : committed;
+}
+
+export function repairMarkdownTables(markdown) {
+  if (!markdown || markdown.indexOf("|") === -1) return markdown;
+  const lines = markdown.split("\n");
+  const out = [];
+  let i = 0;
+  let inFence = false;
+
+  while (i < lines.length) {
+    if (/^\s*```/.test(lines[i])) {
+      inFence = !inFence;
+      out.push(lines[i++]);
+      continue;
+    }
+
+    if (inFence || !isPipeTableLine(lines[i])) {
+      out.push(lines[i++]);
+      continue;
+    }
+
+    const start = i;
+    while (i < lines.length && isPipeTableLine(lines[i])) i++;
+    const block = lines.slice(start, i);
+    const hasSeparator = block.some(isTableSeparatorLine);
+    if (!hasSeparator && canRepairTableBlock(block)) {
+      out.push(block[0], separatorForTableLine(block[0]), ...block.slice(1));
+    } else {
+      out.push(...block);
+    }
+  }
+
+  return out.join("\n");
+}
+
+export function isPipeTableLine(line) {
+  const s = (line || "").trim();
+  return s.startsWith("|") && s.endsWith("|") && splitTableCells(s).length >= 2;
+}
+
+function canRepairTableBlock(block) {
+  if (block.length < 2) return false;
+  const count = splitTableCells(block[0]).length;
+  return count >= 2 && block.every((line) => splitTableCells(line).length === count);
+}
+
+function separatorForTableLine(line) {
+  const count = splitTableCells(line).length;
+  return `|${Array.from({ length: count }, () => "---").join("|")}|`;
+}
+
+function splitTableCells(line) {
+  const s = (line || "").trim().replace(/^\|/, "").replace(/\|$/, "");
+  return s.split("|").map((cell) => cell.trim());
 }
 
 /**
@@ -108,7 +213,7 @@ export function withoutNascentTable(committed) {
   if (!committed || committed.indexOf("|") === -1) return committed;
   const lines = committed.split("\n");
   let i = lines.length;
-  while (i > 0 && /^\s*\|/.test(lines[i - 1])) i--;
+  while (i > 0 && isPipeTableLine(lines[i - 1])) i--;
   const trailing = lines.slice(i);
   if (trailing.length === 0) return committed;               // no trailing table
   if (trailing.some(isTableSeparatorLine)) return committed; // already a table
@@ -137,6 +242,8 @@ export function cleanStreamTail(tail) {
   return t
     .replace(/^\s*#{1,6}\s*/, "")             // heading marker being typed
     .replace(/^\s*>\s?/, "")                  // blockquote marker being typed
+    .replace(/\$\$/g, "")                     // display math delimiter
+    .replace(/(^|[^\\])\$(?=\S)(?!\d)/g, "$1") // inline math opener, not money
     .replace(/\*\*/g, "")                     // unclosed bold
     .replace(/(^|[^*])\*(?!\*)/g, "$1")       // unclosed single-star italic
     .replace(/~~/g, "")                       // unclosed strikethrough

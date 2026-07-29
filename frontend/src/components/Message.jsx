@@ -1,20 +1,34 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { splitStreaming } from "../utils/streamRender.js";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import "katex/dist/katex.min.css";
+import { repairMarkdownTables, splitStreaming } from "../utils/streamRender.js";
 
 // Full CommonMark + GFM (tables, strikethrough, task lists, autolinks) via
 // react-markdown — replaces the old hand-rolled regex renderer, so any
 // standard markdown the model emits renders correctly without per-syntax
 // patches. Links open in a new tab.
-const MD_PLUGINS = [remarkGfm];
+const MD_PLUGINS = [remarkGfm, [remarkMath, { singleDollarTextMath: false }]];
+const REHYPE_PLUGINS = [[rehypeKatex, { strict: false, throwOnError: false }]];
 const MD_COMPONENTS = {
   a: (props) => <a {...props} target="_blank" rel="noopener noreferrer" />,
+  table: ({ node, ...props }) => (
+    <div className="md-table-scroll">
+      <table {...props} />
+    </div>
+  ),
+  pre: ({ node, ...props }) => <pre className="md-code-block" {...props} />,
 };
 
 function Markdown({ children }) {
   return (
-    <ReactMarkdown remarkPlugins={MD_PLUGINS} components={MD_COMPONENTS}>
-      {children}
+    <ReactMarkdown
+      remarkPlugins={MD_PLUGINS}
+      rehypePlugins={REHYPE_PLUGINS}
+      components={MD_COMPONENTS}
+    >
+      {repairMarkdownTables(children || "")}
     </ReactMarkdown>
   );
 }
@@ -105,7 +119,7 @@ export default function Message({ message, isLastAssistant, showMeta, onFeedback
  * the still-typing line; this component just renders those two pieces.
  */
 function StreamingContent({ content }) {
-  const { thinking, committed, tail } = splitStreaming(content);
+  const { thinking, committed, tail, liveCode } = splitStreaming(content);
   if (thinking) {
     return (
       <div className="placeholder-text">
@@ -116,8 +130,22 @@ function StreamingContent({ content }) {
   return (
     <>
       {committed ? <Markdown>{committed}</Markdown> : null}
+      {liveCode ? <LiveCodeBlock language={liveCode.language} code={liveCode.code} /> : null}
       {tail ? <div className="stream-tail">{tail}</div> : null}
     </>
+  );
+}
+
+function LiveCodeBlock({ language, code }) {
+  const label = language || "code";
+  return (
+    <div className="stream-code-block">
+      <div className="stream-code-header">
+        <span>{label}</span>
+        <span>Streaming</span>
+      </div>
+      <pre><code>{code || " "}</code></pre>
+    </div>
   );
 }
 
