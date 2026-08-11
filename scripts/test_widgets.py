@@ -36,6 +36,39 @@ SNAP = ClientSnapshot(
                  {"driver": "Fees", "contribution_pct": -0.20}],
     fees={"advisory": 2150.0, "fund": 720.0},
     cash_flows={"contributions": 15000.0, "withdrawals": 5000.0},
+
+    # Depth the CSV path cannot supply. Included so the blocks that need
+    # holdings, history or targets are actually exercised — without it they
+    # correctly return None and the gallery silently stops covering them.
+    # One holding is deliberately negative so top_detractors has something
+    # to show.
+    holdings=[
+        {"symbol": "VTI", "name": "Total US Market Index", "asset_class": "US Equity",
+         "weight_pct": 30.0, "value": 372_000.0, "return_pct": 6.20,
+         "contribution_pct": 1.86},
+        {"symbol": "SPX500", "name": "US Large Cap Core", "asset_class": "US Equity",
+         "weight_pct": 18.0, "value": 223_200.0, "return_pct": 5.80,
+         "contribution_pct": 1.04},
+        {"symbol": "AGGB", "name": "Aggregate Bond Index", "asset_class": "Fixed Income",
+         "weight_pct": 30.0, "value": 372_000.0, "return_pct": 3.00,
+         "contribution_pct": 0.90},
+        {"symbol": "EMKT", "name": "Emerging Markets", "asset_class": "Intl Equity",
+         "weight_pct": 14.0, "value": 173_600.0, "return_pct": -2.50,
+         "contribution_pct": -0.35},
+        {"symbol": "CASH", "name": "Cash and Equivalents", "asset_class": "Cash",
+         "weight_pct": 8.0, "value": 99_200.0, "return_pct": 1.00,
+         "contribution_pct": 0.08},
+    ],
+    history=[
+        {"period": "2025Q3", "portfolio": 1.83, "benchmark": 2.10, "excess": -0.27},
+        {"period": "2025Q4", "portfolio": 3.85, "benchmark": 3.40, "excess": 0.45},
+        {"period": "2026Q1", "portfolio": -1.33, "benchmark": -0.90, "excess": -0.43},
+        {"period": "2026Q2", "portfolio": 4.80, "benchmark": 5.40, "excess": -0.60},
+    ],
+    targets={"US Equity": 40.0, "Fixed Income": 30.0, "Intl Equity": 15.0,
+             "Cash": 7.0},
+    benchmark_name="60/40 Balanced Composite",
+    volatility_pct=9.62,
 )
 
 # Shapes that need data the snapshot does not carry, so the chart builder

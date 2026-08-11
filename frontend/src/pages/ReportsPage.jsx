@@ -74,7 +74,6 @@ export default function ReportsPage() {
           </div>
           <div className="app-actions">
             <Link to="/admin"     className="app-link">Configuration</Link>
-            <Link to="/analytics" className="app-link">Analytics</Link>
           </div>
         </div>
       </header>

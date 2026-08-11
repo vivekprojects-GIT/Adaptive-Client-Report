@@ -165,7 +165,6 @@ export default function AdvisorPage() {
                     onClick={() => setView(id)}>{label}</button>
           ))}
           <a className="adv-nav-item" href="/admin">Configuration</a>
-          <a className="adv-nav-item" href="/analytics">Analytics</a>
         </nav>
         <div className="adv-user">
           <b>Advisor Admin</b><span>admin@wealth.com</span>

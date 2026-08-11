@@ -85,40 +85,15 @@ export const api = {
   seed:                 ()                                 => request("POST",   "/admin/seed"),
 
   // Analytics — business layer
-  recomputeAnalytics:   (days = 14)                        => request("POST",   `/analytics/recompute?days=${days}`),
-  userInterests:        (userId, limit = 10, refresh = false) =>
-                          request("GET", `/analytics/user-interests?user_id=${encodeURIComponent(userId)}&limit=${limit}&refresh=${refresh}`),
-  topicUsers:           (topic, limit = 20, minScore = 0.5) =>
-                          request("GET", `/analytics/topic-users?topic=${encodeURIComponent(topic)}&limit=${limit}&min_score=${minScore}`),
-  trends:               (days = 7, limit = 30, refresh = false, domain = "") =>
-                          request("GET", `/analytics/trends?days=${days}&limit=${limit}&refresh=${refresh}${domain ? `&domain=${encodeURIComponent(domain)}` : ""}`),
-  topicTimeseries:      (topic, days = 30, domain = "") =>
-                          request("GET", `/analytics/topic-timeseries?topic=${encodeURIComponent(topic)}&days=${days}${domain ? `&domain=${encodeURIComponent(domain)}` : ""}`),
-  platformTimeseries:   (days = 30, domain = "") =>
-                          request("GET", `/analytics/platform-timeseries?days=${days}${domain ? `&domain=${encodeURIComponent(domain)}` : ""}`),
-  topicsTimeseries:     (days = 30, topN = 5, domain = "") =>
-                          request("GET", `/analytics/topics-timeseries?days=${days}&top_n=${topN}${domain ? `&domain=${encodeURIComponent(domain)}` : ""}`),
-  userTimeseries:       (userId, days = 30, domain = "") =>
-                          request("GET", `/analytics/user-timeseries?user_id=${encodeURIComponent(userId)}&days=${days}${domain ? `&domain=${encodeURIComponent(domain)}` : ""}`),
-  userOffers:           (userId)                            =>
-                          request("GET", `/analytics/offers/${encodeURIComponent(userId)}`),
   // Pass userId="" or null to get the GLOBAL aggregate view across all users.
-  cognitiveFacets:      (userId = "", minInteractions = 1, domain = "") =>
-                          request("GET", `/analytics/cognitive-facets?min_interactions=${minInteractions}${userId ? `&user_id=${encodeURIComponent(userId)}` : ""}${domain ? `&domain=${encodeURIComponent(domain)}` : ""}`),
   activeUsers:          (days = 1, minInterest = 0, limit = 100, domain = "") =>
                           request("GET", `/analytics/active-users?days=${days}&min_interest=${minInterest}&limit=${limit}${domain ? `&domain=${encodeURIComponent(domain)}` : ""}`),
-  userProfile:          (userId, domain = "") =>
-                          request("GET", `/analytics/user-profile?user_id=${encodeURIComponent(userId)}${domain ? `&domain=${encodeURIComponent(domain)}` : ""}`),
   unmappedIntents:      (days = 30, limit = 50, domain = "") =>
                           request("GET", `/analytics/unmapped-intents?days=${days}&limit=${limit}${domain ? `&domain=${encodeURIComponent(domain)}` : ""}`),
-  platformOverview:     (days = 30, topN = 8, domain = "") =>
-                          request("GET", `/analytics/platform-overview?days=${days}&top_n=${topN}${domain ? `&domain=${encodeURIComponent(domain)}` : ""}`),
   strategyPerformance:  (userId = "", minPulls = 3, domain = "") =>
                           request("GET", `/analytics/strategy-performance?min_pulls=${minPulls}${userId ? `&user_id=${encodeURIComponent(userId)}` : ""}${domain ? `&domain=${encodeURIComponent(domain)}` : ""}`),
   instructionQuality:   (days = 14, minTurns = 5, sampleLimit = 5) =>
                           request("GET", `/analytics/instruction-quality?days=${days}&min_turns=${minTurns}&sample_limit=${sampleLimit}`),
-  customerHealth:       (days = 30, cohortWeeks = 4) =>
-                          request("GET", `/analytics/customer-health?days=${days}&cohort_weeks=${cohortWeeks}`),
   ragQuality:           (days = 14, minTurns = 5, sampleLimit = 5) =>
                           request("GET", `/analytics/rag-quality?days=${days}&min_turns=${minTurns}&sample_limit=${sampleLimit}`),
 };

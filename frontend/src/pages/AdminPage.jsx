@@ -50,7 +50,6 @@ export default function AdminPage() {
           </div>
           <div className="app-actions">
             <Link to="/"          className="app-link">Reports</Link>
-            <Link to="/analytics" className="app-link">Analytics</Link>
           </div>
         </div>
         <div className="app-header-row app-header-row-tabs">
