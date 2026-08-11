@@ -5,7 +5,8 @@ import IntentsTab     from "./admin/IntentsTab.jsx";
 import StrategiesTab  from "./admin/StrategiesTab.jsx";
 import InstructionsTab from "./admin/InstructionsTab.jsx";
 import PoliciesTab    from "./admin/PoliciesTab.jsx";
-import OffersTab     from "./admin/OffersTab.jsx";
+import ReportTypesTab from "./admin/ReportTypesTab.jsx";
+import TemplatesTab   from "./admin/TemplatesTab.jsx";
 import SignalRulesTab from "./admin/SignalRulesTab.jsx";
 import RewardScaleTab from "./admin/RewardScaleTab.jsx";
 import UcbConfigTab   from "./admin/UcbConfigTab.jsx";
@@ -22,7 +23,8 @@ const TABS = [
   { id: "strategies",   label: "Strategies" },
   { id: "instructions", label: "Instructions" },
   { id: "policies",     label: "Policies" },
-  { id: "offers",       label: "Outreach" },
+  { id: "reporttypes",  label: "Report Types" },
+  { id: "templates",    label: "Templates" },
   { id: "signals",      label: "Signal Routing" },
   { id: "rewards",      label: "Reward Scale" },
   { id: "ucb",          label: "Selection Score" },
@@ -47,7 +49,7 @@ export default function AdminPage() {
             <span className="app-brand-page">Configuration</span>
           </div>
           <div className="app-actions">
-            <Link to="/"          className="app-link">Chat</Link>
+            <Link to="/"          className="app-link">Reports</Link>
             <Link to="/analytics" className="app-link">Analytics</Link>
           </div>
         </div>
@@ -71,7 +73,8 @@ export default function AdminPage() {
         {active === "strategies"   && <StrategiesTab  notify={notify} />}
         {active === "instructions" && <InstructionsTab notify={notify} />}
         {active === "policies"     && <PoliciesTab    notify={notify} />}
-        {active === "offers"       && <OffersTab      notify={notify} />}
+        {active === "reporttypes"  && <ReportTypesTab notify={notify} />}
+        {active === "templates"    && <TemplatesTab   notify={notify} />}
         {active === "signals"      && <SignalRulesTab notify={notify} />}
         {active === "rewards"      && <RewardScaleTab notify={notify} />}
         {active === "ucb"          && <UcbConfigTab   notify={notify} />}

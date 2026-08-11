@@ -1,0 +1,388 @@
+"""Relational schema — shared domain tables, keyed by client_id.
+
+═══════════════════════════════════════════════════════════════════════════
+ONE TABLE PER CONCEPT, NOT ONE PER CLIENT
+═══════════════════════════════════════════════════════════════════════════
+
+1,000 clients means 1,000 rows in `holdings`, not 1,000 `holdings` tables.
+Per-client tables make migrations, cross-client analytics and APE learning
+(which is inherently population-level) impractical. Every row carries
+`client_id`; that is the isolation key, enforced in every query.
+
+═══════════════════════════════════════════════════════════════════════════
+IMMUTABLE SNAPSHOTS
+═══════════════════════════════════════════════════════════════════════════
+
+A report is generated from a `report_snapshot`, and every portfolio fact
+hangs off that snapshot rather than off the client. So:
+
+    C1001 ── snapshot 2025Q4 ── holdings / allocations / performance / fees
+          ── snapshot 2026Q1 ── ...
+          ── snapshot 2026Q2 ── ...
+
+Regenerating a Q1 report next year reproduces the Q1 figures exactly,
+because today's portfolio moving cannot alter a closed snapshot. Without
+this an old report silently rewrites itself, which for a document already
+sent to a client is indefensible.
+
+═══════════════════════════════════════════════════════════════════════════
+PORTABILITY
+═══════════════════════════════════════════════════════════════════════════
+
+SQLite locally, PostgreSQL later — same models, same queries, connection
+string only. Deliberately avoided: server-side defaults, JSONB-specific
+operators, and sequences. JSON columns use SQLAlchemy's portable `JSON`,
+which maps to TEXT on SQLite and JSONB on Postgres.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Optional
+
+from sqlalchemy import (
+    JSON, Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text,
+    UniqueConstraint,
+)
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+def _now() -> datetime:
+    return datetime.utcnow()
+
+
+# ---------------------------------------------------------------------------
+# Client / portfolio
+# ---------------------------------------------------------------------------
+
+class Client(Base):
+    __tablename__ = "clients"
+
+    client_id:   Mapped[str] = mapped_column(String(32), primary_key=True)
+    name:        Mapped[str] = mapped_column(String(120))
+    email:       Mapped[str] = mapped_column(String(200), index=True)
+    segment_id:  Mapped[str] = mapped_column(String(64), index=True)
+    persona:     Mapped[str] = mapped_column(String(64), default="")
+    risk_profile: Mapped[str] = mapped_column(String(32), default="Moderate")
+    adviser:     Mapped[str] = mapped_column(String(120), default="")
+    status:      Mapped[str] = mapped_column(String(24), default="active")
+    created_at:  Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+    snapshots: Mapped[list["ReportSnapshot"]] = relationship(back_populates="client")
+
+
+class ReportSnapshot(Base):
+    """Frozen portfolio facts for one client and one period. Never updated."""
+
+    __tablename__ = "report_snapshots"
+    __table_args__ = (
+        UniqueConstraint("client_id", "period", "version", name="uq_snapshot"),
+        Index("ix_snapshot_client_period", "client_id", "period"),
+    )
+
+    snapshot_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    client_id:   Mapped[str] = mapped_column(ForeignKey("clients.client_id"), index=True)
+    period:      Mapped[str] = mapped_column(String(16), index=True)
+    as_of_date:  Mapped[str] = mapped_column(String(16))
+    version:     Mapped[int] = mapped_column(Integer, default=1)
+    portfolio_value: Mapped[float] = mapped_column(Float)
+    risk_level:  Mapped[str] = mapped_column(String(32), default="Moderate")
+    source_version: Mapped[str] = mapped_column(String(32), default="synthetic-v1")
+    created_at:  Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+    client: Mapped["Client"] = relationship(back_populates="snapshots")
+
+
+# NOTE ON THE `snapshot` / `report` RELATIONSHIPS BELOW
+# -----------------------------------------------------
+# They exist for INSERT ORDERING, not for convenient traversal. A bare
+# ForeignKey column does not tell the ORM's unit of work that the parent row
+# must be written first, so without a mapped relationship the child rows are
+# inserted before their snapshot and the flush fails on the foreign key.
+
+
+class Holding(Base):
+    __tablename__ = "holdings"
+    __table_args__ = (Index("ix_holdings_snapshot", "snapshot_id"),)
+
+    snapshot: Mapped["ReportSnapshot"] = relationship()
+
+    id:          Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    snapshot_id: Mapped[str] = mapped_column(ForeignKey("report_snapshots.snapshot_id"), index=True)
+    client_id:   Mapped[str] = mapped_column(String(32), index=True)
+    symbol:      Mapped[str] = mapped_column(String(24))
+    name:        Mapped[str] = mapped_column(String(160))
+    asset_class: Mapped[str] = mapped_column(String(64), index=True)
+    quantity:    Mapped[float] = mapped_column(Float, default=0.0)
+    market_value: Mapped[float] = mapped_column(Float)
+    weight_pct:  Mapped[float] = mapped_column(Float)
+    return_pct:  Mapped[float] = mapped_column(Float, default=0.0)
+    contribution_pct: Mapped[float] = mapped_column(Float, default=0.0)
+
+
+class Allocation(Base):
+    __tablename__ = "allocations"
+    __table_args__ = (
+        UniqueConstraint("snapshot_id", "asset_class", name="uq_alloc"),
+    )
+
+    snapshot: Mapped["ReportSnapshot"] = relationship()
+
+    id:          Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    snapshot_id: Mapped[str] = mapped_column(ForeignKey("report_snapshots.snapshot_id"), index=True)
+    client_id:   Mapped[str] = mapped_column(String(32), index=True)
+    asset_class: Mapped[str] = mapped_column(String(64))
+    weight_pct:  Mapped[float] = mapped_column(Float)
+    target_weight_pct: Mapped[float] = mapped_column(Float, default=0.0)
+    return_pct:  Mapped[float] = mapped_column(Float, default=0.0)
+    contribution_pct: Mapped[float] = mapped_column(Float, default=0.0)
+    market_value: Mapped[float] = mapped_column(Float, default=0.0)
+
+
+class Performance(Base):
+    __tablename__ = "performance"
+
+    snapshot: Mapped["ReportSnapshot"] = relationship()
+
+    id:          Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    snapshot_id: Mapped[str] = mapped_column(ForeignKey("report_snapshots.snapshot_id"),
+                                             unique=True, index=True)
+    client_id:   Mapped[str] = mapped_column(String(32), index=True)
+    period:      Mapped[str] = mapped_column(String(16))
+    portfolio_return_pct: Mapped[float] = mapped_column(Float)
+    benchmark_name:       Mapped[str] = mapped_column(String(80), default="")
+    benchmark_return_pct: Mapped[float] = mapped_column(Float)
+    excess_return_pct:    Mapped[float] = mapped_column(Float)
+    volatility_pct:       Mapped[float] = mapped_column(Float, default=0.0)
+
+
+class Fee(Base):
+    __tablename__ = "fees"
+
+    snapshot: Mapped["ReportSnapshot"] = relationship()
+
+    id:          Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    snapshot_id: Mapped[str] = mapped_column(ForeignKey("report_snapshots.snapshot_id"), index=True)
+    client_id:   Mapped[str] = mapped_column(String(32), index=True)
+    fee_type:    Mapped[str] = mapped_column(String(48))
+    amount:      Mapped[float] = mapped_column(Float)
+
+
+class CashFlow(Base):
+    __tablename__ = "cash_flows"
+
+    snapshot: Mapped["ReportSnapshot"] = relationship()
+
+    id:          Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    snapshot_id: Mapped[str] = mapped_column(ForeignKey("report_snapshots.snapshot_id"), index=True)
+    client_id:   Mapped[str] = mapped_column(String(32), index=True)
+    flow_type:   Mapped[str] = mapped_column(String(48))   # contribution | withdrawal | income
+    amount:      Mapped[float] = mapped_column(Float)
+
+
+# ---------------------------------------------------------------------------
+# Reports
+# ---------------------------------------------------------------------------
+
+class Report(Base):
+    __tablename__ = "reports"
+    __table_args__ = (Index("ix_reports_client_period", "client_id", "period"),)
+
+    report_id:   Mapped[str] = mapped_column(String(80), primary_key=True)
+    client_id:   Mapped[str] = mapped_column(ForeignKey("clients.client_id"), index=True)
+    snapshot_id: Mapped[str] = mapped_column(ForeignKey("report_snapshots.snapshot_id"))
+    period:      Mapped[str] = mapped_column(String(16))
+    report_type: Mapped[str] = mapped_column(String(64), index=True)
+    # The ARM that produced this report. Recorded so a reward can find its way
+    # back to the exact arm, and so a bad template version stays detectable.
+    template_arm:     Mapped[str] = mapped_column(String(64), index=True)
+    template_id:      Mapped[str] = mapped_column(String(80), default="")
+    selection_method: Mapped[str] = mapped_column(String(24), default="")
+    status:      Mapped[str] = mapped_column(String(24), default="DRAFT")
+    report_version: Mapped[int] = mapped_column(Integer, default=1)
+    html_path:   Mapped[str] = mapped_column(String(300), default="")
+    pdf_path:    Mapped[str] = mapped_column(String(300), default="")
+    validation:  Mapped[str] = mapped_column(String(32), default="")
+    created_at:  Mapped[datetime] = mapped_column(DateTime, default=_now)
+    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    sent_at:     Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    # Reward attribution — mirrors the APE turn_record contract.
+    reward_status:     Mapped[str] = mapped_column(String(16), default="PENDING")
+    normalized_reward: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
+
+class ReportBlock(Base):
+    """One rendered block. `block_id` is what a client highlight resolves to,
+    which is why it is stored rather than only living inside report.json."""
+
+    __tablename__ = "report_blocks"
+    __table_args__ = (
+        UniqueConstraint("report_id", "block_id", name="uq_report_block"),
+        Index("ix_blocks_report", "report_id"),
+    )
+
+    report: Mapped["Report"] = relationship()
+
+    id:        Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    block_id:  Mapped[str] = mapped_column(String(80), index=True)
+    report_id: Mapped[str] = mapped_column(ForeignKey("reports.report_id"), index=True)
+    client_id: Mapped[str] = mapped_column(String(32), index=True)
+    block_type: Mapped[str] = mapped_column(String(48))
+    section_id: Mapped[str] = mapped_column(String(64), default="")
+    title:      Mapped[str] = mapped_column(String(200), default="")
+    content_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    # The snapshot fields this block's figures came from. Highlight -> block
+    # -> source_refs -> frozen facts is the grounded answer path, and it
+    # needs no retrieval at all.
+    source_refs: Mapped[list] = mapped_column(JSON, default=list)
+    display_order: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class Delivery(Base):
+    __tablename__ = "deliveries"
+
+    report: Mapped["Report"] = relationship()
+
+    id:        Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    report_id: Mapped[str] = mapped_column(ForeignKey("reports.report_id"), index=True)
+    client_id: Mapped[str] = mapped_column(String(32), index=True)
+    to_email:  Mapped[str] = mapped_column(String(200))
+    provider:  Mapped[str] = mapped_column(String(32))
+    status:    Mapped[str] = mapped_column(String(32))
+    message_id: Mapped[str] = mapped_column(String(200), default="")
+    sent_at:   Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
+# ---------------------------------------------------------------------------
+# Conversation + signals (D2)
+# ---------------------------------------------------------------------------
+
+class Conversation(Base):
+    __tablename__ = "conversations"
+
+    report: Mapped["Report"] = relationship()
+
+    conversation_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    client_id: Mapped[str] = mapped_column(ForeignKey("clients.client_id"), index=True)
+    report_id: Mapped[str] = mapped_column(ForeignKey("reports.report_id"), index=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    last_activity_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
+class Message(Base):
+    __tablename__ = "messages"
+    __table_args__ = (Index("ix_messages_conv", "conversation_id", "created_at"),)
+
+    conversation: Mapped["Conversation"] = relationship()
+
+    message_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    conversation_id: Mapped[str] = mapped_column(ForeignKey("conversations.conversation_id"),
+                                                 index=True)
+    client_id: Mapped[str] = mapped_column(String(32), index=True)
+    report_id: Mapped[str] = mapped_column(String(80), index=True)
+    role:      Mapped[str] = mapped_column(String(16))          # client | assistant
+    content:   Mapped[str] = mapped_column(Text)
+    content_intent:  Mapped[str] = mapped_column(String(48), default="")
+    format_intents:  Mapped[list] = mapped_column(JSON, default=list)
+    # The D2 ARM that produced this answer. Reward attaches here, not to the
+    # report template — a thumbs-down on an answer says nothing about whether
+    # the report should have been a table.
+    answer_strategy: Mapped[str] = mapped_column(String(48), default="")
+    block_ids: Mapped[list] = mapped_column(JSON, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
+class Event(Base):
+    """Every observable client action. The raw material for both rewards and
+    the preference profile."""
+
+    __tablename__ = "events"
+    __table_args__ = (Index("ix_events_client_time", "client_id", "created_at"),)
+
+    event_id:  Mapped[str] = mapped_column(String(64), primary_key=True)
+    client_id: Mapped[str] = mapped_column(String(32), index=True)
+    report_id: Mapped[str] = mapped_column(String(80), index=True, default="")
+    conversation_id: Mapped[str] = mapped_column(String(64), default="")
+    message_id: Mapped[str] = mapped_column(String(64), default="")
+    block_id:  Mapped[str] = mapped_column(String(80), default="")
+    event_type: Mapped[str] = mapped_column(String(48), index=True)
+    signal_type: Mapped[str] = mapped_column(String(48), default="")
+    signal_strength: Mapped[float] = mapped_column(Float, default=0.0)
+    # Which decision this evidence belongs to. Keeping it explicit stops
+    # answer-format feedback leaking into report-template rewards.
+    applies_to: Mapped[str] = mapped_column(String(8), default="")   # D1 | D2 | ""
+    metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
+# ---------------------------------------------------------------------------
+# APE state
+# ---------------------------------------------------------------------------
+
+class ClientPreference(Base):
+    """The learned presentation profile — the bridge between chat learning
+    and next-quarter report personalisation."""
+
+    __tablename__ = "client_preferences"
+
+    client_id: Mapped[str] = mapped_column(ForeignKey("clients.client_id"), primary_key=True)
+    concise:   Mapped[float] = mapped_column(Float, default=0.5)
+    detail:    Mapped[float] = mapped_column(Float, default=0.5)
+    visual:    Mapped[float] = mapped_column(Float, default=0.5)
+    table_pref: Mapped[float] = mapped_column(Float, default=0.5)
+    comparison: Mapped[float] = mapped_column(Float, default=0.5)
+    numeric_precision: Mapped[float] = mapped_column(Float, default=0.5)
+    narrative: Mapped[float] = mapped_column(Float, default=0.5)
+    step_by_step: Mapped[float] = mapped_column(Float, default=0.5)
+    technical_depth: Mapped[float] = mapped_column(Float, default=0.5)
+    meaningful_signal_count: Mapped[int] = mapped_column(Integer, default=0)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+    DIMENSION_COLUMNS = ("concise", "detail", "visual", "table_pref", "comparison",
+                         "numeric_precision", "narrative", "step_by_step",
+                         "technical_depth")
+
+    def as_dimensions(self) -> dict:
+        """Keyed by the shared vocabulary — `table_pref` is stored under that
+        name only because `table` is reserved in some SQL dialects."""
+        d = {c: getattr(self, c) for c in self.DIMENSION_COLUMNS}
+        d["table"] = d.pop("table_pref")
+        return d
+
+
+class ApeState(Base):
+    """One arm, at one scope. Beta parameters because D1 selection is
+    Thompson sampling; `alpha`/`beta` are the posterior, `total_reward` and
+    `selection_count` the raw evidence behind them."""
+
+    __tablename__ = "ape_state"
+    __table_args__ = (
+        UniqueConstraint("scope_type", "scope_id", "decision", "context", "arm_id",
+                         name="uq_ape_arm"),
+        Index("ix_ape_cell", "scope_type", "scope_id", "context"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    scope_type: Mapped[str] = mapped_column(String(16))      # GLOBAL | SEGMENT | CLIENT
+    scope_id:   Mapped[str] = mapped_column(String(64), default="_global")
+    decision:   Mapped[str] = mapped_column(String(4), default="D1")   # D1 | D2
+    # report_type for D1, question intent for D2.
+    context:    Mapped[str] = mapped_column(String(64))
+    arm_id:     Mapped[str] = mapped_column(String(64))
+    alpha:      Mapped[float] = mapped_column(Float, default=1.0)
+    beta:       Mapped[float] = mapped_column(Float, default=1.0)
+    selection_count: Mapped[int] = mapped_column(Integer, default=0)
+    reward_count:    Mapped[int] = mapped_column(Integer, default=0)
+    total_reward:    Mapped[float] = mapped_column(Float, default=0.0)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
+ALL_TABLES = [
+    Client, ReportSnapshot, Holding, Allocation, Performance, Fee, CashFlow,
+    Report, ReportBlock, Delivery, Conversation, Message, Event,
+    ClientPreference, ApeState,
+]

@@ -1,0 +1,7 @@
+client_id,display_name,email,segment_id,period,as_of,portfolio_value,quarter_return_pct,benchmark_return_pct,risk_level,alloc_us_equity,alloc_fixed_income,alloc_intl_equity,alloc_cash,attr_us_equity,attr_fixed_income,attr_intl_equity,attr_fees,fee_advisory,fee_fund,flow_contributions,flow_withdrawals
+C1001,Jordan Lee,jordan@example.com,balanced_growth,2026Q2,2026-06-30,1240000,4.80,5.40,Moderate,48,30,14,8,2.90,0.90,1.20,-0.20,2150,720,15000,5000
+C1002,Margaret Ellison,margaret@example.com,cautious_income,2026Q2,2026-06-30,516500,2.10,3.20,Cautious,30,45,10,15,0.70,1.10,0.40,-0.10,975,286,0,7000
+C1003,Priya Raman,priya@example.com,balanced_growth,2026Q2,2026-06-30,880400,6.10,5.40,Moderate,55,25,15,5,3.80,0.70,1.80,-0.20,1540,610,9000,0
+C1004,Thomas Whitcombe,thomas@example.com,growth_hnw,2026Q2,2026-06-30,4260000,7.40,5.40,Growth,60,15,20,5,4.60,0.40,2.60,-0.20,6390,2130,50000,20000
+C1005,Anne Bevan,anne@example.com,cautious_income,2026Q2,2026-06-30,362800,1.60,3.20,Cautious,25,50,10,15,0.55,1.05,0.15,-0.15,680,200,2500,4000
+C1006,BROKEN ROW,not-an-email,balanced_growth,2026Q2,2026-06-30,500000,4.00,5.40,Moderate,48,30,14,20,2.90,0.90,1.20,-0.20,900,300,0,0

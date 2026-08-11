@@ -110,7 +110,7 @@ export default function IntentsTab({ notify }) {
           <li><strong>Intent ID</strong> - PascalCase label the classifier may emit. Must match exactly what the classifier returns.
             <em> e.g. Decision, Comparison, Explanation, Instructional, Definitional, Evaluation.</em></li>
           <li><strong>Description</strong> - one-line meaning of this intent, shown to admins reviewing the list.
-            <em> e.g. "Should I X / Which X is right for me - recommendation requests".</em></li>
+            <em> e.g. "Comparing the portfolio against its benchmark".</em></li>
         </ul>
         <form className="admin-form" onSubmit={handleSubmit}>
           <div className="form-row">
@@ -118,7 +118,7 @@ export default function IntentsTab({ notify }) {
               Intent ID
               <input
                 type="text"
-                placeholder="e.g. Comparison"
+                placeholder="e.g. benchmark_comparison"
                 value={intentId}
                 onChange={(e) => setId(e.target.value)}
                 disabled={editing}

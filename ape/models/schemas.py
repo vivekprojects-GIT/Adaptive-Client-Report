@@ -158,5 +158,35 @@ class StrategyUpsert(BaseModel):
     changed_by:  str = "admin_user"
 
 
+# ---- Adaptive client reporting (D1) ---------------------------------------
+
+class ReportTypeUpsert(BaseModel):
+    """D1's intent. `personalisable=False` = prescribed by regulation."""
+    report_type:    str
+    label:          str  = ""
+    personalisable: bool = True
+    cadence:        str  = "quarterly"
+    notes:          str  = ""
+    changed_by:     str  = "admin_user"
+
+
+class TemplateUpsert(BaseModel):
+    """One approved report shape — a D1 bandit arm.
+
+    `strategy` is the arm key and must not change once serving; `template_id`
+    identifies the specific version so a bad rewrite stays detectable.
+    """
+    template_id:     str
+    strategy:        str
+    report_type:     str
+    label:           str = ""
+    description:     str = ""
+    brief:           str = ""
+    required_blocks: List[str] = []
+    optional_blocks: List[str] = []
+    style_profile:   Dict[str, float] = {}
+    changed_by:      str = "admin_user"
+
+
 class HealthResponse(BaseModel):
     status: str

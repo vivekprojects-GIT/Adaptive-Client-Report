@@ -69,14 +69,14 @@ export default function StrategiesTab({ notify }) {
           {editing ? `Editing strategy: ${strategyId}` : "Add or update strategy"}
         </h2>
         <p className="admin-section-sub">
-          A strategy is one of the bandit's arms. Each strategy has an
+          A strategy is one of D2's arms — a way of ANSWERING a question about the report. Report SHAPES are a separate decision (D1) and live on the Templates tab. Each strategy has an
           associated <code>format_type</code> that the synthesizer LLM is
           expected to render. After creating a strategy here, publish an
           instruction for it under the <strong>Instructions</strong> tab.
         </p>
         <ul className="col-legend">
           <li><strong>Strategy ID</strong> — snake_case identifier for this answer-shape. Used as a bandit arm key, so it can never change after first use.
-            <em> e.g. decision_card, comparison_table, analogy_explanation, one_liner, numbered_steps.</em></li>
+            <em> e.g. concise_direct, structured_bullets, comparison_table, step_by_step, visual_explanation, detailed_narrative.</em></li>
           <li><strong>Format type</strong> — MVP1 metadata attached to the strategy/instruction. It is not a nested format-selection layer.
             <em> e.g. * (unspecified), paragraph (prose), bulleted_list (bullets), comparison_table (side-by-side), decision_recommendation (verdict + reasons).</em></li>
         </ul>
@@ -86,7 +86,7 @@ export default function StrategiesTab({ notify }) {
               Strategy ID
               <input
                 type="text"
-                placeholder="e.g. comparison_table"
+                placeholder="e.g. concise_direct"
                 value={strategyId}
                 onChange={(e) => setSid(e.target.value)}
                 disabled={editing}

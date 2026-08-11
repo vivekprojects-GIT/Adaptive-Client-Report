@@ -361,7 +361,7 @@ export default function AnalyticsPage() {
           </nav>
 
           <div className="app-actions">
-            <Link to="/"      className="app-link">Chat</Link>
+            <Link to="/"      className="app-link">Reports</Link>
             <Link to="/admin" className="app-link">Admin</Link>
             <button
               className="btn-text"

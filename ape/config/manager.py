@@ -26,9 +26,11 @@ from ..store import (
     ENTITY_INSTRUCTION,
     ENTITY_INTENT,
     ENTITY_POLICY,
+    ENTITY_REPORT_TYPE,
     ENTITY_REWARD_RULE,
     ENTITY_SIGNAL_RULE,
     ENTITY_STRATEGY,
+    ENTITY_TEMPLATE,
     MongoStore,
     STATUS_ACTIVE,
     STATUS_INACTIVE,
@@ -95,6 +97,104 @@ class ConfigManager:
             before=_clean(before),
             after=_clean(after),
         )
+
+    # ------------------------------------------------------------------
+    # Report types (D1's decision context — selected, not classified)
+    # ------------------------------------------------------------------
+    def upsert_report_type(
+        self,
+        report_type: str,
+        label: str = "",
+        personalisable: bool = True,
+        cadence: str = "quarterly",
+        notes: str = "",
+        changed_by: str = "system",
+    ) -> None:
+        """`personalisable=False` marks a prescribed report — tax packs,
+        statutory valuations. Their format is set by regulation, so D1 must
+        refuse to choose a shape for them rather than quietly defaulting."""
+        before = self.store.get_config(ENTITY_REPORT_TYPE, report_type)
+        self.store.upsert_config(
+            entity_type=ENTITY_REPORT_TYPE,
+            entity_id=report_type,
+            fields={
+                "report_type":    report_type,
+                "label":          label or report_type,
+                "personalisable": bool(personalisable),
+                "cadence":        cadence,
+                "notes":          notes,
+            },
+            status=_preserved_status(before),
+        )
+        after = self.store.get_config(ENTITY_REPORT_TYPE, report_type)
+        self.store.log_admin_action(
+            action_type="UPSERT_REPORT_TYPE",
+            entity_type=ENTITY_REPORT_TYPE,
+            entity_id=report_type,
+            changed_by=changed_by,
+            before=_clean(before),
+            after=_clean(after),
+        )
+
+    def list_report_types(self) -> List[Dict[str, Any]]:
+        return [_clean(d) for d in self.store.list_all_config(ENTITY_REPORT_TYPE)]
+
+    # ------------------------------------------------------------------
+    # Templates (D1's ARMS)
+    # ------------------------------------------------------------------
+    def upsert_template(
+        self,
+        template_id: str,
+        strategy: str,
+        report_type: str,
+        label: str = "",
+        description: str = "",
+        brief: str = "",
+        required_blocks: Optional[List[str]] = None,
+        optional_blocks: Optional[List[str]] = None,
+        style_profile: Optional[Dict[str, float]] = None,
+        changed_by: str = "system",
+    ) -> None:
+        """One approved report shape.
+
+        The bandit arm key is `strategy`, NOT `template_id`. A reworded v2 of
+        the same strategy inherits everything v1 learned — the learning is
+        about "does this client want comparison-focused reports", which a
+        change of wording does not alter. `template_id` is still recorded on
+        every generated report so a bad rewrite stays detectable.
+        """
+        before = self.store.get_config(ENTITY_TEMPLATE, template_id)
+        self.store.upsert_config(
+            entity_type=ENTITY_TEMPLATE,
+            entity_id=template_id,
+            fields={
+                "template_id":     template_id,
+                "strategy":        strategy,
+                "report_type":     report_type,
+                "label":           label or strategy,
+                "description":     description,
+                "brief":           brief,
+                "required_blocks": required_blocks or [],
+                "optional_blocks": optional_blocks or [],
+                "style_profile":   style_profile or {},
+            },
+            status=_preserved_status(before),
+        )
+        after = self.store.get_config(ENTITY_TEMPLATE, template_id)
+        self.store.log_admin_action(
+            action_type="UPSERT_TEMPLATE",
+            entity_type=ENTITY_TEMPLATE,
+            entity_id=template_id,
+            changed_by=changed_by,
+            before=_clean(before),
+            after=_clean(after),
+        )
+
+    def list_templates(self, report_type: Optional[str] = None) -> List[Dict[str, Any]]:
+        rows = [_clean(d) for d in self.store.list_all_config(ENTITY_TEMPLATE)]
+        if report_type:
+            rows = [r for r in rows if r.get("report_type") == report_type]
+        return rows
 
     # ------------------------------------------------------------------
     # Instruction versioning

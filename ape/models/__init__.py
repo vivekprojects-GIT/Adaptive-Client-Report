@@ -14,6 +14,8 @@ from .schemas import (
     InstructionPublish,
     IntentUpsert,
     StrategyUpsert,
+    ReportTypeUpsert,
+    TemplateUpsert,
     HealthResponse,
 )
 
@@ -24,5 +26,6 @@ __all__ = [
     "SignalRuleUpdate", "RewardScaleUpdate", "UcbConfigUpdate",
     "PolicyUpsert", "InstructionPublish",
     "IntentUpsert", "StrategyUpsert",
+    "ReportTypeUpsert", "TemplateUpsert",
     "HealthResponse",
 ]

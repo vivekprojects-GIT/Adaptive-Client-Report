@@ -140,6 +140,23 @@ ENTITY_REWARD_RULE  = "reward_scale"
 ENTITY_OFFER_POLICY = "offer_policy"
 ENTITY_BANDIT_CONFIG = "bandit_config"   # global UCB params (entity_id="ucb")
 
+# ---- Adaptive client reporting (D1) ---------------------------------------
+# The existing intent/strategy pair serves D2 — question intent -> answer
+# format. D1 is a separate decision with its own vocabulary:
+#
+#   report_type   the kind of report. This is D1's DECISION CONTEXT, not an
+#                 intent: it is selected when a report is requested, never
+#                 inferred from language. `personalisable=False` marks
+#                 prescribed reports whose format is set by regulation; they
+#                 must never reach the bandit.
+#   template      one approved report shape. This is D1's ARM. Arms are
+#                 scoped to a report_type — a quarterly review's templates
+#                 are not an annual review's. Carries a style_profile vector
+#                 over the shared presentation dimensions, which is what lets
+#                 a chat signal reach a template the client never received.
+ENTITY_REPORT_TYPE  = "report_type"
+ENTITY_TEMPLATE     = "template"
+
 
 # ---- Index specifications --------------------------------------------------
 #

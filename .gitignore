@@ -30,3 +30,9 @@ Thumbs.db
 
 # Chroma RAG persistent store (re-seeded on boot)
 .chroma/
+
+# Gmail OAuth + local artifacts
+credentials.json
+token.json
+data/generated/
+*.eml

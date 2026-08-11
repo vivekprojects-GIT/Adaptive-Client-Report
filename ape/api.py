@@ -46,7 +46,7 @@ from typing import Any, Dict, List, Optional
 import anthropic
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from .analytics import (
@@ -74,7 +74,9 @@ from .models import (
     PolicyUpsert,
     RewardScaleUpdate,
     SignalRuleUpdate,
+    ReportTypeUpsert,
     StrategyUpsert,
+    TemplateUpsert,
     TurnRequest,
     TurnResponse,
     UcbConfigUpdate,
@@ -91,6 +93,7 @@ from .store.mongo_schema import (
     ENTITY_REWARD_RULE,
     ENTITY_SIGNAL_RULE,
     ENTITY_STRATEGY,
+    ENTITY_TEMPLATE,
     STATUS_ACTIVE,
 )
 
@@ -488,6 +491,60 @@ def list_policies():
     return _guard_cfg().list_policies()
 
 
+# ---- Adaptive client reporting (D1) ---------------------------------------
+
+@app.get("/config/report-types")
+def list_report_types():
+    return _guard_cfg().list_report_types()
+
+
+@app.post("/config/report-types")
+def upsert_report_type(req: ReportTypeUpsert):
+    _guard_cfg().upsert_report_type(
+        report_type=req.report_type,
+        label=req.label,
+        personalisable=req.personalisable,
+        cadence=req.cadence,
+        notes=req.notes,
+        changed_by=req.changed_by,
+    )
+    return {"status": "ok", "report_type": req.report_type}
+
+
+@app.get("/config/templates")
+def list_templates(report_type: Optional[str] = None):
+    return _guard_cfg().list_templates(report_type=report_type)
+
+
+@app.post("/config/templates")
+def upsert_template(req: TemplateUpsert):
+    _guard_cfg().upsert_template(
+        template_id=req.template_id,
+        strategy=req.strategy,
+        report_type=req.report_type,
+        label=req.label,
+        description=req.description,
+        brief=req.brief,
+        required_blocks=req.required_blocks,
+        optional_blocks=req.optional_blocks,
+        style_profile=req.style_profile,
+        changed_by=req.changed_by,
+    )
+    return {"status": "ok", "template_id": req.template_id}
+
+
+@app.delete("/config/templates/{template_id}")
+def delete_template(template_id: str, changed_by: str = "admin_user"):
+    before = _find_config_for_delete(ENTITY_TEMPLATE, template_id)
+    if before is None:
+        raise HTTPException(404, f"template '{template_id}' not found")
+    _guard_store().config.delete_many(
+        {"entity_type": ENTITY_TEMPLATE, "entity_id": template_id}
+    )
+    _audit_delete(ENTITY_TEMPLATE, template_id, changed_by, before)
+    return {"status": "ok", "deleted": template_id}
+
+
 @app.get("/config/signal-rules")
 def list_signal_rules():
     return _guard_cfg().list_signal_rules()
@@ -752,27 +809,6 @@ def delete_instruction(strategy_id: str, version: str, changed_by: str = "admin_
 # Powers the analytics page's "Recommended offers" table.
 # ============================================================================
 
-@app.get("/config/offers")
-def list_offers(status: Optional[str] = None):
-    """Admin view returns ALL offers (active + paused) by default.
-    Filter by ?status=ACTIVE to mimic the runtime view."""
-    if STORE is None:
-        raise HTTPException(500, "Store not initialized")
-    q: Dict[str, Any] = {"entity_type": ENTITY_OFFER_POLICY}
-    if status:
-        q["status"] = status
-    rows = list(STORE.config.find(q).sort("entity_id", 1))
-    return [_clean(r) for r in rows]
-
-
-# ============================================================================
-# Status toggle — pause/resume any config entity without deleting it.
-# Runtime reads (get_active_config, list_active_config, get_policy_strategies,
-# eligible_offers_for_user, _resolve_candidate_strategies, _load_active_instructions)
-# all filter on status=ACTIVE, so flipping a doc to INACTIVE removes it from the
-# runtime path immediately. Admin tabs still show it so it can be re-activated.
-# ============================================================================
-
 @app.post("/config/status")
 def set_config_status(payload: Dict[str, Any]):
     """Flip the status on a config doc.
@@ -829,85 +865,6 @@ def set_config_status(payload: Dict[str, Any]):
         "new_status":  new_status,
     }
 
-
-@app.post("/config/offers")
-def upsert_offer(payload: Dict[str, Any]):
-    """Create or update an offer policy.
-
-    Required keys: topic (entity_id), offer_type
-    Optional keys: domain, description, min_interest_score, status,
-                   weight_frequency, weight_recency,
-                   weight_engagement, weight_followup
-    """
-    if STORE is None:
-        raise HTTPException(500, "Store not initialized")
-
-    topic = (payload.get("topic") or payload.get("entity_id") or "").strip()
-    if not topic:
-        raise HTTPException(400, "Field 'topic' is required")
-    offer_type = (payload.get("offer_type") or "").strip()
-    if not offer_type:
-        raise HTTPException(400, "Field 'offer_type' is required")
-
-    def _opt_float(key: str) -> Optional[float]:
-        v = payload.get(key)
-        if v is None or v == "":
-            return None
-        try:
-            f = float(v)
-            return max(0.0, f)
-        except (TypeError, ValueError):
-            return None
-
-    fields = {
-        "domain":                   payload.get("domain", "finance"),
-        "offer_type":               offer_type,
-        "description":              payload.get("description", ""),
-        "min_interest_score":       float(payload.get("min_interest_score", 0.7)),
-        # Optional per-offer weight overrides. The recommender normalizes
-        # whatever the admin enters so they can use either fractions (0.4 / 0.25)
-        # or relative importance (4 / 2.5). Leaving them blank uses globals.
-        "weight_frequency":         _opt_float("weight_frequency"),
-        "weight_recency":           _opt_float("weight_recency"),
-        "weight_engagement":        _opt_float("weight_engagement"),
-        "weight_followup":          _opt_float("weight_followup"),
-    }
-    changed_by = payload.get("changed_by", "admin_user")
-    before = STORE.get_config(ENTITY_OFFER_POLICY, topic)
-    status = payload.get("status") or (before or {}).get("status") or STATUS_ACTIVE
-
-    STORE.upsert_config(
-        entity_type=ENTITY_OFFER_POLICY,
-        entity_id=topic,
-        fields=fields,
-        status=status,
-    )
-    STORE.log_admin_action(
-        action_type="UPSERT" if before is None else "UPDATE",
-        entity_type=ENTITY_OFFER_POLICY,
-        entity_id=topic,
-        changed_by=changed_by,
-        before=before,
-        after={**fields, "status": status},
-    )
-    return {"status": "ok", "topic": topic, "offer_type": offer_type}
-
-
-@app.delete("/config/offers/{topic}")
-def delete_offer(topic: str, changed_by: str = "admin_user"):
-    if STORE is None:
-        raise HTTPException(500, "Store not initialized")
-    before = _find_config_for_delete(ENTITY_OFFER_POLICY, topic)
-    if not before:
-        raise HTTPException(404, f"offer for topic {topic} not found")
-    n = STORE.delete_config(ENTITY_OFFER_POLICY, topic)
-    _audit_delete(ENTITY_OFFER_POLICY, topic, changed_by, before)
-    return {"status": "ok", "deleted": n, "topic": topic}
-
-
-# ============================================================================
-# Ops endpoints
-# ============================================================================
 
 @app.delete("/admin/clear-user/{user_id}")
 def admin_clear_user(user_id: str):
@@ -1058,6 +1015,12 @@ def admin_audit(date: Optional[str] = None, limit: int = 100):
 # ============================================================================
 # Helpers
 # ============================================================================
+
+def _guard_store() -> MongoStore:
+    if STORE is None:
+        raise HTTPException(503, "Store not ready")
+    return STORE
+
 
 def _guard_cfg() -> ConfigManager:
     if CONFIG_MGR is None:
@@ -1537,6 +1500,410 @@ if _ASSETS_DIR.is_dir():
 # Known client-side routes the React app handles. Any other unmatched path
 # falls through to a 404 instead of silently serving the SPA shell.
 _SPA_ROUTES = {"", "analytics", "admin"}
+
+
+# ---- Report preview (Phase 1) ---------------------------------------------
+# Serves generated report artifacts. In production these live in S3 behind a
+# signed URL; locally they are files on disk. The interface is the same:
+# the client never gets a raw storage path, only an app URL.
+
+# ---- Advisor back-office: clients + D1 decision detail ---------------------
+
+@app.post("/clients/import")
+async def import_clients(request: Request):
+    """Persist clients from an uploaded CSV so the advisor has a real book to
+    work from. Idempotent on client_id — re-importing updates in place."""
+    from .reporting.csv_source import parse_csv
+    body = await request.json()
+    snaps, errors = parse_csv(body.get("csv_text", ""))
+    store = _guard_store()
+    for s in snaps:
+        store.db["ape_clients"].update_one(
+            {"client_id": s.client_id},
+            {"$set": {
+                "client_id": s.client_id, "display_name": s.display_name,
+                "email": s.email, "segment_id": s.segment_id,
+                "last_period": s.period, "portfolio_value": s.portfolio_value,
+                # The FULL snapshot, so a report can be regenerated later
+                # without re-uploading the CSV. Summary fields alone are not
+                # enough to build blocks from.
+                "snapshot": {
+                    "client_id": s.client_id, "display_name": s.display_name,
+                    "email": s.email, "segment_id": s.segment_id,
+                    "period": s.period, "as_of": s.as_of,
+                    "portfolio_value": s.portfolio_value,
+                    "quarter_return_pct": s.quarter_return_pct,
+                    "benchmark_return_pct": s.benchmark_return_pct,
+                    "risk_level": s.risk_level,
+                    "allocations": s.allocations,
+                    "attribution": s.attribution,
+                    "fees": s.fees, "cash_flows": s.cash_flows,
+                },
+            }},
+            upsert=True,
+        )
+    return {"imported": len(snaps),
+            "rejected": [{"row": e.row_number, "client_id": e.client_id,
+                          "problems": e.problems} for e in errors]}
+
+
+@app.get("/clients")
+def list_clients(q: Optional[str] = None, limit: int = 200):
+    store = _guard_store()
+    query: Dict[str, Any] = {}
+    if q:
+        query["$or"] = [
+            {"display_name": {"$regex": q, "$options": "i"}},
+            {"client_id": {"$regex": q, "$options": "i"}},
+            {"email": {"$regex": q, "$options": "i"}},
+        ]
+    rows = list(store.db["ape_clients"].find(query).limit(limit))
+    # Latest report per client, for the "Last report / Status" columns.
+    gen = Path(__file__).resolve().parents[1] / "data" / "generated"
+    latest: Dict[str, Dict[str, Any]] = {}
+    if gen.is_dir():
+        for f in sorted(gen.glob("*.json"), key=lambda x: x.stat().st_mtime):
+            try:
+                r = json.loads(f.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            latest[r.get("client_id")] = r
+    out = []
+    for r in rows:
+        r.pop("_id", None)
+        rep = latest.get(r.get("client_id"))
+        out.append({**r,
+                    "last_report_period": (rep or {}).get("period"),
+                    "last_report_id": (rep or {}).get("report_id"),
+                    "last_strategy": (rep or {}).get("template_strategy"),
+                    "status": "Complete" if rep else "No report"})
+    return out
+
+
+@app.get("/ape/d1-decision")
+def d1_decision(client_id: str, report_type: str):
+    """Full explainable D1 decision for ONE client + report type.
+
+    Returns the arm scores, the preference inputs behind them, and how much
+    weight the client's own evidence currently carries. This is what the
+    advisor sees when they ask 'why this template?'.
+    """
+    from .reporting.d1 import (cell_key, eligible_arms, evidence_weight,
+                               score_arms, select, DIMENSIONS)
+    cfg = _guard_cfg(); store = _guard_store()
+
+    rt = next((r for r in cfg.list_report_types()
+               if r.get("report_type") == report_type), None)
+    if rt is None:
+        raise HTTPException(404, f"unknown report type '{report_type}'")
+
+    client = store.db["ape_clients"].find_one({"client_id": client_id}) or {}
+    segment_id = client.get("segment_id", "unsegmented")
+
+    templates = cfg.list_templates()
+    arms = eligible_arms(templates, report_type)
+    key = cell_key(report_type)
+    state = {r.get("strategy"): {"count": int(r.get("count", 0)),
+                                 "total_reward": float(r.get("total_reward", 0.0))}
+             for r in store.bandit_state.find({"cell_key": key})}
+    arm_state = {a["strategy"]: state.get(a["strategy"],
+                                          {"count": 0, "total_reward": 0.0})
+                 for a in arms}
+
+    # Client preference profile. Nothing populates this until the viewer and
+    # chat exist (Phase 2/3), so it is reported as absent rather than faked.
+    prof_doc = store.db["ape_preference_profile"].find_one(
+        {"scope": "CLIENT", "key": client_id})
+    client_profile = (prof_doc or {}).get("dimensions")
+    n_signals = int((prof_doc or {}).get("meaningful_signal_count", 0))
+
+    seg_doc = store.db["ape_preference_profile"].find_one(
+        {"scope": "SEGMENT", "key": segment_id})
+    segment_profile = (seg_doc or {}).get("dimensions")
+
+    personalisable = bool(rt.get("personalisable", True))
+    if personalisable:
+        strategy, rows, method = select(
+            templates, arm_state, report_type, True,
+            client_profile=client_profile, n_signals=n_signals,
+            segment_profile=segment_profile)
+    else:
+        strategy, rows, method = select(templates, arm_state, report_type, False)
+
+    return {
+        "client_id": client_id,
+        "client_name": client.get("display_name", client_id),
+        "segment_id": segment_id,
+        "report_type": report_type,
+        "report_type_label": rt.get("label"),
+        "personalisable": personalisable,
+        "cell_key": key,
+        "selected": strategy,
+        "method": method,
+        "user_weight": evidence_weight(n_signals),
+        "meaningful_signal_count": n_signals,
+        "has_client_profile": client_profile is not None,
+        "has_segment_profile": segment_profile is not None,
+        "dimensions": list(DIMENSIONS),
+        "client_profile": client_profile or {},
+        "arms": rows,
+    }
+
+
+@app.post("/reports/generate-one")
+async def generate_one_report(request: Request):
+    """Generate a single report for an already-imported client.
+
+    The advisor screen works client-by-client, so it needs a path that does
+    not require re-uploading a CSV. Reads the stored snapshot, runs D1, and
+    writes the same artifacts as a batch run.
+    """
+    from .reporting.csv_source import ClientSnapshot
+    from .reporting.d1 import cell_key, eligible_arms, select
+    from .reporting.generate import build_report, render_html
+
+    body = await request.json()
+    client_id = body.get("client_id")
+    report_type = body.get("report_type") or "quarterly_portfolio_review"
+
+    store = _guard_store(); cfg = _guard_cfg()
+    doc = store.db["ape_clients"].find_one({"client_id": client_id})
+    if not doc or not doc.get("snapshot"):
+        raise HTTPException(404, f"no stored snapshot for client '{client_id}'")
+
+    rt = next((r for r in cfg.list_report_types()
+               if r.get("report_type") == report_type), None)
+    if rt is None:
+        raise HTTPException(404, f"unknown report type '{report_type}'")
+
+    snap = ClientSnapshot(**doc["snapshot"])
+    templates = cfg.list_templates()
+    arms = eligible_arms(templates, report_type)
+    if not arms:
+        raise HTTPException(400, f"no active templates for '{report_type}'")
+
+    key = cell_key(report_type)
+    state = {r.get("strategy"): {"count": int(r.get("count", 0)),
+                                 "total_reward": float(r.get("total_reward", 0.0))}
+             for r in store.bandit_state.find({"cell_key": key})}
+    arm_state = {a["strategy"]: state.get(a["strategy"],
+                                          {"count": 0, "total_reward": 0.0})
+                 for a in arms}
+
+    strategy, rows, method = select(
+        templates, arm_state, report_type,
+        bool(rt.get("personalisable", True)))
+
+    # count rises at SELECTION so cold-start exploration advances even
+    # before any reward lands.
+    store.bandit_state.update_one(
+        {"cell_key": key, "strategy": strategy},
+        {"$inc": {"count": 1},
+         "$setOnInsert": {"total_reward": 0.0, "report_type": report_type,
+                          "scope": "_global"}},
+        upsert=True,
+    )
+
+    template = next(t for t in arms if t["strategy"] == strategy)
+    report = build_report(snap, template, report_type)
+
+    # GROUNDING GATE. Every number in every block must trace to the frozen
+    # snapshot. Rejected blocks are DROPPED, not corrected and not rendered
+    # with a warning — a plausible wrong figure is worse than a missing
+    # section. Today all blocks are code-built so this should always pass;
+    # it becomes load-bearing the moment the LLM writes one.
+    from .reporting.grounding import validate_report
+    verdict = validate_report(report, snap.numeric_facts())
+    if verdict.rejected:
+        report["blocks"] = verdict.accepted
+        report["rejected_blocks"] = [
+            {"block_id": f.block_id, "kind": f.kind, "detail": f.detail}
+            for f in verdict.findings
+        ]
+
+    out = Path(__file__).resolve().parents[1] / "data" / "generated"
+    out.mkdir(parents=True, exist_ok=True)
+    rid = report["report_id"]
+    (out / f"{rid}.html").write_text(render_html(report), encoding="utf-8")
+    (out / f"{rid}.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+
+    return {
+        "report_id": rid, "client_id": client_id, "strategy": strategy,
+        "method": method, "template_id": template.get("template_id"),
+        "template_label": template.get("label"),
+        "blocks": [b["type"] for b in report["blocks"]],
+        "validation": "passed" if verdict.ok else "rejected_blocks",
+        "validation_summary": verdict.summary(),
+        "validation_findings": [
+            {"block_id": f.block_id, "kind": f.kind, "detail": f.detail}
+            for f in verdict.findings
+        ],
+        "email_status": "sent (stub)",
+        "arms": rows,
+    }
+
+
+@app.post("/reports/generate")
+async def generate_reports(request: Request):
+    """Upload a CSV and generate one report per row.
+
+    Body: multipart with `file` (the CSV) and `report_type`, OR JSON with
+    `csv_text` + `report_type` so it is scriptable without a browser.
+    """
+    from .reporting.batch import generate_batch
+
+    csv_text = ""
+    report_type = "quarterly_portfolio_review"
+
+    ctype = request.headers.get("content-type", "")
+    if ctype.startswith("multipart/form-data"):
+        form = await request.form()
+        report_type = str(form.get("report_type") or report_type)
+        upload = form.get("file")
+        if upload is None:
+            raise HTTPException(400, "no file supplied")
+        csv_text = (await upload.read()).decode("utf-8-sig", errors="replace")
+    else:
+        body = await request.json()
+        csv_text = body.get("csv_text", "")
+        report_type = body.get("report_type") or report_type
+
+    if not csv_text.strip():
+        raise HTTPException(400, "CSV is empty")
+
+    cfg = _guard_cfg()
+    rt = next((r for r in cfg.list_report_types()
+               if r.get("report_type") == report_type), None)
+    if rt is None:
+        raise HTTPException(404, f"unknown report type '{report_type}'")
+
+    return generate_batch(
+        csv_text=csv_text,
+        report_type=report_type,
+        templates=cfg.list_templates(),
+        personalisable=bool(rt.get("personalisable", True)),
+        store=_guard_store(),
+    )
+
+
+# ---- Secure client report link + delivery ---------------------------------
+
+@app.post("/reports/{report_id}/send")
+async def send_report(report_id: str, request: Request):
+    """Mint a signed link and deliver it. Provider chosen by EMAIL_PROVIDER."""
+    from .reporting.email import get_provider
+    from .reporting.tokens import report_url
+
+    gen = Path(__file__).resolve().parents[1] / "data" / "generated"
+    f = gen / f"{report_id}.json"
+    if not f.is_file():
+        raise HTTPException(404, f"no generated report '{report_id}'")
+    rep = json.loads(f.read_text(encoding="utf-8"))
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    base = body.get("base_url") or str(request.base_url).rstrip("/")
+
+    url = report_url(report_id, rep["client_id"], base_url=base)
+    try:
+        result = get_provider(body.get("provider")).send_report_ready(
+            to_email=rep.get("email", ""),
+            client_name=rep.get("client_name", ""),
+            report_url=url,
+            period=rep.get("period", ""),
+        )
+    except Exception as exc:
+        raise HTTPException(502, f"email failed: {exc}")
+
+    _guard_store().db["ape_report_delivery"].update_one(
+        {"report_id": report_id},
+        {"$set": {"report_id": report_id, "client_id": rep["client_id"],
+                  "to": rep.get("email"), "provider": result.get("provider"),
+                  "status": result.get("status"), "sent_at": datetime.utcnow().isoformat()}},
+        upsert=True,
+    )
+    return {**result, "report_id": report_id}
+
+
+@app.get("/r/{report_id}", response_class=HTMLResponse)
+def client_report_view(report_id: str, token: str = ""):
+    """The client-facing surface. The TOKEN is the authorisation.
+
+    Report ids are guessable, so knowing one must never be enough. A valid
+    token for a different report fails here too — that is the cross-client
+    case.
+    """
+    from .reporting.tokens import TokenError, verify
+    try:
+        verify(token, report_id=report_id)
+    except TokenError as exc:
+        return HTMLResponse(
+            f'<!doctype html><meta charset="utf-8"><title>Link problem</title>'
+            f'<div style="font-family:Segoe UI,system-ui,Arial;max-width:460px;'
+            f'margin:14vh auto;text-align:center;color:#0f172a">'
+            f'<h2 style="font-size:19px">This link cannot be opened</h2>'
+            f'<p style="color:#64748b;font-size:14px;line-height:1.6">{_esc_html(str(exc))}.'
+            f'<br>Report links are personal and expire. Please ask your adviser '
+            f'to send a fresh one.</p></div>', status_code=403)
+
+    gen = Path(__file__).resolve().parents[1] / "data" / "generated"
+    f = gen / f"{report_id}.html"
+    if not f.is_file():
+        raise HTTPException(404, "report not found")
+    return HTMLResponse(f.read_text(encoding="utf-8"))
+
+
+def _esc_html(s: str) -> str:
+    import html as _h
+    return _h.escape(s)
+
+
+@app.get("/reports/generated")
+def list_generated_reports():
+    """Everything generated so far, newest first."""
+    d = Path(__file__).resolve().parents[1] / "data" / "generated"
+    if not d.is_dir():
+        return []
+    out = []
+    for f in sorted(d.glob("*.json"), key=lambda x: -x.stat().st_mtime):
+        try:
+            r = json.loads(f.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        out.append({
+            "report_id":   r.get("report_id"),
+            "client_id":   r.get("client_id"),
+            "client_name": r.get("client_name"),
+            "email":       r.get("email"),
+            "period":      r.get("period"),
+            "report_type": r.get("report_type"),
+            "strategy":    r.get("template_strategy"),
+            "template_id": r.get("template_id"),
+            "label":       r.get("template_label"),
+            "blocks":      [b.get("type") for b in r.get("blocks", [])],
+            "email_status": "sent (stub)",
+        })
+    return out
+
+
+@app.get("/reports/{report_id}/html")
+def get_report_html(report_id: str):
+    d = Path(__file__).resolve().parents[1] / "data" / "generated"
+    f = d / f"{report_id}.html"
+    if not f.is_file():
+        raise HTTPException(404, f"no generated report '{report_id}'")
+    return HTMLResponse(f.read_text(encoding="utf-8"))
+
+
+@app.get("/reports/{report_id}/json")
+def get_report_json(report_id: str):
+    d = Path(__file__).resolve().parents[1] / "data" / "generated"
+    f = d / f"{report_id}.json"
+    if not f.is_file():
+        raise HTTPException(404, f"no generated report '{report_id}'")
+    return json.loads(f.read_text(encoding="utf-8"))
 
 
 @app.get("/{full_path:path}")

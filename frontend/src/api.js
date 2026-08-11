@@ -21,18 +21,19 @@ async function request(method, path, body) {
 export const api = {
   // Core flow
   health:               ()                                 => request("GET",    "/health"),
-  postTurn:             (payload)                          => request("POST",   "/turn", payload),
-  postFeedback:         (payload)                          => request("POST",   "/feedback", payload),
-
-  // Conversation history (Mongo-backed)
-  loadSessionMessages:  (sessionId, userId, limit = 200)   => request("GET",    `/sessions/${encodeURIComponent(sessionId)}/messages?user_id=${encodeURIComponent(userId)}&limit=${limit}`),
-  listUserSessions:     (userId, limit = 20)               => request("GET",    `/users/${encodeURIComponent(userId)}/sessions?limit=${limit}`),
-  getLatestSession:     (userId)                           => request("GET",    `/users/${encodeURIComponent(userId)}/latest-session`),
-  deleteSession:        (sessionId, userId)                => request("DELETE", `/sessions/${encodeURIComponent(sessionId)}?user_id=${encodeURIComponent(userId)}`),
 
   // Config — read
   listIntents:          ()                                 => request("GET",    "/config/intents"),
   listStrategies:       ()                                 => request("GET",    "/config/strategies"),
+  listReportTypes:      ()                                 => request("GET",    "/config/report-types"),
+  listClients:          (q)                                => request("GET",    "/clients" + (q ? "?q=" + encodeURIComponent(q) : "")),
+  importClients:        (payload)                          => request("POST",   "/clients/import", payload),
+  d1Decision:           (clientId, reportType)             => request("GET",    "/ape/d1-decision?client_id=" + encodeURIComponent(clientId) + "&report_type=" + encodeURIComponent(reportType)),
+  generateOneReport:    (payload)                          => request("POST",   "/reports/generate-one", payload),
+  sendReport:           (reportId)                         => request("POST",   "/reports/" + encodeURIComponent(reportId) + "/send", {}),
+  listGeneratedReports: ()                                 => request("GET",    "/reports/generated"),
+  generateReports:      (payload)                          => request("POST",   "/reports/generate", payload),
+  listTemplates:        (rt)                               => request("GET",    "/config/templates" + (rt ? `?report_type=${encodeURIComponent(rt)}` : "")),
   listPolicies:         ()                                 => request("GET",    "/config/policies"),
   listSignalRules:      ()                                 => request("GET",    "/config/signal-rules"),
   listRewardScale:      ()                                 => request("GET",    "/config/reward-scale"),
@@ -41,6 +42,9 @@ export const api = {
   // Config — write
   upsertIntent:         (payload)                          => request("POST",   "/config/intents", payload),
   upsertStrategy:       (payload)                          => request("POST",   "/config/strategies", payload),
+  upsertReportType:     (payload)                          => request("POST",   "/config/report-types", payload),
+  upsertTemplate:       (payload)                          => request("POST",   "/config/templates", payload),
+  deleteTemplate:       (templateId)                       => request("DELETE", `/config/templates/${encodeURIComponent(templateId)}`),
   upsertSignalRule:     (payload)                          => request("POST",   "/config/signal-rules", payload),
   upsertRewardValue:    (payload)                          => request("POST",   "/config/reward-scale", payload),
   getUcbConfig:         ()                                 => request("GET",    "/config/ucb"),
@@ -68,11 +72,6 @@ export const api = {
                           request("DELETE", `/config/policies?intent=${encodeURIComponent(intent)}&topic=${encodeURIComponent(topic)}&strategy_id=${encodeURIComponent(strategyId)}`),
   deleteInstruction:    (strategyId, version)              =>
                           request("DELETE", `/config/instructions/${encodeURIComponent(strategyId)}/${encodeURIComponent(version)}`),
-
-  // Offer policies — full CRUD
-  listOffers:           ()                                 => request("GET",    "/config/offers"),
-  upsertOffer:          (payload)                          => request("POST",   "/config/offers", payload),
-  deleteOffer:          (topic)                            => request("DELETE", `/config/offers/${encodeURIComponent(topic)}`),
 
   // Admin / ops
   clearUser:            (userId)                           => request("DELETE", `/admin/clear-user/${encodeURIComponent(userId)}`),
