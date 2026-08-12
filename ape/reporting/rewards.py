@@ -34,7 +34,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -83,7 +83,8 @@ VALID_EVENTS = set(D1_WEIGHTS) | {
 
 def record_event(session: Session, client_id: str, event_type: str,
                  report_id: str = "", block_id: str = "",
-                 message_id: str = "", metadata: Optional[Dict] = None) -> Dict:
+                 message_id: str = "", metadata: Optional[Dict] = None,
+                 report_type: str = "") -> Dict:
     """Store the raw event, then route its consequences."""
     if event_type not in VALID_EVENTS:
         return {"stored": False, "reason": f"unknown event '{event_type}'"}
@@ -103,7 +104,8 @@ def record_event(session: Session, client_id: str, event_type: str,
         out["d1"] = _reward_d1(session, report_id, event_type)
     dims = _dims_from_event(event_type, metadata or {})
     if dims:
-        out["profile"] = update_preferences(session, client_id, dims)
+        out["profile"] = update_preferences(session, client_id, dims,
+                                            report_type=report_type)
     return out
 
 
@@ -272,7 +274,8 @@ _COLUMN = {"table": "table_pref"}     # SQL-reserved word workaround
 
 
 def update_preferences(session: Session, client_id: str,
-                       dims: Dict[str, int]) -> Dict:
+                       dims: Dict[str, int],
+                       report_type: str = "") -> Dict:
     """Move each named dimension toward its target with a step that shrinks
     as evidence accumulates:
 
@@ -284,23 +287,87 @@ def update_preferences(session: Session, client_id: str,
     provisional, late evidence is stable, and no single event ever owns
     the profile.
     """
-    pref = session.get(ClientPreference, client_id)
-    if pref is None:
-        pref = ClientPreference(client_id=client_id)
-        session.add(pref)
-    n = pref.meaningful_signal_count
-    step = 1.0 / (n + 4)
-    moved = {}
-    for dim, direction in dims.items():
-        col = _COLUMN.get(dim, dim)
-        if not hasattr(pref, col):
-            continue
-        old = getattr(pref, col)
-        target = 1.0 if direction > 0 else 0.0
-        new = round(old + step * (target - old), 4)
-        setattr(pref, col, new)
-        moved[dim] = {"from": round(old, 3), "to": new}
-    if moved:
-        pref.meaningful_signal_count = n + 1
-        pref.updated_at = datetime.utcnow()
-    return {"signals_so_far": pref.meaningful_signal_count, "moved": moved}
+    # Both scopes, always. The client-wide row ("") is what a report type
+    # with no history of its own falls back on, so it has to keep seeing
+    # every signal; the per-type row is what makes a tax summary stop
+    # inheriting how someone reads a quarterly review. Writing only one of
+    # them would either freeze the fallback or lose the specificity.
+    scopes = [""] if not report_type else ["", report_type]
+    out: Dict[str, Any] = {}
+    for scope in scopes:
+        row = _pref_row(session, client_id, scope)
+        n = row.meaningful_signal_count
+        step = 1.0 / (n + 4)
+        moved = {}
+        for dim, direction in dims.items():
+            col = _COLUMN.get(dim, dim)
+            if not hasattr(row, col):
+                continue
+            old = getattr(row, col)
+            target = 1.0 if direction > 0 else 0.0
+            new = round(old + step * (target - old), 4)
+            setattr(row, col, new)
+            moved[dim] = {"from": round(old, 3), "to": new}
+        if moved:
+            row.meaningful_signal_count = n + 1
+            row.updated_at = datetime.utcnow()
+        out[scope or "_client_wide"] = {
+            "signals_so_far": row.meaningful_signal_count, "moved": moved}
+
+    wide = out["_client_wide"]
+    return {"signals_so_far": wide["signals_so_far"], "moved": wide["moved"],
+            "scopes": out}
+
+
+def _pref_row(session: Session, client_id: str,
+              report_type: str) -> ClientPreference:
+    row = session.get(ClientPreference, (client_id, report_type))
+    if row is None:
+        row = ClientPreference(client_id=client_id, report_type=report_type)
+        session.add(row)
+        session.flush()
+    return row
+
+
+# Evidence needed before a report type's own profile fully displaces the
+# client-wide one. Chosen to match the existing evidence-weight thinking:
+# a handful of signals should tilt it, not flip it.
+SCOPE_CONFIDENCE = 8.0
+
+
+def profile_for(session: Session, client_id: str,
+                report_type: str = "") -> Dict[str, float]:
+    """The profile to hand the LLM for THIS report type.
+
+    Not a straight lookup. With sixteen report types and sparse
+    interaction, strict per-type isolation would hand a blank profile to
+    the first risk report ever sent to a client we know forty interactions
+    about — throwing away everything learned because it was learned
+    somewhere else.
+
+    So the type's own profile is blended over the client-wide one, weighted
+    by how much evidence the type actually has:
+
+        w = n_type / (n_type + 8)
+
+    No quarterly evidence yet -> w=0 -> exactly the client-wide profile.
+    Plenty of it -> w approaches 1 -> the quarterly profile governs, which
+    is what "load the quarterly preference" has to mean once there IS one.
+    """
+    wide = session.get(ClientPreference, (client_id, ""))
+    base = (wide.as_dimensions() if wide
+            else {d: 0.5 for d in ClientPreference.DIMENSION_COLUMNS})
+    if not wide:
+        base["table"] = base.pop("table_pref", 0.5)
+    if not report_type:
+        return base
+
+    scoped = session.get(ClientPreference, (client_id, report_type))
+    if scoped is None or scoped.meaningful_signal_count <= 0:
+        return base
+
+    n = float(scoped.meaningful_signal_count)
+    w = n / (n + SCOPE_CONFIDENCE)
+    mine = scoped.as_dimensions()
+    return {k: round(base.get(k, 0.5) * (1.0 - w) + mine.get(k, 0.5) * w, 4)
+            for k in mine}

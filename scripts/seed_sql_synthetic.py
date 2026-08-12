@@ -407,7 +407,11 @@ def main() -> None:
             # fabricated tendencies — a preference profile that was never
             # learned would make the adaptation look like it works when
             # nothing has been observed yet.
-            session.merge(ClientPreference(client_id=cid,
+            # The client-wide scope. Per-report-type rows are created on
+            # first signal, not seeded: a row that exists with zero
+            # evidence is indistinguishable from one that has been
+            # observed and found neutral.
+            session.merge(ClientPreference(client_id=cid, report_type="",
                                            meaningful_signal_count=0))
 
     print(f"clients  : {len(BOOK)}")

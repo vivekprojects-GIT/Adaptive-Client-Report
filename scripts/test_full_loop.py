@@ -223,7 +223,7 @@ def main():
 
     print("\n7. THE PROFILE DRIFTED FROM HOW THEY ENGAGED")
     with session_scope() as db:
-        pref = db.get(ClientPreference, CLIENT)
+        pref = db.get(ClientPreference, (CLIENT, ""))
         check("signals counted", pref.meaningful_signal_count > 0,
               f"n={pref.meaningful_signal_count}")
         check("technical_depth moved DOWN (asked for simple terms)",

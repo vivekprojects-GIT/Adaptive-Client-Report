@@ -325,11 +325,24 @@ class Event(Base):
 
 class ClientPreference(Base):
     """The learned presentation profile — the bridge between chat learning
-    and next-quarter report personalisation."""
+    and next-quarter report personalisation.
+
+    SCOPED BY REPORT TYPE. How someone wants a quarterly review is not how
+    they want a tax summary: one is read for reassurance, the other for a
+    number. A single profile per client averaged those together and handed
+    the same nine floats to every report the advisor produced.
+
+    `report_type=""` is the CLIENT-WIDE row — everything learned about this
+    person across all report types. Every signal updates both it and the
+    row for the type it happened in, so the wide row never stops growing
+    and a report type nobody has interacted with yet still starts from
+    what is known about the client rather than from nothing.
+    """
 
     __tablename__ = "client_preferences"
 
     client_id: Mapped[str] = mapped_column(ForeignKey("clients.client_id"), primary_key=True)
+    report_type: Mapped[str] = mapped_column(String(64), primary_key=True, default="")
     concise:   Mapped[float] = mapped_column(Float, default=0.5)
     detail:    Mapped[float] = mapped_column(Float, default=0.5)
     visual:    Mapped[float] = mapped_column(Float, default=0.5)
@@ -366,10 +379,18 @@ class ClientSkill(Base):
     system believes about a client and override it — `advisor_note` takes
     precedence over anything inferred, because a human who knows the client
     is better evidence than behaviour.
+
+    SCOPED BY REPORT TYPE, like the preference profile. "Returns to the
+    fees section every quarter" is a fact about quarterly reviews, and
+    carrying it into a risk report is stating something never observed
+    there. `report_type=""` is the client-wide brief, used when a type has
+    too little history of its own to generalise from.
     """
 
     __tablename__ = "client_skills"
 
+    report_type: Mapped[str] = mapped_column(String(64), primary_key=True,
+                                             default="")
     client_id:  Mapped[str] = mapped_column(ForeignKey("clients.client_id"),
                                             primary_key=True)
     brief:      Mapped[str] = mapped_column(Text, default="")

@@ -663,8 +663,11 @@ def d1_decision(client_id: str, report_type: str):
         _c = _db.get(_Client, client_id)
         client_name = _c.name if _c else client_id
         segment_id = _c.segment_id if _c else "unsegmented"
-        _p = _db.get(_Pref, client_id)
-        sql_profile = _p.as_dimensions() if _p else None
+        # Scoped to the report type the advisor picked, falling back to
+        # the client-wide profile where this type has no history yet.
+        from .reporting.rewards import profile_for
+        _p = _db.get(_Pref, (client_id, report_type))
+        sql_profile = profile_for(_db, client_id, report_type)
         sql_signals = _p.meaningful_signal_count if _p else 0
 
     templates = cfg.list_templates()
@@ -805,10 +808,16 @@ async def generate_one_report(request: Request):
         state = {r.arm_id: {"count": int(r.selection_count),
                             "total_reward": float(r.total_reward)}
                  for r in _rows}
-        _p = _db.get(_Pref, client_id)
-        _profile = (_p.as_dimensions()
-                    if _p and _p.meaningful_signal_count > 0 else None)
-        _nsig = _p.meaningful_signal_count if _p else 0
+        # The profile that shapes THIS report is the one for THIS report
+        # type. profile_for blends in the client-wide row, so a type with
+        # no history of its own still starts from what is known about the
+        # client rather than from a neutral 0.5 across the board.
+        from .reporting.rewards import profile_for
+        _wide = _db.get(_Pref, (client_id, ""))
+        _p = _db.get(_Pref, (client_id, report_type))
+        _any = (_p.meaningful_signal_count if _p else 0) or                (_wide.meaningful_signal_count if _wide else 0)
+        _profile = profile_for(_db, client_id, report_type) if _any else None
+        _nsig = (_p.meaningful_signal_count if _p else 0)
     arm_state = {a["strategy"]: state.get(a["strategy"],
                                           {"count": 0, "total_reward": 0.0})
                  for a in arms}
@@ -825,7 +834,7 @@ async def generate_one_report(request: Request):
         from .reporting.composer import compose_template
         from .reporting.skill import skill_text
         with session_scope() as _db:
-            _skill = skill_text(_db, client_id)
+            _skill = skill_text(_db, client_id, report_type)
         template, compose_diag = compose_template(snap, report_type, _profile,
                                                   skill=_skill)
         strategy = template["strategy"]
@@ -877,9 +886,10 @@ async def generate_one_report(request: Request):
     from .db.models import ClientPreference
     dims = None
     with session_scope() as db:
-        prefs = db.get(ClientPreference, client_id)
-        if prefs is not None:
-            dims = prefs.as_dimensions()
+        from .reporting.rewards import profile_for
+        rt = str(report.get("report_type", "") or "")
+        if db.get(ClientPreference, (client_id, "")) is not None:
+            dims = profile_for(db, client_id, rt)
     authors = write_prose_blocks(report, snap, strategy, dims)
 
     # GROUNDING GATE. Every number in every block must trace to the frozen
@@ -1099,9 +1109,21 @@ def client_insight(client_id: str):
     from sqlalchemy import select as _sel, func as _fn
     init_db()
     with session_scope() as db:
-        pref = db.get(ClientPreference, client_id)
-        dims = pref.as_dimensions() if pref else {}
+        from .reporting.rewards import profile_for
+        from sqlalchemy import select as _s2
+        pref = db.get(ClientPreference, (client_id, ""))
+        dims = profile_for(db, client_id, "")
         n = pref.meaningful_signal_count if pref else 0
+        # What has been learned PER REPORT TYPE, so an advisor can see that
+        # a quarterly review and a tax summary are being shaped differently
+        # rather than having to infer it from one blended number.
+        by_type = [
+            {"report_type": r.report_type, "signals": r.meaningful_signal_count,
+             "dimensions": profile_for(db, client_id, r.report_type)}
+            for r in db.scalars(_s2(ClientPreference).where(
+                ClientPreference.client_id == client_id,
+                ClientPreference.report_type != ""))
+            if r.meaningful_signal_count > 0]
 
         reports = []
         for r in db.scalars(_sel(Report).where(Report.client_id == client_id)
@@ -1125,7 +1147,7 @@ def client_insight(client_id: str):
         # The composer's memory of this client, in words. Surfaced so an
         # advisor can see what the system believes and correct it.
         from .reporting.skill import refresh_skill
-        skill_row = refresh_skill(db, client_id)
+        skill_row = refresh_skill(db, client_id, "")
         skill = {"brief": skill_row.brief,
                  "advisor_note": skill_row.advisor_note,
                  "evidence_count": skill_row.evidence_count,
@@ -1133,7 +1155,8 @@ def client_insight(client_id: str):
                  "ignored_blocks": skill_row.ignored_blocks}
 
     return {"client_id": client_id, "signals": n, "dimensions": dims,
-            "reports": reports, "recent_events": recent, "skill": skill}
+            "reports": reports, "recent_events": recent, "skill": skill,
+            "by_report_type": by_type}
 
 
 @app.post("/clients/{client_id}/skill-note")
@@ -1148,9 +1171,10 @@ async def set_skill_note(client_id: str, request: Request):
     from .db.models import ClientSkill
     init_db()
     with session_scope() as db:
-        row = db.get(ClientSkill, client_id)
+        rt = str(body.get("report_type", "") or "")
+        row = db.get(ClientSkill, (rt, client_id))
         if row is None:
-            row = ClientSkill(client_id=client_id)
+            row = ClientSkill(client_id=client_id, report_type=rt)
             db.add(row)
         row.advisor_note = str(body.get("note", ""))[:600]
         note = row.advisor_note
@@ -1267,10 +1291,12 @@ async def report_chat(report_id: str, request: Request):
 
         # The question itself is a signal: engagement for D1, and its
         # wording may carry format preferences for the profile.
+        _rt = str(report.get("report_type", "") or "")
         record_event(db, report["client_id"], "question_asked",
                      report_id=report_id, block_id=block_id or "",
                      metadata={"question": question,
-                               "intent": result["intent"]})
+                               "intent": result["intent"]},
+                     report_type=_rt)
 
         # A client asking to SEE something is the most direct statement of
         # presentation preference this system ever receives — far stronger
@@ -1282,7 +1308,8 @@ async def report_chat(report_id: str, request: Request):
             record_event(db, report["client_id"], "visual_requested",
                          report_id=report_id, block_id=block_id or "",
                          metadata={"binding": w["binding"], "kind": w["kind"],
-                                   "intent": result["intent"], "drawn": True})
+                                   "intent": result["intent"], "drawn": True},
+                         report_type=_rt)
         elif result.get("widget_declined"):
             # A visual we could not fill is worth recording too, and for a
             # different reason: it is not a presentation preference to
@@ -1292,14 +1319,15 @@ async def report_chat(report_id: str, request: Request):
                          report_id=report_id, block_id=block_id or "",
                          metadata={"binding": "", "kind": "",
                                    "intent": result["intent"], "drawn": False,
-                                   "reason": result["widget_declined"]})
+                                   "reason": result["widget_declined"]},
+                         report_type=_rt)
 
         # Every question is fresh evidence about how this client reads, so
         # the brief the composer sees next time is rebuilt now rather than
         # on a schedule — the whole point is that the next report reflects
         # what just happened.
         from .reporting.skill import refresh_skill
-        refresh_skill(db, report["client_id"])
+        refresh_skill(db, report["client_id"], _rt)
     return result
 
 
@@ -1321,7 +1349,8 @@ async def report_events(report_id: str, request: Request):
             report_id=report_id,
             block_id=str(body.get("block_id", "") or ""),
             message_id=str(body.get("message_id", "") or ""),
-            metadata=body.get("metadata") or {})
+            metadata=body.get("metadata") or {},
+            report_type=str(report.get("report_type", "") or ""))
     return out
 
 
