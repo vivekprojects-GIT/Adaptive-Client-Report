@@ -24,8 +24,9 @@ export default function D1StateTab({ notify }) {
   return (
     <section>
       <div className="admin-explain">
-        <div><strong>Decision D1</strong> — which template shapes a client's
-          report, chosen per report type by contextual UCB.</div>
+        <div><strong>What the system has learned about report templates</strong> —
+          read-only. Templates are edited in the Templates tab; this shows
+          how each one is performing, per report type, under contextual UCB.</div>
         <div>Reward is the client's engagement with the delivered report,
           capped at 1.0 per report so a chatty client cannot make a template
           look better than it is. Rows appear per report type as reports are

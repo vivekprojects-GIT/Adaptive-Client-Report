@@ -14,8 +14,8 @@ const TABS = [
   { id: "reporttypes",  label: "Report Types" },
   { id: "templates",    label: "Templates" },
   { id: "selection",    label: "Selection (UCB)" },
-  { id: "d1state",      label: "Templates (D1)" },
-  { id: "d2",           label: "Answers (D2)" },
+  { id: "d1state",      label: "Learning · Reports" },
+  { id: "d2",           label: "Learning · Answers" },
   { id: "audit",        label: "Audit Log" },
 ];
 

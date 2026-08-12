@@ -25,8 +25,10 @@ export default function D2StateTab({ notify }) {
   return (
     <section>
       <div className="admin-explain">
-        <div><strong>Decision D2</strong> — how an answer is formatted when a
-          client asks a question in the report viewer.</div>
+        <div><strong>What the system has learned about answer formats</strong> —
+          read-only. When a client asks their report a question, one of six
+          answer formats is chosen per question intent; this shows how each
+          is performing.</div>
         <div><strong>Context</strong> = the question's intent (classified).
           <strong> Arms</strong> = answer strategies. Selection is contextual UCB —
           mean + c·√(2 ln N / n) — and a 👍 on an answer is reward 1
