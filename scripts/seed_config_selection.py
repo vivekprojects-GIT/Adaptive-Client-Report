@@ -95,9 +95,14 @@ FOCUS = {
 def blocks_for(report_type: str, strategy: str) -> list:
     focus = FOCUS.get(report_type, ["returns_table", "allocation_donut"])
     if strategy == "concise":
-        # Trims DEPTH (fewer breakdowns), never facts: headline figures,
-        # the type's top two focus blocks, takeaways, small print.
-        return CORE_TOP + focus[:2] + CORE_END
+        # Trims DEPTH (fewer breakdowns), never fact CATEGORIES: headline
+        # figures, the type's top two focus blocks, and always the fees
+        # table when the type carries one — costs are facts a client is
+        # entitled to see regardless of how tersely they like their report.
+        keep = focus[:2]
+        if "fees_table" in focus and "fees_table" not in keep:
+            keep = keep + ["fees_table"]
+        return CORE_TOP + keep + CORE_END
     if strategy == "visual":
         charts = [b for b in focus if b.startswith("chart")] or ["chart:donut"]
         rest = [b for b in focus if not b.startswith("chart")]
