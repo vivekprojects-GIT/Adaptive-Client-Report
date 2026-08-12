@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "../../api.js";
 import AdminTable from "./AdminTable.jsx";
 import StatusPill from "./StatusPill.jsx";
+import TemplateCanvas from "./TemplateCanvas.jsx";
 
 // The shared presentation vocabulary. A template's style vector and a
 // client's learned preference profile are expressed in these same terms —
@@ -10,18 +11,6 @@ import StatusPill from "./StatusPill.jsx";
 const DIMENSIONS = [
   "concise", "detail", "visual", "table", "comparison",
   "numeric_precision", "narrative", "step_by_step", "technical_depth",
-];
-
-// The block types the generator can actually build and render.
-// MUST match BUILDERS in ape/reporting/generate.py — a type listed here
-// with no builder produces a template that renders a gap.
-const BLOCK_TYPES = [
-  "kpi_grid", "chart", "allocation_donut", "performance_line",
-  "comparison_chart", "comparison_table", "holdings_table", "fees_table",
-  "risk_card", "narrative", "callout",
-  "performance_history", "returns_table", "allocation_vs_target",
-  "top_contributors", "top_detractors", "key_takeaways", "explainer",
-  "disclosures",
 ];
 
 const emptyStyle = () => Object.fromEntries(DIMENSIONS.map((d) => [d, 0.5]));
@@ -86,10 +75,6 @@ export default function TemplatesTab({ notify }) {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  function toggle(list, setList, v) {
-    setList(list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
-  }
-
   async function handleSubmit(e) {
     e.preventDefault();
     if (!templateId.trim() || !strategy.trim() || !reportType) return;
@@ -142,7 +127,7 @@ export default function TemplatesTab({ notify }) {
         </div>
         <ul className="col-legend">
           <li><strong>Strategy</strong> — the arm key, i.e. the presentation style. Immutable once serving. <em>balanced · concise · visual · numeric · narrative · comparison.</em></li>
-          <li><strong>Required blocks</strong> — widget types this shape must contain. The generator may only use approved registry types.</li>
+          <li><strong>Document</strong> — the blocks, in reading order. The preview on the right is the live generator rendering a real client’s facts, so what you see is what ships.</li>
           <li><strong>Brief</strong> — the writing instruction handed to the LLM. This is what compliance approves; it fixes structure while leaving wording to the model.</li>
           <li><strong>Style vector</strong> — where this template sits on each presentation dimension. Scored by cosine against the client's learned profile.</li>
         </ul>
@@ -192,27 +177,14 @@ export default function TemplatesTab({ notify }) {
             </label>
           </div>
 
-          <div className="form-row" style={{ flexWrap: "wrap", gap: "18px" }}>
-            <div>
-              <label style={{ marginBottom: "6px" }}>Required blocks</label>
-              <div className="chip-row">
-                {BLOCK_TYPES.map((b) => (
-                  <button type="button" key={b}
-                          className={`chip ${required.includes(b) ? "chip-on" : ""}`}
-                          onClick={() => toggle(required, setRequired, b)}>{b}</button>
-                ))}
-              </div>
-            </div>
-            <div>
-              <label style={{ marginBottom: "6px" }}>Optional blocks</label>
-              <div className="chip-row">
-                {BLOCK_TYPES.map((b) => (
-                  <button type="button" key={b}
-                          className={`chip ${optional.includes(b) ? "chip-on" : ""}`}
-                          onClick={() => toggle(optional, setOptional, b)}>{b}</button>
-                ))}
-              </div>
-            </div>
+          <div className="form-row" style={{ flexDirection: "column",
+                                              alignItems: "stretch" }}>
+            <label style={{ marginBottom: "8px" }}>
+              Document — build it and watch the real report render
+            </label>
+            <TemplateCanvas blocks={required} setBlocks={setRequired}
+                            reportType={reportType} strategy={strategy}
+                            label={label} brief={brief} notify={notify} />
           </div>
 
           <div className="form-row" style={{ flexDirection: "column", alignItems: "stretch" }}>

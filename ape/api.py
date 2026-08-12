@@ -282,6 +282,76 @@ def upsert_template(req: TemplateUpsert):
     return {"status": "ok", "template_id": req.template_id}
 
 
+@app.post("/config/templates/preview")
+async def preview_template(request: Request):
+    """Render a DRAFT template — unsaved — through the real pipeline.
+
+    This deliberately calls the same build_report / enforce_mandatory /
+    validate_report / render_html path that generation uses, against a real
+    client snapshot. A preview built any other way would be a second
+    renderer that drifts from the first, and the whole point is that what
+    the admin sees is what the client gets.
+
+    Returns the document HTML plus what the coverage gate had to add — so
+    an author who forgets the fees table sees it appear and learns why.
+    """
+    body = await request.json()
+    report_type = body.get("report_type") or "quarterly_portfolio_review"
+    blocks = body.get("required_blocks") or []
+    if not blocks:
+        raise HTTPException(400, "no blocks to preview")
+
+    from .db.session import init_db, session_scope
+    from .db.repository import list_clients as _sql_clients, load_snapshot
+    from .reporting.generate import (build_report, enforce_mandatory,
+                                     render_html)
+    from .reporting.grounding import validate_report
+    init_db()
+
+    with session_scope() as db:
+        client_id = body.get("client_id")
+        if not client_id:
+            people = _sql_clients(db)
+            if not people:
+                raise HTTPException(400, "no clients on file to preview with")
+            client_id = people[0].client_id
+        try:
+            snap = load_snapshot(db, client_id, body.get("period"))
+        except LookupError as exc:
+            raise HTTPException(404, str(exc))
+
+    template = {
+        "template_id": body.get("template_id") or "__preview__",
+        "strategy": body.get("strategy") or "preview",
+        "label": body.get("label") or "Preview",
+        "brief": body.get("brief") or "",
+        "required_blocks": blocks,
+    }
+    report = build_report(snap, template, report_type)
+    enforced = enforce_mandatory(report, snap)
+    verdict = validate_report(report, snap.numeric_facts(), snap.label_terms())
+    if verdict.rejected:
+        report["blocks"] = verdict.accepted
+
+    # Blocks the source cannot support return None and simply do not appear;
+    # naming them is how the author learns this client has no holdings
+    # detail rather than wondering where the block went.
+    built = {b["type"] for b in report["blocks"]}
+    unsupported = [b for b in blocks
+                   if b.split(":")[0] not in built
+                   and b.split(":")[0] != "chart"]
+
+    return {
+        "html": render_html(report, internal=False),
+        "client_id": client_id, "client_name": snap.display_name,
+        "period": snap.period,
+        "blocks_rendered": [b["type"] for b in report["blocks"]],
+        "enforced_blocks": enforced,
+        "unsupported_blocks": unsupported,
+        "validation_summary": verdict.summary(),
+    }
+
+
 @app.delete("/config/templates/{template_id}")
 def delete_template(template_id: str, changed_by: str = "admin_user"):
     before = _find_config_for_delete(ENTITY_TEMPLATE, template_id)

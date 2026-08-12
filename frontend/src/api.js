@@ -40,6 +40,7 @@ export const api = {
   // Config — write
   upsertReportType:     (payload)                          => request("POST",   "/config/report-types", payload),
   upsertTemplate:       (payload)                          => request("POST",   "/config/templates", payload),
+  previewTemplate:      (payload)                          => request("POST",   "/config/templates/preview", payload),
   deleteTemplate:       (templateId)                       => request("DELETE", `/config/templates/${encodeURIComponent(templateId)}`),
   getSelectionConfig:   ()                                 => request("GET",    "/config/selection"),
   updateSelectionConfig: (payload)                         => request("POST",   "/config/selection", payload),
