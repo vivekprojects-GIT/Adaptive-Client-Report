@@ -814,7 +814,11 @@ async def generate_one_report(request: Request):
     compose_diag = None
     if compose:
         from .reporting.composer import compose_template
-        template, compose_diag = compose_template(snap, report_type, _profile)
+        from .reporting.skill import skill_text
+        with session_scope() as _db:
+            _skill = skill_text(_db, client_id)
+        template, compose_diag = compose_template(snap, report_type, _profile,
+                                                  skill=_skill)
         strategy = template["strategy"]
         method = "llm_composed"
         rows = []
@@ -1094,8 +1098,39 @@ def client_insight(client_id: str):
                   for e in db.scalars(
                       _sel(Event).where(Event.client_id == client_id)
                       .order_by(Event.created_at.desc()).limit(12))]
+        # The composer's memory of this client, in words. Surfaced so an
+        # advisor can see what the system believes and correct it.
+        from .reporting.skill import refresh_skill
+        skill_row = refresh_skill(db, client_id)
+        skill = {"brief": skill_row.brief,
+                 "advisor_note": skill_row.advisor_note,
+                 "evidence_count": skill_row.evidence_count,
+                 "top_blocks": skill_row.top_blocks,
+                 "ignored_blocks": skill_row.ignored_blocks}
+
     return {"client_id": client_id, "signals": n, "dimensions": dims,
-            "reports": reports, "recent_events": recent}
+            "reports": reports, "recent_events": recent, "skill": skill}
+
+
+@app.post("/clients/{client_id}/skill-note")
+async def set_skill_note(client_id: str, request: Request):
+    """An advisor's own note about how this client likes to be written to.
+
+    It takes precedence over anything inferred: someone who has met the
+    client knows more than their click history does.
+    """
+    body = await request.json()
+    from .db.session import init_db, session_scope
+    from .db.models import ClientSkill
+    init_db()
+    with session_scope() as db:
+        row = db.get(ClientSkill, client_id)
+        if row is None:
+            row = ClientSkill(client_id=client_id)
+            db.add(row)
+        row.advisor_note = str(body.get("note", ""))[:600]
+        note = row.advisor_note
+    return {"status": "ok", "advisor_note": note}
 
 
 @app.get("/ape/d1-state")
@@ -1211,6 +1246,13 @@ async def report_chat(report_id: str, request: Request):
                      report_id=report_id, block_id=block_id or "",
                      metadata={"question": question,
                                "intent": result["intent"]})
+
+        # Every question is fresh evidence about how this client reads, so
+        # the brief the composer sees next time is rebuilt now rather than
+        # on a schedule — the whole point is that the next report reflects
+        # what just happened.
+        from .reporting.skill import refresh_skill
+        refresh_skill(db, report["client_id"])
     return result
 
 

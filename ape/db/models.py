@@ -354,6 +354,32 @@ class ClientPreference(Base):
         return d
 
 
+class ClientSkill(Base):
+    """What this client's own behaviour has taught us, in words.
+
+    The bandit's arm rewards cannot help a COMPOSED layout — there is no
+    arm to reward. This is the composer's memory instead: a brief rebuilt
+    from highlights, questions and past engagement, handed back to the
+    model next time so each report starts from what the last one revealed.
+
+    Stored rather than derived on demand so an advisor can read what the
+    system believes about a client and override it — `advisor_note` takes
+    precedence over anything inferred, because a human who knows the client
+    is better evidence than behaviour.
+    """
+
+    __tablename__ = "client_skills"
+
+    client_id:  Mapped[str] = mapped_column(ForeignKey("clients.client_id"),
+                                            primary_key=True)
+    brief:      Mapped[str] = mapped_column(Text, default="")
+    advisor_note: Mapped[str] = mapped_column(Text, default="")
+    top_blocks:    Mapped[list] = mapped_column(JSON, default=list)
+    ignored_blocks: Mapped[list] = mapped_column(JSON, default=list)
+    evidence_count: Mapped[int] = mapped_column(Integer, default=0)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
 class ApeState(Base):
     """One arm, at one scope. Beta parameters because D1 selection is
     Thompson sampling; `alpha`/`beta` are the posterior, `total_reward` and

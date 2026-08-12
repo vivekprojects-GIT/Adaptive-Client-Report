@@ -2,7 +2,8 @@
 
 from ape.db.models import (  # noqa: F401
     Allocation, ApeState, Base, CashFlow, Client, ClientPreference,
-    Conversation, Delivery, Event, Fee, Holding, Message, Performance,
+    ClientSkill, Conversation, Delivery, Event, Fee, Holding, Message,
+    Performance,
     Report, ReportBlock, ReportSnapshot,
 )
 from ape.db.session import (  # noqa: F401

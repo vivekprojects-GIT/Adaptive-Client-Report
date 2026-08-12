@@ -40,6 +40,7 @@ export default function AdvisorPage() {
   // arm). "llm" = the model composes a bespoke one from the block registry.
   const [composer, setComposer] = useState("");
   const [insight, setInsight]   = useState(null);
+  const [note, setNote]         = useState("");
   const [toast, setToast]       = useState({ msg: null, kind: "" });
   const fileRef = useRef(null);
   const notify = (msg, kind = "ok") => setToast({ msg, kind });
@@ -61,8 +62,8 @@ export default function AdvisorPage() {
        .then(setDecision)
        .catch((e) => notify("Decision failed: " + e.message, "error"));
     api.clientInsight(selected.client_id)
-       .then(setInsight)
-       .catch(() => setInsight(null));
+       .then((v) => { setInsight(v); setNote(v?.skill?.advisor_note || ""); })
+       .catch(() => { setInsight(null); setNote(""); });
   }, [selected, reportType]);
 
   async function openClientView(reportId) {
@@ -350,9 +351,11 @@ export default function AdvisorPage() {
                 <div className="adv-panel-hd"><h2>What we've learned</h2></div>
                 {!insight || insight.signals === 0 ? (
                   <div className="adv-none">
-                    No interaction evidence for this client yet — reports are
-                    written from the population prior. The profile fills in as
-                    they open, highlight and ask in the report viewer.
+                    No preference dimension has moved off the population
+                    prior yet. Dimensions shift on quality signals — a
+                    rating, or a report marked unhelpful — not on opens and
+                    highlights alone, so a client can have interaction
+                    history here and still show none.
                   </div>
                 ) : (
                   <>
@@ -389,6 +392,45 @@ export default function AdvisorPage() {
                     )}
                   </>
                 )}
+              </section>
+
+              <section className="adv-panel">
+                <div className="adv-panel-hd">
+                  <h2>Client skill</h2>
+                  <span className="adv-sub">
+                    {insight?.skill?.evidence_count || 0} interactions
+                  </span>
+                </div>
+                <div className="adv-sub" style={{ marginBottom: 8 }}>
+                  What this client's own behaviour has taught us, in words.
+                  The AI composer reads this before designing their next
+                  report. It shapes layout and wording only — never which
+                  facts appear.
+                </div>
+                <pre className="adv-skill">
+                  {insight?.skill?.brief || "No interaction history yet."}
+                </pre>
+                <div className="adv-sec-hd">Your own note</div>
+                <div className="adv-sub" style={{ marginBottom: 6 }}>
+                  Anything you write here takes precedence — you have met
+                  this client, their click history has not.
+                </div>
+                <textarea
+                  className="adv-skill-note"
+                  value={note}
+                  placeholder="e.g. Prefers one page. Skip the jargon — reads the fee line first."
+                  onChange={(e) => setNote(e.target.value)}
+                />
+                <button
+                  className="adv-btn"
+                  disabled={!selected}
+                  onClick={async () => {
+                    try {
+                      await api.setSkillNote(selected.client_id, note);
+                      notify("Note saved — it will shape the next report.");
+                    } catch (e) { notify("Save failed: " + e.message, "error"); }
+                  }}
+                >Save note</button>
               </section>
 
               <section className="adv-panel">

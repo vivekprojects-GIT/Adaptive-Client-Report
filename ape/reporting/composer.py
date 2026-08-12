@@ -67,7 +67,7 @@ Return ONLY JSON: {"blocks": ["name", ...], "reasoning": "one sentence"}"""
 
 
 def _prompt(snapshot: ClientSnapshot, report_type: str,
-            dimensions: Optional[Dict[str, float]]) -> str:
+            dimensions: Optional[Dict[str, float]], skill: str = "") -> str:
     label = report_type.replace("_", " ")
     lines = [f"REPORT TYPE: {label}",
              f"CLIENT: {snapshot.display_name}, period {snapshot.period}"]
@@ -80,6 +80,13 @@ def _prompt(snapshot: ClientSnapshot, report_type: str,
             lines.append(f"  {k}: {v:.2f}")
     else:
         lines.append("LEARNED PREFERENCES: none yet — use a balanced layout.")
+
+    if skill:
+        # The dimensions say HOW MUCH; this says WHAT ABOUT. "Returns to the
+        # fees section every quarter" is actionable in a way that
+        # "numeric_precision: 0.80" is not.
+        lines.append("\nWHAT THIS CLIENT'S OWN BEHAVIOUR HAS TAUGHT US:\n"
+                     + skill)
 
     lines.append(f"\nDATA AVAILABLE: {len(snapshot.allocations)} asset "
                  f"classes, {len(snapshot.holdings or [])} holdings, "
@@ -104,6 +111,7 @@ def compose_template(
     report_type: str,
     dimensions: Optional[Dict[str, float]] = None,
     strategy_label: str = "composed",
+    skill: str = "",
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """Ask the model to design a template. Returns (template, diagnostics).
 
@@ -125,7 +133,8 @@ def compose_template(
             model=os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5"),
             max_tokens=700, system=_SYSTEM,
             messages=[{"role": "user",
-                       "content": _prompt(snapshot, report_type, dimensions)}])
+                       "content": _prompt(snapshot, report_type, dimensions,
+                                          skill)}])
         data = _parse(resp.content[0].text)
     except Exception as exc:
         diag["error"] = f"{type(exc).__name__}: {str(exc)[:120]}"
