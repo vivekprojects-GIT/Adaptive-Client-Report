@@ -11,6 +11,7 @@ is a FAIL here rather than a gap someone notices in a client document.
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -19,7 +20,9 @@ sys.path.insert(0, str(ROOT))
 
 from ape.reporting.charts import KINDS, render_chart  # noqa: E402
 from ape.reporting.csv_source import ClientSnapshot  # noqa: E402
-from ape.reporting.generate import BUILDERS, _narrative, _render_block, render_html  # noqa: E402
+from ape.reporting.echarts_opts import build_option  # noqa: E402
+from ape.reporting.generate import (BUILDERS, _ecw, _narrative,  # noqa: E402
+                                    _render_block, render_html)
 
 SNAP = ClientSnapshot(
     client_id="C1001", display_name="Jordan Lee", email="jordan@example.com",
@@ -103,6 +106,75 @@ EXTRA = {
 }
 
 
+def _source_numbers(data: dict) -> set[float]:
+    """Every figure the source dict actually contains, plus the two forms a
+    chart is allowed to derive from them: the absolute value, and a running
+    total (which is what a waterfall's invisible support bars are)."""
+    raw: list[float] = []
+    for it in (data.get("items") or []):
+        try:
+            raw.append(float(it.get("value")))
+        except (TypeError, ValueError):
+            pass
+    for s in (data.get("series") or []):
+        for v in (s.get("values") or []):
+            if isinstance(v, (list, tuple)):
+                raw.extend(float(x) for x in v
+                           if isinstance(x, (int, float)))
+            elif isinstance(v, (int, float)):
+                raw.append(float(v))
+    for row in (data.get("matrix") or []):
+        raw.extend(float(v) for v in row if isinstance(v, (int, float)))
+    for k in ("value", "min", "max"):
+        if isinstance(data.get(k), (int, float)):
+            raw.append(float(data[k]))
+
+    allowed = {0.0}
+    run = 0.0
+    for v in raw:
+        allowed.add(round(v, 4))
+        allowed.add(round(abs(v), 4))
+        run += v
+        allowed.add(round(run, 4))
+        allowed.add(round(min(run, run - v), 4))
+    return allowed
+
+
+def _option_numbers(opt: dict, kind: str) -> set[float]:
+    """The figures the option will actually put in front of a reader.
+
+    Styling numbers are not collected — only what lands in series data.
+    A heatmap cell is [column, row, value]; the first two are positions in
+    the grid, not measurements, so only the third is taken.
+    """
+    out: set[float] = set()
+
+    def take(v):
+        if isinstance(v, bool) or not isinstance(v, (int, float)):
+            return
+        out.add(round(float(v), 4))
+
+    for s in (opt.get("series") or []):
+        for entry in (s.get("data") or []):
+            val = entry.get("value") if isinstance(entry, dict) else entry
+            if isinstance(val, (list, tuple)):
+                if kind == "heatmap":
+                    take(val[-1])
+                else:
+                    for x in val:
+                        take(x)
+            else:
+                take(val)
+    return out
+
+
+def _invented_values(data: dict, opt: dict) -> set[float]:
+    kind = str(data.get("kind", ""))
+    # A radar's indicator maxima and a visualMap's bounds are axis extents,
+    # not readings, and are deliberately not collected above.
+    return _option_numbers(opt, kind) - _source_numbers(data)
+
+
 def main() -> None:
     failures: list[str] = []
     cards: list[str] = []
@@ -166,8 +238,32 @@ def main() -> None:
             if drawn < 2:
                 failures.append(f"chart:{kind} drew {drawn} element(s)")
                 print(f"  FAIL  {kind:<12} drew only {drawn}"); continue
-            print(f"  ok    {kind:<12} {len(svg):>5} chars")
-            cards.append(f'<div class="card"><h4>chart · {kind}</h4>{svg}</div>')
+            # The interactive layer is checked separately from the SVG: a
+            # kind that loses its option silently falls back forever, which
+            # looks like nothing being wrong.
+            opt = build_option(data)
+            if opt is None:
+                failures.append(f"chart:{kind} has no interactive option")
+                print(f"  FAIL  {kind:<12} no ECharts option"); continue
+            try:
+                json.dumps(opt, allow_nan=False)
+            except (TypeError, ValueError) as exc:
+                failures.append(f"chart:{kind} option not JSON: {exc}")
+                print(f"  FAIL  {kind:<12} option not JSON"); continue
+            # The interactive layer re-encodes figures that are already
+            # bound to the frozen snapshot. It must not introduce one that
+            # is not in the source: a tooltip showing a number the report
+            # cannot evidence is the same failure as prose doing it, and
+            # the grounding validator never sees inside a chart option.
+            missing = _invented_values(data, opt)
+            if missing:
+                failures.append(f"chart:{kind} option has values absent from "
+                                f"the source data: {sorted(missing)[:6]}")
+                print(f"  FAIL  {kind:<12} invented {sorted(missing)[:4]}")
+                continue
+            print(f"  ok    {kind:<12} {len(svg):>5} svg  +opt  facts-ok")
+            cards.append(f'<div class="card"><h4>chart · {kind}</h4>'
+                         f'{_ecw(opt, svg, kind)}</div>')
         except Exception as exc:
             failures.append(f"chart:{kind} {type(exc).__name__}: {exc}")
             print(f"  FAIL  {kind:<12} {type(exc).__name__}: {exc}")
@@ -177,6 +273,13 @@ def main() -> None:
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(
         '<!doctype html><meta charset="utf-8"><title>Widget gallery</title>'
+        # Relative, not "/static/...": the gallery is opened as a file, so
+        # an absolute path would resolve against the filesystem root and
+        # every card would silently show its fallback — which is exactly
+        # the failure this gallery exists to catch.
+        '<link rel="stylesheet" href="../../ape/static/widgets.css">'
+        '<script defer src="../../ape/static/vendor/echarts.min.js"></script>'
+        '<script defer src="../../ape/static/widgets.js"></script>'
         '<style>body{font-family:"Segoe UI",system-ui,Arial,sans-serif;background:#f1f5f9;'
         'margin:0;padding:20px;color:#0f172a}h1{font-size:17px;margin:0 0 14px}'
         '.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:12px}'

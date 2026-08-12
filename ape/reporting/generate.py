@@ -31,11 +31,13 @@ do not.
 from __future__ import annotations
 
 import html
+import json
 import uuid
 from typing import Any, Dict, List, Optional
 
 from .charts import KINDS as CHART_KINDS, render_chart
 from .csv_source import ClientSnapshot
+from .echarts_opts import build_option
 
 _CURRENCY = "£"
 
@@ -240,6 +242,11 @@ def _chart(s: ClientSnapshot, n: int, kind: str = "donut") -> Optional[Dict[str,
                 "series": [{"label": "Contribution", "values": vals}]}
         refs = ([f"attr.{a['driver']}" for a in s.attribution]
                 or [f"alloc.{a['asset_class']}" for a in s.allocations])
+    # Every binding above is a percentage. Stating the unit lets the
+    # interactive layer format tooltips and axis labels correctly; without
+    # it a 4.74 reads as a count rather than a return.
+    data.setdefault("unit", "%")
+    data.setdefault("dp", 2)
     return {"block_id": f"chart_{n:02d}", "type": "chart",
             "title": None, "data": data, "source_refs": refs}
 
@@ -520,6 +527,10 @@ BUILDERS = {
 
 MANDATORY_BLOCK_TYPES = ("fees_table", "disclosures")
 
+# The mandate vocabulary, in order. Used only to show WHERE a client's
+# stated level sits among the others — never to convert it to a number.
+RISK_SCALE = ("Conservative", "Moderate", "Growth", "Aggressive")
+
 # A template is written for a rich source. When a client's data is thinner —
 # a CSV upload has one period and no holdings — the blocks that need that
 # depth return None and simply vanish, and a template built around them
@@ -702,6 +713,22 @@ def _fmt(value: Any, fmt: str) -> str:
     return _esc(value)
 
 
+def _ecw(option: Optional[Dict[str, Any]], fallback: str, kind: str) -> str:
+    """A chart box holding both renderings of the same data.
+
+    The static HTML goes in as-is and is what the reader sees until the
+    runtime confirms a live chart has drawn. When there is no option — an
+    unsupported kind, or data the option builder could not shape — the
+    fallback is returned bare, with no container and no swap to wait for.
+    """
+    if not option:
+        return fallback
+    opt = _esc(json.dumps(option, separators=(",", ":"), allow_nan=False))
+    return (f'<div class="ecw" data-kind="{_esc(kind)}" data-opt="{opt}">'
+            f'<div class="ecw-live"></div>'
+            f'<div class="ecw-fallback">{fallback}</div></div>')
+
+
 def _render_block(b: Dict[str, Any], number: Optional[int] = None) -> str:
     t, d = b["type"], b.get("data", {})
     head = ""
@@ -712,7 +739,8 @@ def _render_block(b: Dict[str, Any], number: Optional[int] = None) -> str:
             head += f'<div class="sub">{_esc(b["subtitle"])}</div>'
 
     if t == "chart":
-        body = render_chart(d)
+        body = _ecw(build_option(d), render_chart(d),
+                    str(d.get("kind", "bar")))
 
     elif t == "kpi_grid":
         items = "".join(
@@ -728,7 +756,13 @@ def _render_block(b: Dict[str, Any], number: Optional[int] = None) -> str:
             f'<i style="width:{s["value_pct"] / total * 100:.1f}%"></i>'
             f'<b>{s["value_pct"]:.1f}%</b></div>'
             for s in d.get("segments", []))
-        body = f'<div class="allocs">{bars}</div>'
+        # The bar list stays as the fallback; it is a perfectly good
+        # rendering, and it is the one that prints when JS is absent.
+        opt = build_option({
+            "kind": "donut", "unit": "%", "dp": 1,
+            "items": [{"label": s["label"], "value": s["value_pct"]}
+                      for s in d.get("segments", [])]})
+        body = _ecw(opt, f'<div class="allocs">{bars}</div>', "donut")
 
     elif t == "comparison_chart":
         p, bm = float(d.get("portfolio", 0)), float(d.get("benchmark", 0))
@@ -738,6 +772,10 @@ def _render_block(b: Dict[str, Any], number: Optional[int] = None) -> str:
                 f'<b>{p:.2f}%</b></div>'
                 f'<div><span>Benchmark</span><i class="bm" style="width:{abs(bm)/top*100:.0f}%"></i>'
                 f'<b>{bm:.2f}%</b></div></div>')
+        body = _ecw(build_option({
+            "kind": "bar", "unit": "%", "dp": 2,
+            "items": [{"label": "Portfolio", "value": p},
+                      {"label": "Benchmark", "value": bm}]}), body, "bar")
 
     elif t in ("comparison_table", "holdings_table", "fees_table"):
         rows = d.get("rows", [])
@@ -773,10 +811,33 @@ def _render_block(b: Dict[str, Any], number: Optional[int] = None) -> str:
             f'<div class="series"><span>{_esc(s["label"])}</span>'
             + "".join(f'<b>{p["value"]:.2f}%</b>' for p in s.get("points", []))
             + "</div>" for s in d.get("series", []))
-        body = f'<div class="lines">{parts}</div>'
+        # This block was a row of bare percentages — the one place in the
+        # document where a reader had to reconstruct a trend in their head.
+        series = d.get("series", [])
+        pts0 = (series[0].get("points", []) if series else [])
+        opt = build_option({
+            "kind": "line", "unit": "%", "dp": 2,
+            "x_categories": [str(pt.get("label", "")) for pt in pts0],
+            "series": [{"label": sr.get("label", ""),
+                        "values": [pt["value"] for pt in sr.get("points", [])]}
+                       for sr in series]})
+        body = _ecw(opt, f'<div class="lines">{parts}</div>', "line")
 
     elif t == "risk_card":
-        body = f'<div class="risk"><span>Risk level</span><b>{_esc(d.get("risk_level"))}</b></div>'
+        # An ordinal scale, shown as a position among the named levels.
+        # Deliberately NOT a gauge: a gauge would put "Moderate" at some
+        # percentage of a maximum, and the source says which band the
+        # client is in, not how far along a continuum they sit. Drawing a
+        # magnitude the data never states is exactly the line this system
+        # does not cross, whatever it would do for the visuals.
+        level = str(d.get("risk_level") or "")
+        steps = "".join(
+            f'<i class="{"on" if s.lower() == level.lower() else ""}">'
+            f'{_esc(s)}</i>' for s in RISK_SCALE)
+        known = any(s.lower() == level.lower() for s in RISK_SCALE)
+        body = (f'<div class="risk"><span>Risk level</span>'
+                f'<b>{_esc(level)}</b></div>'
+                + (f'<div class="riskscale">{steps}</div>' if known else ""))
 
     elif t == "narrative":
         body = f"<p>{_esc(d.get('text', ''))}</p>"
@@ -822,6 +883,24 @@ def _render_block(b: Dict[str, Any], number: Optional[int] = None) -> str:
         body = ('<div class="vslist">' + "".join(parts) +
                 '</div><div class="lgd"><i></i>Actual <i class="bm"></i>Target '
                 '&middot; last column is drift from target</div>')
+        # Actual and target as two grouped series, so the gap between them
+        # is a shape rather than a subtraction the reader has to perform.
+        opt = build_option({
+            "kind": "stacked", "unit": "%", "dp": 1,
+            "x_categories": [r["label"] for r in rows],
+            "series": [
+                {"label": "Actual", "values": [float(r["value"]) for r in rows]},
+                {"label": "Target",
+                 "values": [float(r["benchmark_value"]) for r in rows]}]})
+        if opt:
+            # Grouped, not stacked: stacking actual on top of target would
+            # add two numbers that must never be added.
+            for sr in opt["series"]:
+                sr.pop("stack", None)
+                sr["itemStyle"]["borderRadius"] = [3, 3, 0, 0]
+            opt["series"][1]["itemStyle"]["color"] = "#CBD5E1"
+            opt["series"][0]["itemStyle"]["color"] = "#4F46E5"
+        body = _ecw(opt, body, "vs-target")
 
     elif t == "returns_table":
         trs = "".join(
@@ -932,7 +1011,16 @@ DOC_CSS = """ body{font-family:"Segoe UI",system-ui,Arial,sans-serif;color:#0f17
  .expl dd{margin:2px 0 0;color:#475569;line-height:1.5}
  .disc{border-top:1px solid #e2e8f0;padding-top:12px;font-size:11px;color:#94a3b8}
  .disc p{margin:0 0 4px} .disc .src{color:#cbd5e1}
- section[data-block-id]:hover{outline:2px solid #dbeafe;outline-offset:6px;border-radius:4px}"""
+ section[data-block-id]:hover{outline:2px solid #dbeafe;outline-offset:6px;border-radius:4px}
+ .riskscale{display:flex;gap:4px;margin-top:8px}
+ .riskscale i{flex:1;font-style:normal;font-size:10px;text-align:center;
+   padding:5px 2px 4px;border-radius:5px;background:#f1f5f9;color:#94a3b8;
+   border:1px solid #e2e8f0;letter-spacing:.02em}
+ .riskscale i.on{background:#4F46E5;border-color:#4F46E5;color:#fff;font-weight:700;
+   box-shadow:0 2px 7px rgba(79,70,229,.30)}
+ .kpi{transition:border-color .18s ease,box-shadow .18s ease}
+ .kpi:hover{border-color:#c7d2fe;box-shadow:0 3px 10px rgba(79,70,229,.10)}
+ .kpi b{font-variant-numeric:tabular-nums}"""
 
 
 def render_body(report: Dict[str, Any], internal: bool = True) -> str:
@@ -966,9 +1054,31 @@ def render_body(report: Dict[str, Any], internal: bool = True) -> str:
             f'</div>\n{blocks}\n</div>')
 
 
-def render_html(report: Dict[str, Any], internal: bool = True) -> str:
+# Served from our own origin, never a CDN: a client report should not make a
+# third-party request at read time, and the viewer has to keep working on a
+# network that cannot reach one. `defer` also fixes load order — echarts is
+# guaranteed to be parsed before the runtime that uses it.
+WIDGET_ASSETS = (
+    '<link rel="stylesheet" href="/static/widgets.css">'
+    '<script defer src="/static/vendor/echarts.min.js"></script>'
+    '<script defer src="/static/widgets.js"></script>'
+)
+
+
+def render_html(report: Dict[str, Any], internal: bool = True,
+                interactive: bool = True) -> str:
+    """A standalone HTML document for this report.
+
+    interactive=False drops the widget assets entirely. Saved to disk or
+    opened away from the app those URLs would not resolve anyway, and the
+    static SVG rendering is complete on its own — so the honest thing is to
+    ship the version that is whole, not the one with dead script tags in
+    its head.
+    """
+    assets = WIDGET_ASSETS if interactive else ""
     return (f'<!doctype html><html><head><meta charset="utf-8">\n'
+            f'<meta name="viewport" content="width=device-width,initial-scale=1">\n'
             f'<title>{_esc(report["client_name"])} — {_esc(report["period"])}</title>\n'
-            f'<style>\n{DOC_CSS}\n</style></head><body>'
+            f'<style>\n{DOC_CSS}\n</style>{assets}</head><body>'
             f'{render_body(report, internal)}</body></html>'
             )

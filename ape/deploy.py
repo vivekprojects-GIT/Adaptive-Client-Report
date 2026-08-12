@@ -56,7 +56,12 @@ SESSION_TTL = 12 * 3600
 # Prefixes reachable WITHOUT an advisor session. Everything else is gated
 # when ADVISOR_PASSWORD is set. Deny-by-default: a new admin endpoint is
 # born protected unless someone consciously lists it here.
-PUBLIC_PREFIXES = ("/r/", "/health", "/login")
+# "/static" carries the chart runtime and the vendored ECharts build. It has
+# to be public for the same reason "/r/" is: the person opening a report link
+# is a client, not a signed-in advisor, and gating the script would leave
+# them looking at a report whose charts never load. These are inert assets
+# with no client data in them.
+PUBLIC_PREFIXES = ("/r/", "/health", "/login", "/static/")
 
 
 def _secret() -> bytes:

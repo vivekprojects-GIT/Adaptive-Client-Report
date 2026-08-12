@@ -728,6 +728,15 @@ _FRONTEND_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 _ASSETS_DIR    = _FRONTEND_DIST / "assets"
 _INDEX_HTML    = _FRONTEND_DIST / "index.html"
 
+_STATIC_DIR = Path(__file__).resolve().parent / "static"
+
+if _STATIC_DIR.is_dir():
+    # The chart runtime and the vendored ECharts build. Same origin on
+    # purpose: a client opening their report must not have to reach a CDN
+    # for it to render.
+    app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)),
+              name="ape-static")
+
 if _ASSETS_DIR.is_dir():
     app.mount("/assets", StaticFiles(directory=str(_ASSETS_DIR)),
               name="frontend-assets")

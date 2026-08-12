@@ -1,0 +1,3 @@
+
+# Vendored third-party build: keep byte-exact, never line-ending converted.
+ape/static/vendor/** -text

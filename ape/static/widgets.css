@@ -1,0 +1,78 @@
+/* Styles for the interactive widget layer.
+ *
+ * Loaded alongside the document CSS. Everything here is additive: the
+ * report's own stylesheet fully describes the static rendering, and this
+ * file only dresses what the runtime adds. Delete it and the report is
+ * plain, not broken.
+ */
+
+/* ---- chart container ------------------------------------------------------
+ * The static SVG and the live chart occupy the same box, so the layout
+ * never shifts when one replaces the other. Before the swap the SVG is
+ * visible; `is-live` is set only after ECharts has actually drawn.
+ */
+.ecw { position: relative; width: 100%; height: 190px; margin: 2px 0 4px; }
+.ecw-live { position: absolute; inset: 0; opacity: 0; transition: opacity .25s ease; }
+.ecw-fallback { position: absolute; inset: 0; display: flex; align-items: center; }
+.ecw-fallback svg { width: 100%; height: 100%; }
+.ecw.is-live .ecw-live { opacity: 1; }
+.ecw.is-live .ecw-fallback { visibility: hidden; }
+
+/* Kinds that need more room to be readable rather than merely present. */
+.ecw[data-kind="heatmap"],
+.ecw[data-kind="radar"],
+.ecw[data-kind="treemap"],
+.ecw[data-kind="funnel"] { height: 230px; }
+.ecw[data-kind="progress"] { height: 96px; }
+.ecw[data-kind="gauge"] { height: 200px; }
+
+/* The donut's centre readout. Pointer-events off so it never eats the
+   hover that produced it. */
+.ecw-centre {
+  position: absolute; left: 34%; top: 52%;
+  transform: translate(-50%, -50%);
+  text-align: center; pointer-events: none;
+  opacity: 0; transition: opacity .18s ease;
+  font-family: "Segoe UI", system-ui, Arial, sans-serif;
+}
+.ecw-centre.on { opacity: 1; }
+.ecw-centre b { display: block; font-size: 19px; color: #0F172A;
+  font-variant-numeric: tabular-nums; line-height: 1.15; }
+.ecw-centre span { display: block; font-size: 10px; color: #64748B;
+  text-transform: uppercase; letter-spacing: .05em; max-width: 96px; }
+
+/* ---- sortable tables ------------------------------------------------------
+ * The affordance only appears once the runtime has actually made the table
+ * sortable, so a static report never shows a control that does nothing.
+ */
+table.sortable th {
+  cursor: pointer; user-select: none; position: relative;
+  padding-right: 13px; transition: color .15s ease;
+}
+table.sortable th:hover { color: #4F46E5; }
+table.sortable th:focus-visible { outline: 2px solid #4F46E5; outline-offset: 2px; }
+table.sortable th::after {
+  content: "⇅"; position: absolute; right: 2px; top: 0;
+  font-size: 9px; opacity: .28;
+}
+table.sortable th[data-sort="asc"]::after  { content: "↑"; opacity: 1; color: #4F46E5; }
+table.sortable th[data-sort="desc"]::after { content: "↓"; opacity: 1; color: #4F46E5; }
+table.sortable tbody tr:hover td,
+table.sortable tr:hover td { background: #F8FAFC; }
+
+/* ---- scroll reveal -------------------------------------------------------- */
+.reveal { opacity: 0; transform: translateY(9px);
+  transition: opacity .42s ease, transform .42s ease; }
+.reveal.shown { opacity: 1; transform: none; }
+
+/* Motion is a preference, and print is not a screen. Both opt out. */
+@media (prefers-reduced-motion: reduce) {
+  .reveal, .reveal.shown { opacity: 1; transform: none; transition: none; }
+  .ecw-live { transition: none; }
+}
+@media print {
+  .reveal, .reveal.shown { opacity: 1; transform: none; transition: none; }
+  .ecw { break-inside: avoid; page-break-inside: avoid; }
+  table.sortable th { cursor: default; }
+  table.sortable th::after { display: none; }
+}

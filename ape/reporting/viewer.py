@@ -65,6 +65,9 @@ def render_viewer(report: Dict[str, Any], token: str) -> str:
 VIEWER_TEMPLATE = """<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Your __PERIOD__ report</title>
+<link rel="stylesheet" href="/static/widgets.css">
+<script defer src="/static/vendor/echarts.min.js"></script>
+<script defer src="/static/widgets.js"></script>
 <style>
 __DOC_CSS__
  html,body{height:100%;margin:0}
