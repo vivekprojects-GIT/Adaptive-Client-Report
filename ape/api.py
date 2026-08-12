@@ -749,6 +749,12 @@ async def generate_one_report(request: Request):
     template = next(t for t in arms if t["strategy"] == strategy)
     report = build_report(snap, template, report_type)
 
+    # Structural coverage gate: mandatory categories (costs, disclosures)
+    # are appended if the template omitted them. Personalisation may not
+    # shrink what the client is told.
+    from .reporting.generate import enforce_mandatory
+    enforced = enforce_mandatory(report, snap)
+
     # THE LLM WRITES THE PROSE. Style comes from the control plane: the
     # selected template's strategy plus this client's learned dimensions.
     # Every model sentence goes through the same grounding gate below; a
@@ -797,6 +803,7 @@ async def generate_one_report(request: Request):
         "method": method, "template_id": template.get("template_id"),
         "template_label": template.get("label"),
         "blocks": [b["type"] for b in report["blocks"]],
+        "enforced_blocks": enforced,
         "authors": authors,
         "validation": "passed" if verdict.ok else "rejected_blocks",
         "validation_summary": verdict.summary(),

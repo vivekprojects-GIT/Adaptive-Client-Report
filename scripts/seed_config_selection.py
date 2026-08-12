@@ -173,14 +173,18 @@ DEAD_CHAT_RULES = {
     "response_copy",
 }
 
+# Signal classes: ENGAGEMENT is weak evidence, a QUESTION is ambiguous
+# (its format cues route to the profile instead), QUALITY verdicts dominate.
+# report_unhelpful closes the report's accrual rather than paying anything.
 REWARDS = [
-    ("report_opened",    "D1", 0.20),
-    ("dwell_60s",        "D1", 0.20),
-    ("question_asked",   "D1", 0.20),
-    ("pdf_downloaded",   "D1", 0.15),
-    ("report_helpful",   "D1", 0.25),
-    ("answer_helpful",   "D2", 1.00),
-    ("answer_unhelpful", "D2", 0.00),
+    ("report_opened",    "D1 engagement", 0.15),
+    ("dwell_60s",        "D1 engagement", 0.15),
+    ("pdf_downloaded",   "D1 engagement", 0.10),
+    ("question_asked",   "D1 ambiguous",  0.10),
+    ("report_helpful",   "D1 quality",    0.50),
+    ("report_unhelpful", "D1 quality",    0.00),
+    ("answer_helpful",   "D2 quality",    1.00),
+    ("answer_unhelpful", "D2 quality",    0.00),
 ]
 DEAD_REWARDS = {"explicit_positive", "explicit_negative",
                 "inferred_positive", "inferred_negative"}
@@ -245,7 +249,7 @@ def main() -> None:
             upsert=True)
     dead = db.delete_many({"entity_type": "reward_scale",
                            "entity_id": {"$in": list(DEAD_REWARDS)}})
-    print(f"   7 weights upserted, {dead.deleted_count} chat-era rows deleted")
+    print(f"   8 weights upserted, {dead.deleted_count} chat-era rows deleted")
 
     print("5. DEAD OFFER POLICIES")
     dead = db.delete_many({"entity_type": "offer_policy"})

@@ -501,6 +501,49 @@ BUILDERS = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Mandatory content — enforced structurally, not by template authoring.
+#
+# Personalisation may change HOW facts are presented, never the COVERAGE of
+# facts. A template that omits a mandatory category does not get to ship a
+# smaller truth: the missing block is appended at build time and the
+# addition is reported, so a mis-edited template degrades to a longer
+# report, never to a report with the costs quietly missing.
+# ---------------------------------------------------------------------------
+
+MANDATORY_BLOCK_TYPES = ("fees_table", "disclosures")
+
+
+def enforce_mandatory(report: Dict[str, Any],
+                      snapshot: ClientSnapshot) -> List[str]:
+    """Append any missing mandatory block. Returns what was added."""
+    present = {b["type"] for b in report["blocks"]}
+    added: List[str] = []
+    n = len(report["blocks"])
+    for block_type in MANDATORY_BLOCK_TYPES:
+        if block_type in present:
+            continue
+        builder = BUILDERS.get(block_type)
+        if builder is None:
+            continue
+        n += 1
+        block = builder(snapshot, n)
+        if not block:
+            continue
+        # Fees belong in the body (before takeaways when present);
+        # disclosures always close the document.
+        if block_type == "disclosures":
+            report["blocks"].append(block)
+        else:
+            idx = next((i for i, b in enumerate(report["blocks"])
+                        if b["type"] in ("key_takeaways", "explainer",
+                                         "disclosures")),
+                       len(report["blocks"]))
+            report["blocks"].insert(idx, block)
+        added.append(block_type)
+    return added
+
+
 def build_report(
     snapshot: ClientSnapshot,
     template: Dict[str, Any],

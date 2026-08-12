@@ -45,15 +45,27 @@ from ape.db.models import ApeState, ClientPreference, Event, Message, Report
 # Event vocabulary. Weights are the D1 engagement contribution.
 # ---------------------------------------------------------------------------
 
+# Three CLASSES of signal, deliberately not treated alike:
+#
+#   ENGAGEMENT  (opened, dwelled, downloaded)  weak positives - the client
+#               did something, which beats silence, but says little about
+#               whether the FORMAT was right.
+#   AMBIGUOUS   (question_asked)  engagement, but a question can mean
+#               interest or confusion, so it carries the smallest weight.
+#               Its real value is the format cues in its wording, which
+#               route to the preference profile instead.
+#   QUALITY     (report_helpful / report_unhelpful)  the only explicit
+#               verdicts on the document, so helpful carries half the cap
+#               and unhelpful CLOSES the report's accrual: engagement
+#               arriving after "this was confusing" must not keep paying
+#               the arm.
 D1_WEIGHTS = {
-    "report_opened":    0.20,
-    "dwell_60s":        0.20,   # stayed with the document
-    "question_asked":   0.20,   # it provoked a conversation
-    "pdf_downloaded":   0.15,   # kept it
-    "report_helpful":   0.25,   # said so explicitly
+    "report_opened":    0.15,
+    "dwell_60s":        0.15,
+    "pdf_downloaded":   0.10,
+    "question_asked":   0.10,
+    "report_helpful":   0.50,
 }
-# Explicit negative feedback zeroes nothing retroactively; it simply adds
-# no reward and is preserved as evidence in the event row.
 
 VALID_EVENTS = set(D1_WEIGHTS) | {
     "report_unhelpful", "block_highlighted", "answer_helpful",
@@ -79,7 +91,7 @@ def record_event(session: Session, client_id: str, event_type: str,
     if event_type in ("answer_helpful", "answer_unhelpful") and message_id:
         out["d2"] = _reward_d2(session, message_id,
                                1.0 if event_type == "answer_helpful" else 0.0)
-    if event_type in D1_WEIGHTS or event_type == "report_unhelpful":
+    if (event_type in D1_WEIGHTS or event_type == "report_unhelpful")             and report_id:
         out["d1"] = _reward_d1(session, report_id, event_type)
     dims = _dims_from_event(event_type, metadata or {})
     if dims:
@@ -124,6 +136,21 @@ def _reward_d1(session: Session, report_id: str, event_type: str) -> Dict:
     rep = session.get(Report, report_id)
     if rep is None:
         return {"applied": False, "reason": "report not in SQL"}
+
+    if event_type == "report_unhelpful":
+        # A negative QUALITY verdict closes the book on this report: what
+        # has accrued stands (it was real engagement), but nothing further
+        # pays. The arm's mean falls relative to its selection count, which
+        # is the negative evidence working as designed.
+        rep.reward_status = "CLOSED_NEGATIVE"
+        return {"applied": True, "verdict": "negative",
+                "accrued_final": rep.normalized_reward or 0.0,
+                "note": "accrual closed; arm mean falls vs selections"}
+
+    if rep.reward_status == "CLOSED_NEGATIVE":
+        return {"applied": False,
+                "reason": "client said the report was not helpful; "
+                          "accrual closed"}
 
     already = rep.normalized_reward or 0.0
     weight = D1_WEIGHTS.get(event_type, 0.0)

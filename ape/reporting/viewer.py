@@ -124,6 +124,12 @@ __DOC_CSS__
  .ask button{border:0;background:#2563eb;color:#fff;border-radius:7px;
    width:38px;cursor:pointer;font-size:15px}
  .ask button:disabled{background:#93c5fd}
+ .rfb{display:flex;align-items:center;gap:8px;padding:8px 14px;
+   border-top:1px solid #e2e8f0;font-size:12px;color:#475569}
+ .rfb button{border:1px solid #e2e8f0;background:#fff;border-radius:6px;
+   padding:4px 10px;font-size:12px;cursor:pointer;color:#64748b}
+ .rfb button:hover{border-color:#94a3b8}
+ .rfb button.on{background:#eff6ff;border-color:#2563eb;color:#1d4ed8}
  .note{padding:0 14px 10px;font-size:10.5px;color:#94a3b8}
  .typing{align-self:flex-start;color:#94a3b8;font-size:12px;padding:4px 2px}
  @media print{
@@ -172,6 +178,11 @@ __DOC_CSS__
     <input id="q" placeholder="Ask a follow up question..." autocomplete="off">
     <button id="send">&#10148;</button>
   </div>
+  <div class="rfb" id="rfb">
+    <span>Was this report helpful?</span>
+    <button id="rfb-yes">&#128077; yes</button>
+    <button id="rfb-no">&#128078; not really</button>
+  </div>
   <div class="note">Answers come from your report's own figures. For advice,
     contact your adviser. Answers may contain mistakes.</div>
 </div>
@@ -197,6 +208,19 @@ setTimeout(function(){ ev("dwell_60s", {}); }, 60000);
 document.getElementById("dl").onclick = function(){
   ev("pdf_downloaded", {}); window.print();
 };
+
+(function(){
+  var yes = document.getElementById("rfb-yes"),
+      no  = document.getElementById("rfb-no");
+  function vote(kind, btn){
+    if (yes.disabled) return;
+    yes.disabled = no.disabled = true;
+    btn.classList.add("on");
+    ev(kind, {});
+  }
+  yes.onclick = function(){ vote("report_helpful", yes); };
+  no.onclick  = function(){ vote("report_unhelpful", no); };
+})();
 
 var sections = document.querySelectorAll("section[data-block-id]");
 function titleOf(sec){
