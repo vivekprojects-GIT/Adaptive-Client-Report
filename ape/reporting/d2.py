@@ -115,7 +115,12 @@ def classify_intent(question: str, block_type: Optional[str] = None) -> str:
 # Strategy selection — Thompson over SQL ape_state
 # ---------------------------------------------------------------------------
 
-PRIOR_STRENGTH = 2.0
+PRIOR_STRENGTH = 2.0   # fallback; the live value is admin-editable
+
+
+def _live_strength() -> float:
+    from ape.reporting.policy_config import thompson_params
+    return thompson_params()["prior_strength_d2"]
 
 
 def select_strategy(session: Session, intent: str,
@@ -124,6 +129,7 @@ def select_strategy(session: Session, intent: str,
     lazily at first selection so the admin table only shows arms that have
     actually been in play."""
     rng = rng or random
+    strength = _live_strength()
     rows = {r.arm_id: r for r in session.scalars(
         select(ApeState).where(ApeState.decision == "D2",
                                ApeState.scope_type == "GLOBAL",
@@ -132,9 +138,9 @@ def select_strategy(session: Session, intent: str,
     best, best_draw = arms[0], -1.0
     for arm in arms:
         r = rows.get(arm)
-        a = 1.0 + PRIOR_STRENGTH * 0.5 + (r.total_reward if r else 0.0)
-        b = 1.0 + PRIOR_STRENGTH * 0.5 + ((r.reward_count - r.total_reward)
-                                          if r else 0.0)
+        a = 1.0 + strength * 0.5 + (r.total_reward if r else 0.0)
+        b = 1.0 + strength * 0.5 + ((r.reward_count - r.total_reward)
+                                    if r else 0.0)
         draw = rng.betavariate(a, b)
         table.append({"arm": arm, "draw": round(draw, 4),
                       "count": r.selection_count if r else 0,
@@ -156,27 +162,23 @@ def select_strategy(session: Session, intent: str,
 
 
 STRATEGY_STYLE = {
-    "standard_llm":        "Answer naturally in one or two short paragraphs.",
-    "short_paragraph":     "One short paragraph, nothing else.",
-    "bullet_summary":      "3-5 bullets, each one fact.",
-    "one_liner":           "A single sentence.",
-    "definition_plus_example": ("Define the term plainly, then show it using "
-                                "the client's own figures."),
-    "definition_with_pointer": ("Define the term plainly, then point to the "
-                                "section of the report where it appears."),
-    "analogy_explanation": ("Explain with a simple everyday analogy, then "
-                            "tie it back to the client's own figures."),
-    "step_by_step_reasoning": ("Walk through the calculation step by step, "
-                               "one line each."),
-    "numbered_steps":      "Numbered steps.",
-    "bullet_contrast":     ("Two bullet groups: portfolio vs benchmark, or "
-                            "this period vs last."),
-    "pros_cons_table":     ("A two-column markdown table of the trade-off "
-                            "being asked about."),
-    "decision_card":       ("A compact summary: the figure, what it means, "
-                            "what to watch."),
-    "checklist":           "A short checklist.",
-    "phased_workflow":     "Phases with one line each.",
+    # The six live arms — these names MUST match ape_config strategies and
+    # INTENT_STRATEGIES in the catalogue. A name that matches nothing here
+    # silently gets the default style, which is how a mismatch hides.
+    "concise_direct":     "One short, direct paragraph. Lead with the figure.",
+    "structured_bullets": "3-5 bullets, one fact each, no preamble.",
+    "detailed_narrative": ("A flowing explanation of the why behind the "
+                           "figures, the way an adviser would talk it "
+                           "through. 4-6 sentences."),
+    "comparison_table":   ("A small markdown table comparing the relevant "
+                           "figures (portfolio vs benchmark, this period vs "
+                           "last, or fee vs fee), then one sentence of "
+                           "interpretation."),
+    "visual_explanation": ("Describe what the relevant chart in the report "
+                           "shows and point them to it; give the key figures "
+                           "in words."),
+    "step_by_step":       ("Walk through the calculation step by step, one "
+                           "numbered line each, using their own figures."),
 }
 
 
@@ -277,7 +279,7 @@ def answer_question(
         import anthropic
         client = anthropic.Anthropic(api_key=api_key)
         model = os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5")
-        style = STRATEGY_STYLE.get(strategy, STRATEGY_STYLE["standard_llm"])
+        style = STRATEGY_STYLE.get(strategy, STRATEGY_STYLE["concise_direct"])
         prompt = (f"FACTS:\n{facts_text}\n\nQUESTION: {question}\n\n"
                   f"Answer format: {style}")
         feedback = ""

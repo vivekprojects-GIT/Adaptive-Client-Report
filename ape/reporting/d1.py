@@ -196,11 +196,18 @@ def effective_profile(
 # compute_ucb is retained for the admin display and for comparison, but it is
 # no longer the production policy.
 
-PRIOR_STRENGTH = 4.0   # pseudo-observations carried by the style-fit prior
+PRIOR_STRENGTH = 4.0   # fallback; the live value is admin-editable
+
+
+def _live_strength() -> float:
+    from ape.reporting.policy_config import thompson_params
+    return thompson_params()["prior_strength_d1"]
 
 
 def _beta_params(count: int, total_reward: float, prior_mean: float,
-                 strength: float = PRIOR_STRENGTH) -> tuple:
+                 strength: float = None) -> tuple:
+    if strength is None:
+        strength = _live_strength()
     """Beta parameters for one arm.
 
     Observed reward is stored in [0, 1] per report, so `total_reward` is the

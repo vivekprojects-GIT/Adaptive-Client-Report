@@ -9,7 +9,7 @@ import ReportTypesTab from "./admin/ReportTypesTab.jsx";
 import TemplatesTab   from "./admin/TemplatesTab.jsx";
 import SignalRulesTab from "./admin/SignalRulesTab.jsx";
 import RewardScaleTab from "./admin/RewardScaleTab.jsx";
-import UcbConfigTab   from "./admin/UcbConfigTab.jsx";
+import ThompsonTab    from "./admin/ThompsonTab.jsx";
 import ResearchTab    from "./admin/ResearchTab.jsx";
 import BanditStateTab from "./admin/BanditStateTab.jsx";
 import D2StateTab    from "./admin/D2StateTab.jsx";
@@ -28,7 +28,7 @@ const TABS = [
   { id: "templates",    label: "Templates" },
   { id: "signals",      label: "Signal Routing" },
   { id: "rewards",      label: "Reward Scale" },
-  { id: "ucb",          label: "Selection Score" },
+  { id: "thompson",     label: "Selection (Thompson)" },
   { id: "bandit",       label: "Bandit State" },
   { id: "d2",           label: "Answers (D2)" },
   { id: "research",     label: "Research" },
@@ -78,7 +78,7 @@ export default function AdminPage() {
         {active === "templates"    && <TemplatesTab   notify={notify} />}
         {active === "signals"      && <SignalRulesTab notify={notify} />}
         {active === "rewards"      && <RewardScaleTab notify={notify} />}
-        {active === "ucb"          && <UcbConfigTab   notify={notify} />}
+        {active === "thompson"     && <ThompsonTab    notify={notify} />}
         {active === "bandit"       && <BanditStateTab notify={notify} />}
         {active === "d2"           && <D2StateTab     notify={notify} />}
         {active === "research"     && <ResearchTab />}

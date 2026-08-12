@@ -67,7 +67,7 @@ def reset_fixture():
     from ape.db.session import session_scope
     from ape.db.models import Conversation, Event, Message, Report
     from sqlalchemy import delete
-    rid = f"R_{CLIENT}_{PERIOD}"
+    rid = f"R_{CLIENT}_{PERIOD}_quarterly_portfolio_review"
     with session_scope() as db:
         db.execute(delete(Event).where(Event.report_id == rid))
         db.execute(delete(Message).where(Message.report_id == rid))

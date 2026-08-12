@@ -50,8 +50,8 @@ export const api = {
   deleteTemplate:       (templateId)                       => request("DELETE", `/config/templates/${encodeURIComponent(templateId)}`),
   upsertSignalRule:     (payload)                          => request("POST",   "/config/signal-rules", payload),
   upsertRewardValue:    (payload)                          => request("POST",   "/config/reward-scale", payload),
-  getUcbConfig:         ()                                 => request("GET",    "/config/ucb"),
-  updateUcbConfig:      (payload)                          => request("POST",   "/config/ucb", payload),
+  getThompsonConfig:    ()                                 => request("GET",    "/config/thompson"),
+  updateThompsonConfig: (payload)                          => request("POST",   "/config/thompson", payload),
   upsertPolicy:         (payload)                          => request("POST",   "/config/policies", payload),
   publishInstruction:   (payload)                          => request("POST",   "/config/instructions", payload),
   activateInstruction:  (strategyId, version, changedBy="admin_user") =>

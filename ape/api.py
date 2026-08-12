@@ -369,23 +369,36 @@ def upsert_reward_value(req: RewardScaleUpdate):
     return {"status": "ok", "category": req.category}
 
 
-@app.get("/config/ucb")
-def get_ucb_config():
-    """Current global UCB params: exploration_c + reward_range_width."""
-    return _guard_cfg().get_ucb_config()
+@app.get("/config/thompson")
+def get_thompson_config():
+    """Live Thompson parameters for both decisions."""
+    from .reporting.policy_config import thompson_params
+    return thompson_params(force=True)
 
 
-@app.post("/config/ucb")
-def update_ucb_config(req: UcbConfigUpdate):
-    """Update the UCB formula knobs and apply them live (no redeploy)."""
-    result = _guard_cfg().update_ucb_config(
-        exploration_c=req.exploration_c,
-        reward_range_width=req.reward_range_width,
-        changed_by=req.changed_by,
-    )
-    # Apply to the running selection module immediately (single worker).
-    set_ucb_params(c=result["exploration_c"], width=result["reward_range_width"])
-    return {"status": "ok", **result}
+@app.post("/config/thompson")
+async def update_thompson_config(request: Request):
+    """Edit the prior strengths and apply them on the next selection."""
+    body = await request.json()
+    store = _guard_store()
+    updates = {}
+    for k in ("prior_strength_d1", "prior_strength_d2"):
+        v = body.get(k)
+        if v is not None:
+            v = float(v)
+            if not (0.0 < v <= 100.0):
+                raise HTTPException(400, f"{k} must be in (0, 100]")
+            updates[k] = v
+    if not updates:
+        raise HTTPException(400, "nothing to update")
+    store.db["ape_config"].update_one(
+        {"entity_type": "bandit_config", "entity_id": "thompson"},
+        {"$set": {**updates, "policy": "thompson_sampling",
+                  "status": "ACTIVE", "version": "_"}},
+        upsert=True)
+    from .reporting.policy_config import invalidate, thompson_params
+    invalidate()
+    return {"status": "ok", **thompson_params(force=True)}
 
 
 @app.post("/config/policies")
@@ -1064,9 +1077,14 @@ def d1_decision(client_id: str, report_type: str):
     templates = cfg.list_templates()
     arms = eligible_arms(templates, report_type)
     key = cell_key(report_type)
-    state = {r.get("strategy"): {"count": int(r.get("count", 0)),
-                                 "total_reward": float(r.get("total_reward", 0.0))}
-             for r in store.bandit_state.find({"cell_key": key})}
+    from .db.models import ApeState as _AS
+    from sqlalchemy import select as _sel
+    with session_scope() as _db:
+        state = {r.arm_id: {"count": int(r.selection_count),
+                            "total_reward": float(r.total_reward)}
+                 for r in _db.scalars(_sel(_AS).where(
+                     _AS.decision == "D1", _AS.scope_type == "GLOBAL",
+                     _AS.context == report_type))}
     arm_state = {a["strategy"]: state.get(a["strategy"],
                                           {"count": 0, "total_reward": 0.0})
                  for a in arms}
@@ -1171,22 +1189,27 @@ async def generate_one_report(request: Request):
         raise HTTPException(400, f"no active templates for '{report_type}'")
 
     key = cell_key(report_type)
-    state = {r.get("strategy"): {"count": int(r.get("count", 0)),
-                                 "total_reward": float(r.get("total_reward", 0.0))}
-             for r in store.bandit_state.find({"cell_key": key})}
-    arm_state = {a["strategy"]: state.get(a["strategy"],
-                                          {"count": 0, "total_reward": 0.0})
-                 for a in arms}
 
-    # The learned profile steers SELECTION as well as writing: template
-    # style-fit is scored against these dimensions, weighted by how much
-    # evidence stands behind them.
-    from .db.models import ClientPreference as _Pref
+    # D1 state lives in SQL ape_state, same table as D2 — one store for
+    # both decisions. (The old Mongo collection carried a chat-era unique
+    # index without cell_key, which silently collapsed every report type
+    # onto one row per strategy.)
+    from .db.models import ApeState as _AS, ClientPreference as _Pref
+    from sqlalchemy import select as _sel
     with session_scope() as _db:
+        _rows = _db.scalars(_sel(_AS).where(
+            _AS.decision == "D1", _AS.scope_type == "GLOBAL",
+            _AS.context == report_type)).all()
+        state = {r.arm_id: {"count": int(r.selection_count),
+                            "total_reward": float(r.total_reward)}
+                 for r in _rows}
         _p = _db.get(_Pref, client_id)
         _profile = (_p.as_dimensions()
                     if _p and _p.meaningful_signal_count > 0 else None)
         _nsig = _p.meaningful_signal_count if _p else 0
+    arm_state = {a["strategy"]: state.get(a["strategy"],
+                                          {"count": 0, "total_reward": 0.0})
+                 for a in arms}
 
     strategy, rows, method = select(
         templates, arm_state, report_type,
@@ -1195,13 +1218,17 @@ async def generate_one_report(request: Request):
 
     # count rises at SELECTION so cold-start exploration advances even
     # before any reward lands.
-    store.bandit_state.update_one(
-        {"cell_key": key, "strategy": strategy},
-        {"$inc": {"count": 1},
-         "$setOnInsert": {"total_reward": 0.0, "report_type": report_type,
-                          "scope": "_global"}},
-        upsert=True,
-    )
+    with session_scope() as _db:
+        _row = _db.scalars(_sel(_AS).where(
+            _AS.decision == "D1", _AS.scope_type == "GLOBAL",
+            _AS.context == report_type, _AS.arm_id == strategy)).first()
+        if _row is None:
+            _row = _AS(scope_type="GLOBAL", scope_id="_global",
+                       decision="D1", context=report_type, arm_id=strategy,
+                       alpha=1.0, beta=1.0, selection_count=0,
+                       reward_count=0, total_reward=0.0)
+            _db.add(_row)
+        _row.selection_count += 1
 
     template = next(t for t in arms if t["strategy"] == strategy)
     report = build_report(snap, template, report_type)

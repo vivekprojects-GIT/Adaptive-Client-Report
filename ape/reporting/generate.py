@@ -533,7 +533,10 @@ def build_report(
             blocks.append(block)
 
     return {
-        "report_id": f"R_{snapshot.client_id}_{snapshot.period}",
+        # Type is part of the identity: a risk report and a quarterly review
+        # for the same client and period are different documents, and one
+        # must never overwrite the other.
+        "report_id": f"R_{snapshot.client_id}_{snapshot.period}_{report_type}",
         "client_id": snapshot.client_id,
         "client_name": snapshot.display_name,
         "email": snapshot.email,

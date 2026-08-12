@@ -145,24 +145,26 @@ def _reward_d1(session: Session, report_id: str, event_type: str) -> Dict:
         return {"applied": False, "reason": "report reward capped at 1.0",
                 "accrued": already}
 
-    # The mongo store is where D1 selection reads count/total_reward.
-    applied_mongo = False
-    try:
-        # The API process already holds the connected store; reuse it rather
-        # than opening a second Mongo client per event.
-        from ape import api as _api
-        from ape.reporting.d1 import cell_key
-        store = _api.STORE
-        store.bandit_state.update_one(
-            {"cell_key": cell_key(rep.report_type),
-             "strategy": rep.template_arm},
-            {"$inc": {"total_reward": delta}}, upsert=True)
-        applied_mongo = True
-    except Exception:
-        pass                     # SQL keeps the truth; mongo catches up later
+    # D1 selection reads SQL ape_state, so the reward lands there too —
+    # same session, same transaction as the event row itself.
+    row = session.scalars(select(ApeState).where(
+        ApeState.decision == "D1", ApeState.scope_type == "GLOBAL",
+        ApeState.context == rep.report_type,
+        ApeState.arm_id == rep.template_arm)).first()
+    if row is None:
+        row = ApeState(scope_type="GLOBAL", scope_id="_global",
+                       decision="D1", context=rep.report_type,
+                       arm_id=rep.template_arm,
+                       alpha=1.0, beta=1.0, selection_count=0,
+                       reward_count=0, total_reward=0.0)
+        session.add(row)
+    row.reward_count += 1
+    row.total_reward += delta
+    row.updated_at = datetime.utcnow()
 
     return {"applied": True, "arm": rep.template_arm, "delta": delta,
-            "accrued": rep.normalized_reward, "mongo": applied_mongo}
+            "accrued": rep.normalized_reward,
+            "arm_total": round(row.total_reward, 2)}
 
 
 # ---------------------------------------------------------------------------
