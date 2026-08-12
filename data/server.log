@@ -51,3 +51,17 @@ INFO:     127.0.0.1:50484 - "POST /r/R_C1004_2026Q1_quarterly_portfolio_review/e
 INFO:     127.0.0.1:50485 - "POST /r/R_C1004_2026Q1_quarterly_portfolio_review/events HTTP/1.1" 200 OK
 INFO:     127.0.0.1:50486 - "POST /r/R_C1004_2026Q1_quarterly_portfolio_review/events HTTP/1.1" 200 OK
 INFO:     127.0.0.1:50487 - "POST /reports/generate-one HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61167 - "GET /ape/d1-state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61167 - "GET /ape/d1-state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52737 - "GET /config/report-types HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55711 - "GET /config/templates HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52738 - "POST /reports/generate-one HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52740 - "GET /r/R_C1004_2026Q1_quarterly_portfolio_review?token=Ul9DMTAwNF8yMDI2UTFfcXVhcnRlcmx5X3BvcnRmb2xpb19yZXZpZXd8QzEwMDR8cmVwb3J0OnZpZXd8MTc4NzcxODU5Mg.9YOUpGQVeaR6a8iMuPaHkG9qWF825VpSNKZK6NyXiBU HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52741 - "GET /r/R_C1004_2026Q1_quarterly_portfolio_review?token=garbage HTTP/1.1" 403 Forbidden
+INFO:     127.0.0.1:52742 - "POST /r/R_C1004_2026Q1_quarterly_portfolio_review/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52743 - "POST /r/R_C1004_2026Q1_quarterly_portfolio_review/chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52745 - "POST /r/R_C1004_2026Q1_quarterly_portfolio_review/chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52747 - "POST /r/R_C1004_2026Q1_quarterly_portfolio_review/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52748 - "POST /r/R_C1004_2026Q1_quarterly_portfolio_review/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52749 - "POST /r/R_C1004_2026Q1_quarterly_portfolio_review/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52750 - "POST /reports/generate-one HTTP/1.1" 200 OK
