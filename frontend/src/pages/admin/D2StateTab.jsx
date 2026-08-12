@@ -28,8 +28,8 @@ export default function D2StateTab({ notify }) {
         <div><strong>Decision D2</strong> — how an answer is formatted when a
           client asks a question in the report viewer.</div>
         <div><strong>Context</strong> = the question's intent (classified).
-          <strong> Arms</strong> = answer strategies. Selection is a Thompson
-          draw over each arm's Beta posterior; a 👍 on an answer is reward 1
+          <strong> Arms</strong> = answer strategies. Selection is contextual UCB —
+          mean + c·√(2 ln N / n) — and a 👍 on an answer is reward 1
           to the exact arm that wrote it, a 👎 is reward 0 — evidence, not
           punishment.</div>
       </div>
@@ -55,7 +55,7 @@ export default function D2StateTab({ notify }) {
           <table className="admin-table">
             <thead><tr>
               <th>Answer strategy</th><th>Selected</th><th>Feedback</th>
-              <th>Total reward</th><th>Posterior mean</th><th>Updated</th>
+              <th>Total reward</th><th>Reward mean</th><th>Updated</th>
             </tr></thead>
             <tbody>
               {arms.map((a) => (

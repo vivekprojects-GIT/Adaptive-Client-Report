@@ -294,20 +294,21 @@ def delete_template(template_id: str, changed_by: str = "admin_user"):
     return {"status": "ok", "deleted": template_id}
 
 
-@app.get("/config/thompson")
-def get_thompson_config():
-    """Live Thompson parameters for both decisions."""
-    from .reporting.policy_config import thompson_params
-    return thompson_params(force=True)
+@app.get("/config/selection")
+def get_selection_config():
+    """Live UCB parameters for both decisions."""
+    from .reporting.policy_config import selection_params
+    return selection_params(force=True)
 
 
-@app.post("/config/thompson")
-async def update_thompson_config(request: Request):
-    """Edit the prior strengths and apply them on the next selection."""
+@app.post("/config/selection")
+async def update_selection_config(request: Request):
+    """Edit prior strengths / exploration constant; applies on the next
+    selection."""
     body = await request.json()
     store = _guard_store()
     updates = {}
-    for k in ("prior_strength_d1", "prior_strength_d2"):
+    for k in ("prior_strength_d1", "prior_strength_d2", "exploration_c"):
         v = body.get(k)
         if v is not None:
             v = float(v)
@@ -317,13 +318,13 @@ async def update_thompson_config(request: Request):
     if not updates:
         raise HTTPException(400, "nothing to update")
     store.db["ape_config"].update_one(
-        {"entity_type": "bandit_config", "entity_id": "thompson"},
-        {"$set": {**updates, "policy": "thompson_sampling",
+        {"entity_type": "bandit_config", "entity_id": "selection"},
+        {"$set": {**updates, "policy": "ucb_contextual",
                   "status": "ACTIVE", "version": "_"}},
         upsert=True)
-    from .reporting.policy_config import invalidate, thompson_params
+    from .reporting.policy_config import invalidate, selection_params
     invalidate()
-    return {"status": "ok", **thompson_params(force=True)}
+    return {"status": "ok", **selection_params(force=True)}
 
 
 # ============================================================================

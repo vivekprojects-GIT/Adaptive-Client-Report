@@ -25,7 +25,7 @@ export default function D1StateTab({ notify }) {
     <section>
       <div className="admin-explain">
         <div><strong>Decision D1</strong> — which template shapes a client's
-          report, chosen per report type by Thompson sampling.</div>
+          report, chosen per report type by contextual UCB.</div>
         <div>Reward is the client's engagement with the delivered report,
           capped at 1.0 per report so a chatty client cannot make a template
           look better than it is. Rows appear per report type as reports are
@@ -51,7 +51,7 @@ export default function D1StateTab({ notify }) {
           <table className="admin-table">
             <thead><tr>
               <th>Template arm</th><th>Reports</th><th>Rewarded</th>
-              <th>Total reward</th><th>Posterior mean</th><th>Updated</th>
+              <th>Total reward</th><th>Reward mean</th><th>Updated</th>
             </tr></thead>
             <tbody>
               {arms.map((a) => (

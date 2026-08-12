@@ -9,9 +9,8 @@ What this fixes, and why:
    set: the type's FOCUS block leads, and every arm still contains the
    full facts (personalisation changes HOW, never WHAT).
 
-2. BANDIT CONFIG — the stored policy was UCB (exploration_c/width). Both
-   decisions select by Thompson sampling now, so the config says so:
-   prior strengths for D1 and D2, editable from the admin panel.
+2. BANDIT CONFIG — contextual UCB for both decisions: exploration_c
+   plus the prior strengths, editable from the admin panel.
 
 3. SIGNALS — the routing table described the chat product. Replaced with
    the viewer's actual event vocabulary, each row naming its destination
@@ -132,18 +131,17 @@ def dedupe(seq):
 # 2/3/4. Thompson config, signal routing, reward scale
 # ---------------------------------------------------------------------------
 
-THOMPSON = {
-    "entity_type": "bandit_config", "entity_id": "thompson", "version": "_",
-    "status": "ACTIVE", "policy": "thompson_sampling",
+SELECTION = {
+    "entity_type": "bandit_config", "entity_id": "selection", "version": "_",
+    "status": "ACTIVE", "policy": "ucb_contextual", "exploration_c": 1.0,
     # D1's style-fit prior is worth this many pseudo-observations. Bigger =
     # trusts the template's declared style longer before data outvotes it.
     "prior_strength_d1": 4.0,
     # D2 starts closer to uniform: answer strategies have no meaningful
     # declared fit, so the data should take over quickly.
     "prior_strength_d2": 2.0,
-    "notes": "Both decisions select by one Beta draw per arm; highest draw "
-             "wins. Rewards update the posterior; thumbs-down is reward 0, "
-             "which is evidence, not deletion.",
+    "notes": "Both decisions score arms mean + c*sqrt(2 ln N/n); highest "
+             "wins. Thumbs-down is reward 0 - evidence, not deletion.",
 }
 
 SIGNALS = [
@@ -207,12 +205,12 @@ def main() -> None:
         sizes["thin (<6)" if n < 6 else "rich"] += 1
     print(f"   now: {dict(sizes)}")
 
-    print("2. BANDIT CONFIG -> THOMPSON")
+    print("2. BANDIT CONFIG -> UCB")
     deleted = db.delete_many({"entity_type": "bandit_config",
                               "entity_id": "ucb"}).deleted_count
-    db.update_one({"entity_type": "bandit_config", "entity_id": "thompson"},
-                  {"$set": {**THOMPSON, "ts": now()}}, upsert=True)
-    print(f"   ucb doc deleted: {deleted}; thompson doc upserted")
+    db.update_one({"entity_type": "bandit_config", "entity_id": "selection"},
+                  {"$set": {**SELECTION, "ts": now()}}, upsert=True)
+    print(f"   legacy doc deleted: {deleted}; selection doc upserted")
 
     print("3. SIGNAL ROUTING")
     for name, dest, desc in SIGNALS:

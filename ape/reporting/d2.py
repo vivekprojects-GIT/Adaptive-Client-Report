@@ -26,7 +26,7 @@ THE DECISION
 
 context  = question intent (classified, closed vocabulary)
 arms     = answer strategies from the catalogue for that intent
-policy   = Thompson over Beta posteriors in SQL `ape_state`
+policy   = contextual UCB over reward means in SQL `ape_state`
            (decision="D2", scope GLOBAL for now; client scope arrives with
            evidence, same as D1)
 reward   = thumbs on the answer, follow-up behaviour
@@ -38,6 +38,7 @@ thumb that arrives minutes later can find its way back.
 from __future__ import annotations
 
 import json
+import math
 import os
 import random
 import re
@@ -115,12 +116,13 @@ def classify_intent(question: str, block_type: Optional[str] = None) -> str:
 # Strategy selection — Thompson over SQL ape_state
 # ---------------------------------------------------------------------------
 
-PRIOR_STRENGTH = 2.0   # fallback; the live value is admin-editable
+PRIOR_STRENGTH = 2.0   # fallback; the live values are admin-editable
 
 
-def _live_strength() -> float:
-    from ape.reporting.policy_config import thompson_params
-    return thompson_params()["prior_strength_d2"]
+def _live_params() -> Tuple[float, float]:
+    from ape.reporting.policy_config import selection_params
+    v = selection_params()
+    return v["prior_strength_d2"], v["exploration_c"]
 
 
 def select_strategy(session: Session, intent: str,
@@ -128,26 +130,32 @@ def select_strategy(session: Session, intent: str,
     """One Beta draw per arm; highest draw answers. State rows are created
     lazily at first selection so the admin table only shows arms that have
     actually been in play."""
-    rng = rng or random
-    strength = _live_strength()
+    strength, c = _live_params()
     rows = {r.arm_id: r for r in session.scalars(
         select(ApeState).where(ApeState.decision == "D2",
                                ApeState.scope_type == "GLOBAL",
                                ApeState.context == intent))}
+    n_total = sum(r.selection_count for r in rows.values())
     table = []
-    best, best_draw = arms[0], -1.0
+    best, best_score = arms[0], -1.0
     for arm in arms:
         r = rows.get(arm)
-        a = 1.0 + strength * 0.5 + (r.total_reward if r else 0.0)
-        b = 1.0 + strength * 0.5 + ((r.reward_count - r.total_reward)
-                                    if r else 0.0)
-        draw = rng.betavariate(a, b)
-        table.append({"arm": arm, "draw": round(draw, 4),
-                      "count": r.selection_count if r else 0,
+        count = r.selection_count if r else 0
+        reward = r.total_reward if r else 0.0
+        # Neutral 0.5 prior as pseudo-observations; the mean uses rewarded
+        # turns, the bonus decays with how often the arm has been SERVED —
+        # an arm that answers constantly but never earns a thumb loses its
+        # optimism, which is exactly right.
+        n_eff = count + strength
+        mean = (strength * 0.5 + reward) / (strength + (r.reward_count if r else 0))
+        score = mean + c * math.sqrt(
+            2.0 * math.log(max(n_total, 0) + strength + 1.0) / n_eff)
+        table.append({"arm": arm, "ucb": round(score, 4),
+                      "count": count,
                       "rewards": r.reward_count if r else 0,
-                      "total_reward": round(r.total_reward, 2) if r else 0.0})
-        if draw > best_draw:
-            best, best_draw = arm, draw
+                      "total_reward": round(reward, 2) if r else 0.0})
+        if score > best_score:
+            best, best_score = arm, score
 
     row = rows.get(best)
     if row is None:

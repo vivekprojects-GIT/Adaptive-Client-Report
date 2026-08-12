@@ -1,4 +1,4 @@
-"""Live Thompson parameters, read from the admin-editable config document.
+"""Live selection-policy (UCB) parameters, read from the admin-editable config document.
 
 One document governs both decisions:
 
@@ -26,6 +26,9 @@ from typing import Dict
 DEFAULTS: Dict[str, float] = {
     "prior_strength_d1": 4.0,
     "prior_strength_d2": 2.0,
+    # UCB exploration constant, shared by both decisions. Bigger explores
+    # longer; smaller commits to the current best sooner.
+    "exploration_c": 1.0,
 }
 
 _TTL_SECONDS = 30.0
@@ -33,7 +36,7 @@ _cache: Dict[str, float] = {}
 _cached_at = 0.0
 
 
-def thompson_params(force: bool = False) -> Dict[str, float]:
+def selection_params(force: bool = False) -> Dict[str, float]:
     global _cache, _cached_at
     if not force and _cache and time.time() - _cached_at < _TTL_SECONDS:
         return _cache
@@ -41,7 +44,7 @@ def thompson_params(force: bool = False) -> Dict[str, float]:
     try:
         from ape import api as _api
         doc = _api.STORE.db["ape_config"].find_one(
-            {"entity_type": "bandit_config", "entity_id": "thompson"}) or {}
+            {"entity_type": "bandit_config", "entity_id": "selection"}) or {}
         for k in DEFAULTS:
             if isinstance(doc.get(k), (int, float)) and doc[k] > 0:
                 values[k] = float(doc[k])

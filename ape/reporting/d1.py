@@ -196,37 +196,39 @@ def effective_profile(
 # compute_ucb is retained for the admin display and for comparison, but it is
 # no longer the production policy.
 
-PRIOR_STRENGTH = 4.0   # fallback; the live value is admin-editable
+PRIOR_STRENGTH = 4.0   # fallback; the live values are admin-editable
 
 
-def _live_strength() -> float:
-    from ape.reporting.policy_config import thompson_params
-    return thompson_params()["prior_strength_d1"]
+def _live_params() -> tuple:
+    from ape.reporting.policy_config import selection_params
+    v = selection_params()
+    return v["prior_strength_d1"], v["exploration_c"]
 
 
-def _beta_params(count: int, total_reward: float, prior_mean: float,
-                 strength: float = None) -> tuple:
-    if strength is None:
-        strength = _live_strength()
-    """Beta parameters for one arm.
+def ucb_score(count: int, total_reward: float, prior_mean: float,
+              n_context_total: int) -> float:
+    """Contextual UCB for one arm.
 
-    Observed reward is stored in [0, 1] per report, so `total_reward` is the
-    success mass and `count - total_reward` the failure mass. The style-fit
-    prior enters as pseudo-observations rather than as a separate term, which
-    is what lets a well-matched but unserved arm compete without pretending
-    it has real evidence.
+        n_eff = count + prior_strength
+        mean  = (prior_strength * prior_mean + total_reward) / n_eff
+        score = mean + c * sqrt(2 ln N_eff / n_eff)
+
+    The style-fit prior enters as pseudo-observations, which is what lets a
+    well-matched but unserved arm compete without pretending it has real
+    evidence — and means the bonus is finite even at count 0, so a cold arm
+    is favoured by uncertainty, not by an infinity sentinel.
+
+    Batch diversity: counts rise at SELECTION time, so within one batch run
+    each pick shrinks its own bonus and the next client can get a different
+    arm. Given identical state the choice is deterministic — that is UCB's
+    trade against Thompson, accepted deliberately.
     """
-    obs_a = max(0.0, float(total_reward))
-    obs_b = max(0.0, float(count) - float(total_reward))
+    strength, c = _live_params()
     p = min(1.0, max(0.0, prior_mean))
-    return (1.0 + strength * p + obs_a,
-            1.0 + strength * (1.0 - p) + obs_b)
-
-
-def thompson_draw(count: int, total_reward: float, prior_mean: float,
-                  rng: Optional[random.Random] = None) -> float:
-    a, b = _beta_params(count, total_reward, prior_mean)
-    return (rng or random).betavariate(a, b)
+    n_eff = float(count) + strength
+    mean = (strength * p + max(0.0, float(total_reward))) / n_eff
+    n_total_eff = max(float(n_context_total) + strength, n_eff) + 1.0
+    return mean + c * math.sqrt(2.0 * math.log(n_total_eff) / n_eff)
 
 
 def eligible_arms(
@@ -278,13 +280,10 @@ def score_arms(
 
         # prior mean in [0,1] from the style fit; observations do the rest
         prior_mean = 0.5 * fit + 0.5 * ((avg + 1.0) / 2.0 if count else fit)
-        draw = thompson_draw(count, total_reward, prior_mean, rng)
-        score = draw
+        score = ucb_score(count, total_reward, prior_mean, n_total)
         rows.append({
-            "draw":          round(draw, 4),
+            "ucb":           round(score, 4),
             "prior_mean":    round(prior_mean, 4),
-            "ucb_display":   999.0 if compute_ucb(count, exploit, n_total) == float("inf")
-                              else round(compute_ucb(count, exploit, n_total), 4),
             "strategy":      t["strategy"],
             "template_id":   t.get("template_id"),
             "label":         t.get("label") or t["strategy"],
@@ -347,7 +346,7 @@ def select(
         if r["count"] == 0:
             return r["strategy"], rows, "round_robin"
 
-    return rows[0]["strategy"], rows, "thompson"
+    return rows[0]["strategy"], rows, "ucb"
 
 
 def _ord(s: str) -> int:

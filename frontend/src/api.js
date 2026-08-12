@@ -41,8 +41,8 @@ export const api = {
   upsertReportType:     (payload)                          => request("POST",   "/config/report-types", payload),
   upsertTemplate:       (payload)                          => request("POST",   "/config/templates", payload),
   deleteTemplate:       (templateId)                       => request("DELETE", `/config/templates/${encodeURIComponent(templateId)}`),
-  getThompsonConfig:    ()                                 => request("GET",    "/config/thompson"),
-  updateThompsonConfig: (payload)                          => request("POST",   "/config/thompson", payload),
+  getSelectionConfig:   ()                                 => request("GET",    "/config/selection"),
+  updateSelectionConfig: (payload)                         => request("POST",   "/config/selection", payload),
 
   // Config — flip ACTIVE / INACTIVE / DRAFT on any config doc
   setConfigStatus:      (entityType, entityId, status, version) =>
