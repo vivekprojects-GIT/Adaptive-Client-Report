@@ -19,6 +19,9 @@ const BLOCK_TYPES = [
   "kpi_grid", "chart", "allocation_donut", "performance_line",
   "comparison_chart", "comparison_table", "holdings_table", "fees_table",
   "risk_card", "narrative", "callout",
+  "performance_history", "returns_table", "allocation_vs_target",
+  "top_contributors", "top_detractors", "key_takeaways", "explainer",
+  "disclosures",
 ];
 
 const emptyStyle = () => Object.fromEntries(DIMENSIONS.map((d) => [d, 0.5]));

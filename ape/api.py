@@ -994,12 +994,18 @@ def list_clients(q: Optional[str] = None, limit: int = 200):
             if q and q.lower() not in (c.client_id + c.name + c.email).lower():
                 continue
             periods = list_periods(db, c.client_id)
+            from .db.models import ReportSnapshot as _RS
+            from sqlalchemy import select as _sel
+            latest_snap = db.scalars(
+                _sel(_RS).where(_RS.client_id == c.client_id)
+                .order_by(_RS.period.desc())).first()
             rows.append({
                 "client_id": c.client_id, "display_name": c.name,
                 "email": c.email, "segment_id": c.segment_id,
                 "risk_profile": c.risk_profile,
                 "periods": periods,
                 "last_period": periods[-1] if periods else None,
+                "portfolio_value": latest_snap.portfolio_value if latest_snap else 0.0,
             })
             if len(rows) >= limit:
                 break
@@ -1017,7 +1023,6 @@ def list_clients(q: Optional[str] = None, limit: int = 200):
     for r in rows:
         rep = latest.get(r.get("client_id"))
         out.append({**r,
-                    "portfolio_value": None,
                     "last_report_period": (rep or {}).get("period"),
                     "last_report_id": (rep or {}).get("report_id"),
                     "last_strategy": (rep or {}).get("template_strategy"),
@@ -1042,8 +1047,19 @@ def d1_decision(client_id: str, report_type: str):
     if rt is None:
         raise HTTPException(404, f"unknown report type '{report_type}'")
 
-    client = store.db["ape_clients"].find_one({"client_id": client_id}) or {}
-    segment_id = client.get("segment_id", "unsegmented")
+    # Client identity and learned profile come from SQL — the same store
+    # the viewer writes and generation reads. The old Mongo ape_clients rows
+    # are import-era leftovers and can name people who no longer exist.
+    from .db.session import init_db, session_scope
+    from .db.models import Client as _Client, ClientPreference as _Pref
+    init_db()
+    with session_scope() as _db:
+        _c = _db.get(_Client, client_id)
+        client_name = _c.name if _c else client_id
+        segment_id = _c.segment_id if _c else "unsegmented"
+        _p = _db.get(_Pref, client_id)
+        sql_profile = _p.as_dimensions() if _p else None
+        sql_signals = _p.meaningful_signal_count if _p else 0
 
     templates = cfg.list_templates()
     arms = eligible_arms(templates, report_type)
@@ -1055,12 +1071,10 @@ def d1_decision(client_id: str, report_type: str):
                                           {"count": 0, "total_reward": 0.0})
                  for a in arms}
 
-    # Client preference profile. Nothing populates this until the viewer and
-    # chat exist (Phase 2/3), so it is reported as absent rather than faked.
-    prof_doc = store.db["ape_preference_profile"].find_one(
-        {"scope": "CLIENT", "key": client_id})
-    client_profile = (prof_doc or {}).get("dimensions")
-    n_signals = int((prof_doc or {}).get("meaningful_signal_count", 0))
+    # The learned profile. Zero signals means it is reported as absent —
+    # a profile nobody has learned must not pretend to be knowledge.
+    client_profile = sql_profile if sql_signals > 0 else None
+    n_signals = sql_signals
 
     seg_doc = store.db["ape_preference_profile"].find_one(
         {"scope": "SEGMENT", "key": segment_id})
@@ -1077,7 +1091,7 @@ def d1_decision(client_id: str, report_type: str):
 
     return {
         "client_id": client_id,
-        "client_name": client.get("display_name", client_id),
+        "client_name": client_name,
         "segment_id": segment_id,
         "report_type": report_type,
         "report_type_label": rt.get("label"),
@@ -1093,6 +1107,24 @@ def d1_decision(client_id: str, report_type: str):
         "client_profile": client_profile or {},
         "arms": rows,
     }
+
+
+# ============================================================================
+# SPA static serving (production build)
+# ============================================================================
+
+_FRONTEND_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+_ASSETS_DIR    = _FRONTEND_DIST / "assets"
+_INDEX_HTML    = _FRONTEND_DIST / "index.html"
+
+if _ASSETS_DIR.is_dir():
+    app.mount("/assets", StaticFiles(directory=str(_ASSETS_DIR)),
+              name="frontend-assets")
+
+# Known client-side routes the React app handles. Any other unmatched path
+# falls through to a 404 instead of silently serving the SPA shell.
+# "analytics" is gone — that page was the chat product's.
+_SPA_ROUTES = {"", "reports", "admin"}
 
 
 @app.post("/reports/generate-one")
@@ -1146,9 +1178,20 @@ async def generate_one_report(request: Request):
                                           {"count": 0, "total_reward": 0.0})
                  for a in arms}
 
+    # The learned profile steers SELECTION as well as writing: template
+    # style-fit is scored against these dimensions, weighted by how much
+    # evidence stands behind them.
+    from .db.models import ClientPreference as _Pref
+    with session_scope() as _db:
+        _p = _db.get(_Pref, client_id)
+        _profile = (_p.as_dimensions()
+                    if _p and _p.meaningful_signal_count > 0 else None)
+        _nsig = _p.meaningful_signal_count if _p else 0
+
     strategy, rows, method = select(
         templates, arm_state, report_type,
-        bool(rt.get("personalisable", True)))
+        bool(rt.get("personalisable", True)),
+        client_profile=_profile, n_signals=_nsig)
 
     # count rises at SELECTION so cold-start exploration advances even
     # before any reward lands.
@@ -1351,6 +1394,82 @@ def _report_json(report_id: str) -> dict:
     if not f.is_file():
         raise HTTPException(404, "report not found")
     return json.loads(f.read_text(encoding="utf-8"))
+
+
+@app.get("/reports/{report_id}/link")
+def report_client_link(report_id: str, request: Request):
+    """A signed client-view URL WITHOUT sending anything. The advisor's
+    review should look at exactly what the client will see — same page,
+    same token gate — not the internal preview."""
+    _report_json(report_id)          # 404 before minting
+    from .reporting.tokens import mint
+    report = _report_json(report_id)
+    token = mint(report_id, report["client_id"])
+    base = str(request.base_url).rstrip("/")
+    return {"url": f"{base}/r/{report_id}?token={token}",
+            "expires": "14 days"}
+
+
+@app.get("/clients/{client_id}/insight")
+def client_insight(client_id: str):
+    """What the system has LEARNED about this client — the advisor's window
+    into the adaptation. Empty profile is reported as exactly that, never
+    dressed up as knowledge."""
+    from .db.session import init_db, session_scope
+    from .db.models import ClientPreference, Event, Message, Report
+    from sqlalchemy import select as _sel, func as _fn
+    init_db()
+    with session_scope() as db:
+        pref = db.get(ClientPreference, client_id)
+        dims = pref.as_dimensions() if pref else {}
+        n = pref.meaningful_signal_count if pref else 0
+
+        reports = []
+        for r in db.scalars(_sel(Report).where(Report.client_id == client_id)
+                            .order_by(Report.created_at.desc()).limit(10)):
+            nev = db.scalar(_sel(_fn.count()).select_from(Event)
+                            .where(Event.report_id == r.report_id))
+            nq = db.scalar(_sel(_fn.count()).select_from(Message)
+                           .where(Message.report_id == r.report_id,
+                                  Message.role == "client"))
+            reports.append({
+                "report_id": r.report_id, "period": r.period,
+                "template_arm": r.template_arm, "status": r.status,
+                "engagement": round(r.normalized_reward or 0.0, 2),
+                "events": nev or 0, "questions": nq or 0,
+            })
+        recent = [{"event_type": e.event_type, "block_id": e.block_id,
+                   "at": e.created_at.isoformat(timespec="seconds")}
+                  for e in db.scalars(
+                      _sel(Event).where(Event.client_id == client_id)
+                      .order_by(Event.created_at.desc()).limit(12))]
+    return {"client_id": client_id, "signals": n, "dimensions": dims,
+            "reports": reports, "recent_events": recent}
+
+
+@app.get("/ape/d2-state")
+def d2_state():
+    """The answer-format decision's posteriors, grouped by question intent.
+    SQL ape_state is the live store D2 selects from — this is a read of the
+    real thing, not a report about it."""
+    from .db.session import init_db, session_scope
+    from .db.models import ApeState
+    from sqlalchemy import select as _sel
+    init_db()
+    out: Dict[str, list] = {}
+    with session_scope() as db:
+        for r in db.scalars(_sel(ApeState).where(ApeState.decision == "D2")
+                            .order_by(ApeState.context, ApeState.arm_id)):
+            mean = ((1.0 + r.total_reward) /
+                    (2.0 + r.reward_count)) if r.reward_count else 0.5
+            out.setdefault(r.context, []).append({
+                "arm": r.arm_id, "selected": r.selection_count,
+                "rewarded": r.reward_count,
+                "total_reward": round(r.total_reward, 2),
+                "posterior_mean": round(mean, 3),
+                "updated_at": r.updated_at.isoformat(timespec="seconds"),
+            })
+    return {"contexts": out}
 
 
 @app.post("/r/{report_id}/chat")

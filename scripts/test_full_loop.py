@@ -57,7 +57,30 @@ def http(method, path, body=None):
     return json.loads(raw) if raw.strip().startswith(("{", "[")) else raw
 
 
+def reset_fixture():
+    """Clear THIS report's interaction rows so reruns start clean.
+
+    The product deduplicates rewards per report — correct behaviour, but it
+    means a second test run would fail on 'already rewarded' unless the
+    fixture is reset. Only rows for the test report/client are touched.
+    """
+    from ape.db.session import session_scope
+    from ape.db.models import Conversation, Event, Message, Report
+    from sqlalchemy import delete
+    rid = f"R_{CLIENT}_{PERIOD}"
+    with session_scope() as db:
+        db.execute(delete(Event).where(Event.report_id == rid))
+        db.execute(delete(Message).where(Message.report_id == rid))
+        db.execute(delete(Conversation).where(Conversation.report_id == rid))
+        rep = db.get(Report, rid)
+        if rep is not None:
+            rep.normalized_reward = 0.0
+            rep.reward_status = "PENDING"
+    print(f"  fixture reset for {rid}\n")
+
+
 def main():
+    reset_fixture()
     print("1. ADVISOR GENERATES (LLM writes, grounding gates, SQL persists)")
     gen = http("POST", "/reports/generate-one",
                {"client_id": CLIENT, "period": PERIOD,

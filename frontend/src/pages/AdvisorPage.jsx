@@ -35,6 +35,8 @@ export default function AdvisorPage() {
   const [busy, setBusy]         = useState(false);
   const [importInfo, setImport] = useState(null);
   const [preview, setPreview]   = useState(null);
+  const [period, setPeriod]     = useState("");        // "" = latest on file
+  const [insight, setInsight]   = useState(null);
   const [toast, setToast]       = useState({ msg: null, kind: "" });
   const fileRef = useRef(null);
   const notify = (msg, kind = "ok") => setToast({ msg, kind });
@@ -51,11 +53,21 @@ export default function AdvisorPage() {
   useEffect(() => { refreshAll().catch((e) => notify("Load failed: " + e.message, "error")); }, []);
 
   useEffect(() => {
-    if (!selected) { setDecision(null); return; }
+    if (!selected) { setDecision(null); setInsight(null); return; }
     api.d1Decision(selected.client_id, reportType)
        .then(setDecision)
        .catch((e) => notify("Decision failed: " + e.message, "error"));
+    api.clientInsight(selected.client_id)
+       .then(setInsight)
+       .catch(() => setInsight(null));
   }, [selected, reportType]);
+
+  async function openClientView(reportId) {
+    try {
+      const r = await api.reportClientLink(reportId);
+      window.open(r.url, "_blank", "noreferrer");
+    } catch (e) { notify("Link failed: " + e.message, "error"); }
+  }
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -98,11 +110,13 @@ export default function AdvisorPage() {
     setStatus({ snapshot: "done", generate: "running" });
     try {
       const r = await api.generateOneReport({
-        client_id: client.client_id, report_type: reportType });
+        client_id: client.client_id, report_type: reportType,
+        ...(period ? { period } : {}) });
       setStatus({ snapshot: "done", generate: "done",
                   validate: r.validation === "passed" ? "passed" : "failed",
                   validation_summary: r.validation_summary,
                   validation_findings: r.validation_findings || [],
+                  authors: r.authors || {},
                   review: "pending", email: "pending", report_id: r.report_id });
       await refreshAll();
       notify(`${client.display_name}: ${r.strategy}`);
@@ -120,7 +134,8 @@ export default function AdvisorPage() {
     try {
       for (const c of clients) {
         const r = await api.generateOneReport({
-          client_id: c.client_id, report_type: reportType });
+          client_id: c.client_id, report_type: reportType,
+          ...(period ? { period } : {}) });
         arms[r.strategy] = (arms[r.strategy] || 0) + 1;
       }
       await refreshAll();
@@ -188,6 +203,15 @@ export default function AdvisorPage() {
                 {t.label}{t.personalisable === false ? "  (prescribed)" : ""}
               </option>
             ))}
+          </select>
+
+          <label className="adv-bar-lbl">Period</label>
+          <select value={period} onChange={(e) => setPeriod(e.target.value)}>
+            <option value="">Latest on file</option>
+            {[...new Set(clients.flatMap((c) => c.periods || []))]
+              .sort().reverse().map((per) => (
+                <option key={per} value={per}>{per}</option>
+              ))}
           </select>
 
           <button className="adv-btn ghost" disabled={busy || !clients.length}
@@ -301,12 +325,50 @@ export default function AdvisorPage() {
                         <b>{a.exploit.toFixed(2)}</b>
                       </div>
                     ))}
-                    {!decision.has_client_profile && (
-                      <div className="adv-none" style={{ marginTop: 10 }}>
-                        No interaction data yet — selection uses the population
-                        prior. The profile is learned from the report viewer and
-                        chat, neither of which exists yet.
-                      </div>
+                  </>
+                )}
+              </section>
+
+              <section className="adv-panel">
+                <div className="adv-panel-hd"><h2>What we've learned</h2></div>
+                {!insight || insight.signals === 0 ? (
+                  <div className="adv-none">
+                    No interaction evidence for this client yet — reports are
+                    written from the population prior. The profile fills in as
+                    they open, highlight and ask in the report viewer.
+                  </div>
+                ) : (
+                  <>
+                    <div className="adv-sub" style={{ marginBottom: 8 }}>
+                      {insight.signals} meaningful signal{insight.signals === 1 ? "" : "s"}.
+                      These dimensions shape how the next report is written —
+                      never which facts it contains.
+                    </div>
+                    {Object.entries(insight.dimensions)
+                      .filter(([, v]) => Math.abs(v - 0.5) > 0.02)
+                      .sort((a, b) => Math.abs(b[1] - 0.5) - Math.abs(a[1] - 0.5))
+                      .map(([dim, v]) => (
+                        <div key={dim} className="adv-bar-row">
+                          <span>{dim.replace(/_/g, " ")}</span>
+                          <i style={{ width: `${Math.max(4, v * 100)}%`,
+                                      background: v > 0.5 ? "#047857" : "#b45309" }} />
+                          <b>{v.toFixed(2)}</b>
+                        </div>
+                      ))}
+                    {insight.reports.filter((r) => r.engagement > 0).length > 0 && (
+                      <>
+                        <div className="adv-sec-hd">Report engagement</div>
+                        {insight.reports.filter((r) => r.engagement > 0).map((r) => (
+                          <div key={r.report_id} className="adv-step-row">
+                            <span className="adv-step-name">{r.period}
+                              <span className="adv-sub"> · {r.template_arm}</span></span>
+                            <span className="adv-pill ok">
+                              {Math.round(r.engagement * 100)}% engaged
+                              · {r.questions} question{r.questions === 1 ? "" : "s"}
+                            </span>
+                          </div>
+                        ))}
+                      </>
                     )}
                   </>
                 )}
@@ -333,6 +395,19 @@ export default function AdvisorPage() {
                     Grounding: {status.validation_summary}
                   </div>
                 )}
+                {status.authors && Object.keys(status.authors).length > 0 && (
+                  <div className="adv-sub" style={{ margin: "0 0 10px" }}>
+                    Written by the model:{" "}
+                    {Object.entries(status.authors).map(([bid, who]) => (
+                      <span key={bid}
+                            className={`adv-pill ${who.startsWith("llm") ? "arm" : "wait"}`}
+                            style={{ marginRight: 4 }} title={who}>
+                        {bid.replace(/_[0-9]+$/, "").replace(/_/g, " ")}
+                        {who === "fallback" ? " (code)" : ""}
+                      </span>
+                    ))}
+                  </div>
+                )}
                 {status.validation_findings?.length > 0 && (
                   <div className="adv-import warn" style={{ margin: "0 0 10px" }}>
                     <b>{status.validation_findings.length} block(s) dropped</b>
@@ -347,8 +422,14 @@ export default function AdvisorPage() {
                     Approve &amp; send
                   </button>
                   {status.report_id && (
-                    <button className="adv-btn ghost"
-                            onClick={() => setPreview(status.report_id)}>Preview</button>
+                    <>
+                      <button className="adv-btn ghost"
+                              onClick={() => setPreview(status.report_id)}>Preview</button>
+                      <button className="adv-btn ghost"
+                              onClick={() => openClientView(status.report_id)}>
+                        Client view
+                      </button>
+                    </>
                   )}
                 </div>
                 {status.delivery && (
@@ -394,6 +475,11 @@ export default function AdvisorPage() {
                         <td><span className="adv-pill ok">{r.email_status}</span></td>
                         <td className="adv-row-actions">
                           <button className="adv-mini" onClick={() => setPreview(r.report_id)}>Preview</button>
+                          <button className="adv-mini" onClick={() => openClientView(r.report_id)}>
+                            Client view
+                          </button>
+                          <button className="adv-mini ghost" disabled={busy}
+                                  onClick={() => sendReport(r.report_id)}>Send</button>
                           <a className="adv-mini ghost" href={`/reports/${r.report_id}/json`}
                              target="_blank" rel="noreferrer">JSON</a>
                         </td>
