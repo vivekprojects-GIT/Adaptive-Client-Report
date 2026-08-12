@@ -48,9 +48,6 @@ D = ["concise", "detail", "visual", "table", "comparison",
      "numeric_precision", "narrative", "step_by_step", "technical_depth"]
 
 
-def sv(**kw):
-    return {d: float(kw.get(d, 0.5)) for d in D}
-
 
 # ---------------------------------------------------------------------------
 # The six presentation styles — the ARM vocabulary, shared across every
@@ -62,59 +59,47 @@ STYLES = {
         blocks=["kpi_grid", "chart:bar", "comparison_chart", "narrative"],
         brief="Balance visuals and prose evenly. Lead with the headline figures, "
               "then the main visual, then two or three sentences of plain "
-              "interpretation per section.",
-        style=sv(concise=.5, detail=.5, visual=.5, table=.5, comparison=.4,
-                 numeric_precision=.5, narrative=.5, step_by_step=.3, technical_depth=.5),
+              "interpretation per section."
     ),
     "concise": dict(
         label="Concise",
         blocks=["kpi_grid", "callout"],
         brief="At most one page. Lead with the headline figures, then a single "
-              "short paragraph. No section may exceed three sentences.",
-        style=sv(concise=1.0, detail=.15, visual=.4, table=.3, comparison=.3,
-                 numeric_precision=.4, narrative=.35, step_by_step=.15, technical_depth=.25),
+              "short paragraph. No section may exceed three sentences."
     ),
     "visual": dict(
         label="Visual",
         blocks=["kpi_grid", "chart:donut", "chart:line", "comparison_chart"],
         brief="Lead every section with its visual. One or two sentences of "
-              "interpretation beneath. Never more than three sentences per section.",
-        style=sv(concise=.7, detail=.35, visual=1.0, table=.2, comparison=.6,
-                 numeric_precision=.35, narrative=.2, step_by_step=.2, technical_depth=.3),
+              "interpretation beneath. Never more than three sentences per section."
     ),
     "numeric": dict(
         label="Numeric",
         blocks=["kpi_grid", "comparison_table", "holdings_table", "fees_table"],
         brief="Figures go in tables. Prose only to flag what changed. Full "
-              "precision, two decimal places, no rounding in summary figures.",
-        style=sv(concise=.3, detail=.9, visual=.15, table=1.0, comparison=.7,
-                 numeric_precision=1.0, narrative=.15, step_by_step=.25, technical_depth=.9),
+              "precision, two decimal places, no rounding in summary figures."
     ),
     "narrative": dict(
         label="Plain English",
         blocks=["narrative", "kpi_grid", "callout"],
         brief="Two to three short paragraphs per section. State the figure, then "
-              "explain it. No jargon; define any unavoidable term inline.",
-        style=sv(concise=.25, detail=.85, visual=.25, table=.2, comparison=.35,
-                 numeric_precision=.35, narrative=1.0, step_by_step=.55, technical_depth=.3),
+              "explain it. No jargon; define any unavoidable term inline."
     ),
     "comparison": dict(
         label="Comparison",
         blocks=["kpi_grid", "comparison_chart", "chart:waterfall", "comparison_table"],
         brief="Frame every figure against its reference point. Side by side, with "
               "the difference stated explicitly. Prose explains the gap, not the "
-              "absolute number.",
-        style=sv(concise=.5, detail=.6, visual=.5, table=.8, comparison=1.0,
-                 numeric_precision=.8, narrative=.3, step_by_step=.2, technical_depth=.6),
+              "absolute number."
     ),
 }
 
 # ---------------------------------------------------------------------------
 # The 16 report types.
-#   (id, label, personalisable, cadence, required_blocks, optional_blocks,
+#   (id, label, personalisable, cadence, required_blocks,
 #    styles offered, notes)
 #
-# `styles` is the arm catalogue for that type. Types offer only the styles
+# `styles` is the set of templates seeded for that type. Types offer only the styles
 # that make sense for them — an executive summary has no detailed-narrative
 # variant, because that would not be an executive summary.
 # ---------------------------------------------------------------------------
@@ -212,9 +197,7 @@ MANDATED = dict(
     brief="Follow the mandated statutory layout exactly. Section order, headings "
           "and wording are fixed. Do not summarise, reorder, reword or omit any "
           "section, and add no commentary or interpretation. Figures are "
-          "reproduced verbatim with no rounding.",
-    style=sv(concise=.0, detail=1.0, visual=.0, table=1.0, comparison=.5,
-             numeric_precision=1.0, narrative=.0, step_by_step=.0, technical_depth=1.0),
+          "reproduced verbatim with no rounding."
 )
 
 
@@ -302,8 +285,6 @@ def main() -> None:
                 description=f"{label} — {spec['label'].lower()} presentation.",
                 brief=spec["brief"],
                 required_blocks=chosen,
-                optional_blocks=leftover,
-                style_profile=spec["style"],
                 changed_by="seed_catalog",
             )
             n_tpl += 1

@@ -4,7 +4,7 @@ import { api } from "../../api.js";
 /**
  * SelectionTab — the contextual-UCB policy's three knobs.
  *
- * Both decisions score every arm as
+ * The answer-format decision (D2) scores every arm as
  *
  *     mean + c * sqrt(2 ln N / n)
  *
@@ -14,7 +14,8 @@ import { api } from "../../api.js";
  *
  * Batch diversity: counts rise at selection time, so during a
  * generate-for-all run each pick shrinks its own bonus and the next
- * client can get a different arm.
+ * client can get a different arm. Templates are NOT selected this
+ * way — an advisor picks one, or the composer builds one.
  */
 export default function SelectionTab({ notify }) {
   const [cfg, setCfg]   = useState(null);
@@ -65,7 +66,7 @@ export default function SelectionTab({ notify }) {
   return (
     <section>
       <div className="admin-explain">
-        <div><strong>Selection policy: contextual UCB</strong> — every arm is
+        <div><strong>Answer-format policy: contextual UCB</strong> — every arm is
           scored mean + c·√(2 ln N / n); the highest score is served.
           The context is the report type (D1) or the question intent (D2),
           and the client's learned dimensions shape the prior mean.</div>

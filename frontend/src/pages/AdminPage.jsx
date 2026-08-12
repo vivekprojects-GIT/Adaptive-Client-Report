@@ -5,7 +5,6 @@ import ReportTypesTab from "./admin/ReportTypesTab.jsx";
 import TemplatesTab   from "./admin/TemplatesTab.jsx";
 import SelectionTab   from "./admin/SelectionTab.jsx";
 import D2StateTab    from "./admin/D2StateTab.jsx";
-import D1StateTab    from "./admin/D1StateTab.jsx";
 import AuditTab       from "./admin/AuditTab.jsx";
 import "../styles/app-shell.css";
 import "../styles/admin.css";
@@ -14,7 +13,6 @@ const TABS = [
   { id: "reporttypes",  label: "Report Types" },
   { id: "templates",    label: "Templates" },
   { id: "selection",    label: "Selection (UCB)" },
-  { id: "d1state",      label: "Learning · Reports" },
   { id: "d2",           label: "Learning · Answers" },
   { id: "audit",        label: "Audit Log" },
 ];
@@ -57,7 +55,6 @@ export default function AdminPage() {
         {active === "reporttypes"  && <ReportTypesTab notify={notify} />}
         {active === "templates"    && <TemplatesTab   notify={notify} />}
         {active === "selection"    && <SelectionTab   notify={notify} />}
-        {active === "d1state"      && <D1StateTab     notify={notify} />}
         {active === "d2"           && <D2StateTab     notify={notify} />}
         {active === "audit"        && <AuditTab       notify={notify} />}
       </main>

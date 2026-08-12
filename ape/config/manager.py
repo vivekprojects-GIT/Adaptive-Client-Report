@@ -99,7 +99,7 @@ class ConfigManager:
         )
 
     # ------------------------------------------------------------------
-    # Report types (D1's decision context — selected, not classified)
+    # Report types — the advisor chooses one; nothing classifies it
     # ------------------------------------------------------------------
     def upsert_report_type(
         self,
@@ -111,7 +111,7 @@ class ConfigManager:
         changed_by: str = "system",
     ) -> None:
         """`personalisable=False` marks a prescribed report — tax packs,
-        statutory valuations. Their format is set by regulation, so D1 must
+        statutory valuations. Their format is set by regulation, so nothing must
         refuse to choose a shape for them rather than quietly defaulting."""
         before = self.store.get_config(ENTITY_REPORT_TYPE, report_type)
         self.store.upsert_config(
@@ -151,8 +151,6 @@ class ConfigManager:
         description: str = "",
         brief: str = "",
         required_blocks: Optional[List[str]] = None,
-        optional_blocks: Optional[List[str]] = None,
-        style_profile: Optional[Dict[str, float]] = None,
         changed_by: str = "system",
     ) -> None:
         """One approved report shape.
@@ -175,8 +173,6 @@ class ConfigManager:
                 "description":     description,
                 "brief":           brief,
                 "required_blocks": required_blocks or [],
-                "optional_blocks": optional_blocks or [],
-                "style_profile":   style_profile or {},
             },
             status=_preserved_status(before),
         )

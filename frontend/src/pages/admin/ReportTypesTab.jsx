@@ -70,7 +70,7 @@ export default function ReportTypesTab({ notify }) {
         </p>
         <div className="rule-box">
           <div><strong>Report type</strong> determines <em>which arms are eligible</em>.</div>
-          <div><strong>Client evidence</strong> determines <em>which eligible arm is chosen</em>.</div>
+          <div><strong>Client evidence</strong> shapes what the composer builds — it no longer chooses between templates.</div>
         </div>
         <ul className="col-legend">
           <li><strong>Report type</strong> — snake_case identifier. Forms part of the bandit cell key (<code>scope#report_type</code>), so it can never change after first use.

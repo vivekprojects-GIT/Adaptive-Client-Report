@@ -183,8 +183,11 @@ class TemplateUpsert(BaseModel):
     description:     str = ""
     brief:           str = ""
     required_blocks: List[str] = []
-    optional_blocks: List[str] = []
-    style_profile:   Dict[str, float] = {}
+    # optional_blocks and style_profile are gone. The generator never read
+    # the first, and the second existed solely as the D1 bandit's prior —
+    # cosine-matched against the client's learned profile to seed an arm
+    # that had no rewards yet. There is no arm and no selection, so the
+    # nine sliders that wrote it were a control with no consumer.
     changed_by:      str = "admin_user"
 
 

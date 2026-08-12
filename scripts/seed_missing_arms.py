@@ -103,9 +103,7 @@ def main() -> None:
                     "description": f"{rt_label} — "
                                    f"{LABEL[strat].lower()} presentation.",
                     "brief": BRIEF[strat],
-                    "style_profile": STYLE[strat],
                     "required_blocks": dedupe(blocks_for(rt, strat)),
-                    "optional_blocks": [],
                     "ts": now,
                 }},
                 upsert=True)

@@ -260,7 +260,7 @@ def rag_ingest(force: bool = False):
 
 # ----- Legacy turn-record view (kept for the analytics page) ----------------
 
-# ---- Adaptive client reporting (D1) ---------------------------------------
+# ---- Adaptive client reporting --------------------------------------------
 
 @app.get("/registry/blocks")
 def registry_blocks():
@@ -302,7 +302,6 @@ def registry_templates():
             "label": t.get("label") or t.get("strategy"),
             "description": t.get("description", ""),
             "blocks": t.get("required_blocks", []) or [],
-            "optional_blocks": t.get("optional_blocks", []) or [],
         })
     out = []
     for rt in sorted(set(types) | set(by_type)):
@@ -479,8 +478,6 @@ def upsert_template(req: TemplateUpsert):
         description=req.description,
         brief=req.brief,
         required_blocks=req.required_blocks,
-        optional_blocks=req.optional_blocks,
-        style_profile=req.style_profile,
         changed_by=req.changed_by,
     )
     return {"status": "ok", "template_id": req.template_id}
@@ -735,7 +732,7 @@ def _clean(doc):
 # signed URL; locally they are files on disk. The interface is the same:
 # the client never gets a raw storage path, only an app URL.
 
-# ---- Advisor back-office: clients + D1 decision detail ---------------------
+# ---- Advisor back-office: clients ------------------------------------------
 
 @app.post("/clients/import")
 async def import_clients(request: Request):
@@ -865,7 +862,8 @@ async def generate_one_report(request: Request):
     """Generate a single report for an already-imported client.
 
     The advisor screen works client-by-client, so it needs a path that does
-    not require re-uploading a CSV. Reads the stored snapshot, runs D1, and
+    not require re-uploading a CSV. Reads the stored snapshot, builds the
+    report from the chosen or composed template, and
     writes the same artifacts as a batch run.
     """
     from .reporting.csv_source import ClientSnapshot
@@ -1367,7 +1365,7 @@ async def report_chat(report_id: str, request: Request):
             report, result.get("intent", ""), asked, snap=snap,
             block_type=(block or {}).get("block_type", ""))
 
-        # The question itself is a signal: engagement for D1, and its
+        # The question itself is a signal: engagement on the report, and its
         # wording may carry format preferences for the profile.
         _rt = str(report.get("report_type", "") or "")
         record_event(db, report["client_id"], "question_asked",
@@ -1427,7 +1425,7 @@ async def report_chat(report_id: str, request: Request):
 @app.post("/r/{report_id}/events")
 async def report_events(report_id: str, request: Request):
     """Engagement signals from the viewer. Every event is stored raw, then
-    routed: D2 reward, D1 reward, preference profile — or all three."""
+    routed: D2 reward, report engagement, preference profile."""
     body = await request.json()
     _viewer_auth(report_id, str(body.get("token", "")))
     report = _report_json(report_id)

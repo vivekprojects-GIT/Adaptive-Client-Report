@@ -34,7 +34,6 @@ export const api = {
   registryPreferences:  ()                                 => request("GET",    `/registry/preferences`),
   clientInsight:        (clientId)                         => request("GET",    `/clients/${encodeURIComponent(clientId)}/insight`),
   setSkillNote:         (clientId, note)                   => request("POST",   `/clients/${encodeURIComponent(clientId)}/skill-note`, { note }),
-  d1State:              ()                                 => request("GET",    "/ape/d1-state"),
   d2State:              ()                                 => request("GET",    "/ape/d2-state"),
   sendReport:           (reportId)                         => request("POST",   "/reports/" + encodeURIComponent(reportId) + "/send", {}),
   listGeneratedReports: ()                                 => request("GET",    "/reports/generated"),
