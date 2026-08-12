@@ -31,7 +31,6 @@ export default function AdvisorPage() {
   const [types, setTypes]       = useState([]);
   const [templates, setTemplates] = useState([]);
   const [reportType, setRt]     = useState("quarterly_portfolio_review");
-  const [decision, setDecision] = useState(null);
   const [status, setStatus]     = useState({});
   const [generated, setGenerated] = useState([]);
   const [busy, setBusy]         = useState(false);
@@ -40,10 +39,6 @@ export default function AdvisorPage() {
   const [period, setPeriod]     = useState("");        // "" = latest on file
   const [insight, setInsight]   = useState(null);
   const [note, setNote]         = useState("");
-  // Which modes this deployment offers. Read from the server rather
-  // than assumed, so a control that the server would override is
-  // never drawn in the first place.
-  const [selectorOn, setSelectorOn] = useState(true);
   // The template the advisor picked for this report type. "" means the
   // AI composes one instead — those are the only two routes now.
   const [templateId, setTemplateId] = useState("");
@@ -67,28 +62,11 @@ export default function AdvisorPage() {
   useEffect(() => { refreshAll().catch((e) => notify("Load failed: " + e.message, "error")); }, []);
 
   useEffect(() => {
-    api.features()
-       .then((f) => {
-         const on = f.template_selection !== false;
-         setSelectorOn(on);
-         if (!on) setView((v) => (v === "arms" ? "clients" : v));
-       })
-       .catch(() => setSelectorOn(true));
-  }, []);
-
-  useEffect(() => {
-    if (!selected) { setDecision(null); setInsight(null); return; }
-    if (selectorOn) {
-      api.d1Decision(selected.client_id, reportType)
-         .then(setDecision)
-         .catch((e) => notify("Decision failed: " + e.message, "error"));
-    } else {
-      setDecision(null);
-    }
+    if (!selected) { setInsight(null); return; }
     api.clientInsight(selected.client_id)
        .then((v) => { setInsight(v); setNote(v?.skill?.advisor_note || ""); })
        .catch(() => { setInsight(null); setNote(""); });
-  }, [selected, reportType, selectorOn]);
+  }, [selected, reportType]);
 
   // Templates belong to one report type, so a pick cannot survive a change
   // of type. Defaults to the first authored template where one exists, so
@@ -241,7 +219,6 @@ export default function AdvisorPage() {
   }
 
   const armTemplates = templates.filter((t) => t.report_type === reportType);
-  const maxExploit = Math.max(...(decision?.arms || []).map((a) => Math.abs(a.exploit)), 0.01);
   const selType = types.find((t) => t.report_type === reportType);
 
   return (
@@ -249,12 +226,8 @@ export default function AdvisorPage() {
       <aside className="adv-nav">
         <div className="adv-brand"><span className="adv-logo">APE</span> Advisor</div>
         <nav>
-          {/* The arms page is the selector's own config surface. With
-              selection off it edits machinery nothing consults, which is
-              exactly the kind of nav item this app does not carry. */}
           {[["clients", "Clients"], ["reports", "Reports"],
             ["segments", "Segments"], ["registry", "Registries"],
-            ...(selectorOn ? [["arms", "Templates (Arms)"]] : [])
            ].map(([id, label]) => (
             <button key={id} className={`adv-nav-item ${view === id ? "on" : ""}`}
                     onClick={() => setView(id)}>{label}</button>
@@ -412,34 +385,6 @@ export default function AdvisorPage() {
             </section>
 
             <div>
-              {selectorOn && <section className="adv-panel">
-                <div className="adv-panel-hd"><h2>APE decision (D1)</h2></div>
-                {!decision ? <div className="adv-none">Select a client.</div> : (
-                  <>
-                    <div className="adv-d1">
-                      <div className="adv-d1-hd">Selected arm</div>
-                      <div className="adv-d1-arm">{decision.selected}</div>
-                      <div className="adv-d1-method">via <b>{decision.method}</b></div>
-                    </div>
-                    <div className="adv-ctx">
-                      <div><span>Client</span><b>{decision.client_name}</b></div>
-                      <div><span>Segment</span><b>{(decision.segment_id || "").replace(/_/g, " ")}</b></div>
-                      <div><span>Cell</span><code>{decision.cell_key}</code></div>
-                    </div>
-                    <div className="adv-sec-hd">Arms performance</div>
-                    {decision.arms.map((a) => (
-                      <div key={a.strategy} className="adv-bar-row">
-                        <span>{a.label}</span>
-                        {a.strategy === decision.selected && <em>selected</em>}
-                        <i style={{ width: `${Math.max(3, (Math.abs(a.exploit) / maxExploit) * 100)}%`,
-                                    background: a.strategy === decision.selected ? "#1d4ed8" : "#93c5fd" }} />
-                        <b>{a.exploit.toFixed(2)}</b>
-                      </div>
-                    ))}
-                  </>
-                )}
-              </section>}
-
               <section className="adv-panel">
                 <div className="adv-panel-hd"><h2>What we've learned</h2></div>
                 {!insight || insight.signals === 0 ? (
@@ -770,30 +715,6 @@ export default function AdvisorPage() {
           </section>
         )}
 
-        {view === "arms" && (
-          <section className="adv-panel">
-            <div className="adv-panel-hd">
-              <h2>Template arms — {selType?.label}</h2>
-              <span className="adv-count">{armTemplates.length}</span>
-            </div>
-            <p className="adv-note">
-              The arms D1 chooses between for this report type. Edit them under
-              <a href="/admin"> Configuration → Templates</a>.
-            </p>
-            <table className="adv-table">
-              <thead><tr><th>Arm</th><th>Label</th><th>Blocks</th></tr></thead>
-              <tbody>
-                {armTemplates.map((t) => (
-                  <tr key={t.template_id}>
-                    <td><span className="adv-pill arm">{t.strategy}</span></td>
-                    <td><b>{t.label}</b><div className="adv-sub">{t.description}</div></td>
-                    <td className="adv-blocks">{(t.required_blocks || []).join(" · ")}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </section>
-        )}
       </div>
 
       {preview && (

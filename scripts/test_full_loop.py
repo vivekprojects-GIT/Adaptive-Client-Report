@@ -216,17 +216,39 @@ def main():
               row is not None and row.total_reward > 0,
               f"count={row.selection_count}, reward={row.total_reward}" if row else "")
 
-    print("\n6. REPORT FEEDBACK -> D1 REWARD ON THE TEMPLATE ARM")
+    print("\n6. REPORT FEEDBACK -> ENGAGEMENT ACCRUES ON THE REPORT")
+    # No arm is paid: nothing selects a template. The score still matters —
+    # skill.py reads it to tell the composer which layouts held this
+    # client's attention — so it must accrue, and must not double-count.
+    from ape.db.models import ApeState as _AS
+
+    def _d1_totals():
+        with session_scope() as db:
+            rows = list(db.scalars(select(_AS).where(_AS.decision == "D1")))
+            return (len(rows), sum(r.selection_count for r in rows),
+                    sum(r.reward_count for r in rows),
+                    round(sum(r.total_reward for r in rows), 4))
+
+    d1_before = _d1_totals()
     fb2 = http("POST", f"/r/{rid}/events",
                {"token": token, "event_type": "report_helpful"})
-    d1 = fb2.get("d1", {})
-    check("D1 reward applied", d1.get("applied") is True,
-          f"arm={d1.get('arm')}, accrued={d1.get('accrued')}")
+    eng = fb2.get("engagement", {})
+    check("engagement accrued on the report", eng.get("applied") is True,
+          f"accrued={eng.get('accrued')}")
+    check("no arm was rewarded — nothing selects a template",
+          "arm" not in eng and "arm_totals" not in eng,
+          eng.get("note", ""))
     fb3 = http("POST", f"/r/{rid}/events",
                {"token": token, "event_type": "report_helpful"})
     check("same event pays only once",
-          fb3.get("d1", {}).get("applied") is False,
-          fb3.get("d1", {}).get("reason", ""))
+          fb3.get("engagement", {}).get("applied") is False,
+          fb3.get("engagement", {}).get("reason", ""))
+
+    d1_after = _d1_totals()
+    check("D1 arm state untouched by report feedback",
+          d1_after == d1_before,
+          f"{d1_before[0]} rows: selections {d1_before[1]}->{d1_after[1]}, "
+          f"rewards {d1_before[2]}->{d1_after[2]}")
 
     print("\n7. THE PROFILE DRIFTED FROM HOW THEY ENGAGED")
     with session_scope() as db:

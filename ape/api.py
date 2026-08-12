@@ -98,9 +98,17 @@ from .store.mongo_schema import (
 )
 
 
-from .reporting.policy_config import (  # noqa: E402
-    template_selection_enabled,
-)
+def templates_for(templates, report_type):
+    """ACTIVE templates authored for this report type.
+
+    Template lists are report-type specific by design — there is no
+    universal list, because a template's blocks assume that type's facts.
+    Lived in reporting/d1.py as `eligible_arms` until the bandit went; the
+    filtering was never bandit logic, only its caller was.
+    """
+    return [t for t in templates
+            if t.get("report_type") == report_type
+            and t.get("status", "ACTIVE") == "ACTIVE"]
 
 
 app = FastAPI(title="APE Modular — Production (MongoDB)", version="2.0.0")
@@ -436,17 +444,6 @@ def registry_signals(limit: int = 400):
     out.sort(key=lambda c: -c["total"])
     return {"clients": out, "shown": sum(c["total"] for c in out),
             "limit": limit}
-
-
-@app.get("/config/features")
-def config_features():
-    """What this deployment has switched on.
-
-    The UI reads it rather than guessing, so a control that leads nowhere
-    is never drawn — the alternative is a toggle that appears to work and
-    is quietly overridden by the server.
-    """
-    return {"template_selection": template_selection_enabled()}
 
 
 @app.get("/config/report-types")
@@ -836,96 +833,6 @@ def list_clients(q: Optional[str] = None, limit: int = 200):
     return out
 
 
-@app.get("/ape/d1-decision")
-def d1_decision(client_id: str, report_type: str):
-    """Full explainable D1 decision for ONE client + report type.
-
-    Returns the arm scores, the preference inputs behind them, and how much
-    weight the client's own evidence currently carries. This is what the
-    advisor sees when they ask 'why this template?'.
-
-    With arm selection switched off there is no such decision to explain,
-    and inventing arm scores nothing acted on would be a panel that lies.
-    """
-    from .reporting.d1 import (cell_key, eligible_arms, evidence_weight,
-                               score_arms, select, DIMENSIONS)
-    cfg = _guard_cfg(); store = _guard_store()
-
-    rt = next((r for r in cfg.list_report_types()
-               if r.get("report_type") == report_type), None)
-    if rt is None:
-        raise HTTPException(404, f"unknown report type '{report_type}'")
-
-    # Client identity and learned profile come from SQL — the same store
-    # the viewer writes and generation reads. The old Mongo ape_clients rows
-    # are import-era leftovers and can name people who no longer exist.
-    from .db.session import init_db, session_scope
-    from .db.models import Client as _Client, ClientPreference as _Pref
-    init_db()
-    with session_scope() as _db:
-        _c = _db.get(_Client, client_id)
-        client_name = _c.name if _c else client_id
-        segment_id = _c.segment_id if _c else "unsegmented"
-        # Scoped to the report type the advisor picked, falling back to
-        # the client-wide profile where this type has no history yet.
-        from .reporting.rewards import profile_for
-        _p = _db.get(_Pref, (client_id, report_type))
-        sql_profile = profile_for(_db, client_id, report_type)
-        sql_signals = _p.meaningful_signal_count if _p else 0
-
-    templates = cfg.list_templates()
-    arms = eligible_arms(templates, report_type)
-    key = cell_key(report_type)
-    from .db.models import ApeState as _AS
-    from sqlalchemy import select as _sel
-    with session_scope() as _db:
-        state = {r.arm_id: {"count": int(r.selection_count),
-                            "total_reward": float(r.total_reward)}
-                 for r in _db.scalars(_sel(_AS).where(
-                     _AS.decision == "D1", _AS.scope_type == "GLOBAL",
-                     _AS.context == report_type))}
-    arm_state = {a["strategy"]: state.get(a["strategy"],
-                                          {"count": 0, "total_reward": 0.0})
-                 for a in arms}
-
-    # The learned profile. Zero signals means it is reported as absent —
-    # a profile nobody has learned must not pretend to be knowledge.
-    client_profile = sql_profile if sql_signals > 0 else None
-    n_signals = sql_signals
-
-    seg_doc = store.db["ape_preference_profile"].find_one(
-        {"scope": "SEGMENT", "key": segment_id})
-    segment_profile = (seg_doc or {}).get("dimensions")
-
-    personalisable = bool(rt.get("personalisable", True))
-    if personalisable:
-        strategy, rows, method = select(
-            templates, arm_state, report_type, True,
-            client_profile=client_profile, n_signals=n_signals,
-            segment_profile=segment_profile)
-    else:
-        strategy, rows, method = select(templates, arm_state, report_type, False)
-
-    return {
-        "client_id": client_id,
-        "client_name": client_name,
-        "segment_id": segment_id,
-        "report_type": report_type,
-        "report_type_label": rt.get("label"),
-        "personalisable": personalisable,
-        "cell_key": key,
-        "selected": strategy,
-        "method": method,
-        "user_weight": evidence_weight(n_signals),
-        "meaningful_signal_count": n_signals,
-        "has_client_profile": client_profile is not None,
-        "has_segment_profile": segment_profile is not None,
-        "dimensions": list(DIMENSIONS),
-        "client_profile": client_profile or {},
-        "arms": rows,
-    }
-
-
 # ============================================================================
 # SPA static serving (production build)
 # ============================================================================
@@ -962,7 +869,6 @@ async def generate_one_report(request: Request):
     writes the same artifacts as a batch run.
     """
     from .reporting.csv_source import ClientSnapshot
-    from .reporting.d1 import cell_key, eligible_arms, select
     from .reporting.generate import build_report, render_html
 
     body = await request.json()
@@ -992,25 +898,12 @@ async def generate_one_report(request: Request):
     if rt is None:
         raise HTTPException(404, f"unknown report type '{report_type}'")
     templates = cfg.list_templates()
-    arms = eligible_arms(templates, report_type)
+    arms = templates_for(templates, report_type)
     if not arms:
         raise HTTPException(400, f"no active templates for '{report_type}'")
 
-    key = cell_key(report_type)
-
-    # D1 state lives in SQL ape_state, same table as D2 — one store for
-    # both decisions. (The old Mongo collection carried a chat-era unique
-    # index without cell_key, which silently collapsed every report type
-    # onto one row per strategy.)
-    from .db.models import ApeState as _AS, ClientPreference as _Pref
-    from sqlalchemy import select as _sel
+    from .db.models import ClientPreference as _Pref
     with session_scope() as _db:
-        _rows = _db.scalars(_sel(_AS).where(
-            _AS.decision == "D1", _AS.scope_type == "GLOBAL",
-            _AS.context == report_type)).all()
-        state = {r.arm_id: {"count": int(r.selection_count),
-                            "total_reward": float(r.total_reward)}
-                 for r in _rows}
         # The profile that shapes THIS report is the one for THIS report
         # type. profile_for blends in the client-wide row, so a type with
         # no history of its own still starts from what is known about the
@@ -1021,22 +914,15 @@ async def generate_one_report(request: Request):
         _any = (_p.meaningful_signal_count if _p else 0) or                (_wide.meaningful_signal_count if _wide else 0)
         _profile = profile_for(_db, client_id, report_type) if _any else None
         _nsig = (_p.meaningful_signal_count if _p else 0)
-    arm_state = {a["strategy"]: state.get(a["strategy"],
-                                          {"count": 0, "total_reward": 0.0})
-                 for a in arms}
 
-    # Two ways to get a template, both available:
-    #   selector (default) — UCB picks among the six human-written arms,
-    #                        and the choice is an arm that can be rewarded
-    #   composer          — the LLM designs a bespoke layout from the block
-    #                        registry. Better per-client fit, but a one-off
-    #                        with no arm to reward, so it teaches D1 nothing
+    # Two ways to get a template, and neither is learned:
+    #   the advisor names one they authored for this report type, or
+    #   the composer designs a one-off from the block registry.
+    # Nothing explores and nothing is rewarded for the CHOICE — what
+    # improves the next report is the preference profile and the skill
+    # brief, both of which reach the composer as inputs.
     compose = str(body.get("composer") or "").lower() in ("llm", "true", "1")
 
-    # An advisor naming a template they authored. This is NOT the bandit:
-    # nothing is explored, nothing is rewarded, and the flag that switches
-    # off UCB does not switch this off — picking your own template is the
-    # alternative to arm selection, not a form of it.
     chosen_id = str(body.get("template_id") or "").strip()
     chosen = None
     if chosen_id:
@@ -1052,11 +938,10 @@ async def generate_one_report(request: Request):
                 400, f"template '{chosen_id}' belongs to "
                      f"'{chosen.get('report_type')}', not '{report_type}'")
         compose = False
-    elif not template_selection_enabled():
-        # Arm selection is switched off in this environment and the advisor
-        # named nothing, so the composer is the only route left. Forced
-        # here rather than trusted to the UI, because an old browser tab or
-        # a direct API call would otherwise still reach the selector.
+    else:
+        # Nothing selects a template any more, so with none named the
+        # composer is the only route. Decided here rather than trusted to
+        # the UI, because a direct API call has no UI to constrain it.
         compose = True
 
     compose_diag = None
@@ -1075,34 +960,7 @@ async def generate_one_report(request: Request):
         strategy = template["strategy"]
         method = "llm_composed"
         rows = []
-    else:
-        strategy, rows, method = select(
-            templates, arm_state, report_type,
-            bool(rt.get("personalisable", True)),
-            client_profile=_profile, n_signals=_nsig)
 
-    # count rises at SELECTION so cold-start exploration advances even
-    # before any reward lands. Neither a composed template nor one the
-    # advisor named is an arm: nothing was explored, so counting it would
-    # tell the bandit it tried something it did not, and the arm's mean
-    # would fall for reports it never produced.
-    if not compose and chosen is None:
-        with session_scope() as _db:
-            _row = _db.scalars(_sel(_AS).where(
-                _AS.decision == "D1", _AS.scope_type == "GLOBAL",
-                _AS.context == report_type,
-                _AS.arm_id == strategy)).first()
-            if _row is None:
-                _row = _AS(scope_type="GLOBAL", scope_id="_global",
-                           decision="D1", context=report_type,
-                           arm_id=strategy, alpha=1.0, beta=1.0,
-                           selection_count=0, reward_count=0,
-                           total_reward=0.0)
-                _db.add(_row)
-            _row.selection_count += 1
-
-    if not compose and chosen is None:
-        template = next(t for t in arms if t["strategy"] == strategy)
     report = build_report(snap, template, report_type)
 
     # Structural coverage gate: mandatory categories (costs, disclosures)
@@ -1423,30 +1281,6 @@ async def set_skill_note(client_id: str, request: Request):
         row.advisor_note = str(body.get("note", ""))[:600]
         note = row.advisor_note
     return {"status": "ok", "advisor_note": note}
-
-
-@app.get("/ape/d1-state")
-def d1_state():
-    """Template-decision posteriors per report type — same shape as
-    /ape/d2-state so the two admin tabs stay twins."""
-    from .db.session import init_db, session_scope
-    from .db.models import ApeState
-    from sqlalchemy import select as _sel
-    init_db()
-    out: Dict[str, list] = {}
-    with session_scope() as db:
-        for r in db.scalars(_sel(ApeState).where(ApeState.decision == "D1")
-                            .order_by(ApeState.context, ApeState.arm_id)):
-            mean = ((1.0 + r.total_reward) /
-                    (2.0 + r.reward_count)) if r.reward_count else 0.5
-            out.setdefault(r.context, []).append({
-                "arm": r.arm_id, "selected": r.selection_count,
-                "rewarded": r.reward_count,
-                "total_reward": round(r.total_reward, 2),
-                "posterior_mean": round(mean, 3),
-                "updated_at": r.updated_at.isoformat(timespec="seconds"),
-            })
-    return {"contexts": out}
 
 
 @app.get("/ape/d2-state")
