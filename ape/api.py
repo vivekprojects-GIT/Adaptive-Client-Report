@@ -240,21 +240,6 @@ def rag_ingest(force: bool = False):
 
 # ----- Legacy turn-record view (kept for the analytics page) ----------------
 
-@app.get("/config/intents")
-def list_intents():
-    return _guard_cfg().list_intents()
-
-
-@app.get("/config/strategies")
-def list_strategies():
-    return _guard_cfg().list_strategies()
-
-
-@app.get("/config/policies")
-def list_policies():
-    return _guard_cfg().list_policies()
-
-
 # ---- Adaptive client reporting (D1) ---------------------------------------
 
 @app.get("/config/report-types")
@@ -309,66 +294,6 @@ def delete_template(template_id: str, changed_by: str = "admin_user"):
     return {"status": "ok", "deleted": template_id}
 
 
-@app.get("/config/signal-rules")
-def list_signal_rules():
-    return _guard_cfg().list_signal_rules()
-
-
-@app.get("/config/reward-scale")
-def list_reward_scale():
-    return _guard_cfg().list_reward_scale()
-
-
-@app.post("/config/intents")
-def upsert_intent(req: IntentUpsert):
-    _guard_cfg().upsert_intent(
-        intent_id=req.intent_id,
-        description=req.description,
-        changed_by=req.changed_by,
-    )
-    return {"status": "ok", "intent_id": req.intent_id}
-
-
-@app.post("/config/strategies")
-def upsert_strategy(req: StrategyUpsert):
-    _guard_cfg().upsert_strategy(
-        strategy_id=req.strategy_id,
-        format_type=req.format_type,
-        changed_by=req.changed_by,
-    )
-    return {"status": "ok", "strategy_id": req.strategy_id}
-
-
-@app.post("/config/signal-rules")
-def upsert_signal_rule(req: SignalRuleUpdate):
-    _guard_cfg().update_signal_rule(
-        signal_name=req.signal_name,
-        format_relevant=req.format_relevant,
-        content_relevant=req.content_relevant,
-        format_category=req.format_category,
-        content_category=req.content_category,
-        source=req.source,
-        feature_id=req.feature_id,
-        expected_frequency=req.expected_frequency,
-        evidence_quality=req.evidence_quality,
-        consumers=req.consumers,
-        trigger_pattern=req.trigger_pattern,
-        time_window_sec=req.time_window_sec,
-        changed_by=req.changed_by,
-    )
-    return {"status": "ok", "signal_name": req.signal_name}
-
-
-@app.post("/config/reward-scale")
-def upsert_reward_value(req: RewardScaleUpdate):
-    _guard_cfg().update_reward_value(
-        category=req.category,
-        normalized_reward=req.normalized_reward,
-        changed_by=req.changed_by,
-    )
-    return {"status": "ok", "category": req.category}
-
-
 @app.get("/config/thompson")
 def get_thompson_config():
     """Live Thompson parameters for both decisions."""
@@ -401,62 +326,6 @@ async def update_thompson_config(request: Request):
     return {"status": "ok", **thompson_params(force=True)}
 
 
-@app.post("/config/policies")
-def upsert_policy(req: PolicyUpsert):
-    _guard_cfg().upsert_policy(
-        domain=req.domain,
-        intent=req.intent,
-        topic=req.topic,
-        strategy_id=req.strategy_id,
-        policy_version=req.policy_version,
-        exploration_constant=req.exploration_constant,
-        changed_by=req.changed_by,
-    )
-    return {"status": "ok", "policy": f"{req.intent}#{req.topic}#{req.strategy_id}"}
-
-
-@app.get("/config/instructions")
-def list_instructions(strategy_id: Optional[str] = None, status: Optional[str] = None):
-    """List instruction documents.
-
-    Filters:
-      - strategy_id: restrict to versions for one strategy
-      - status:       e.g. ACTIVE / DRAFT / INACTIVE
-    Sorted by strategy_id, then version descending.
-    """
-    if STORE is None:
-        raise HTTPException(500, "Store not initialized")
-    q: Dict[str, Any] = {"entity_type": ENTITY_INSTRUCTION}
-    if strategy_id:
-        q["entity_id"] = strategy_id
-    if status:
-        q["status"] = status
-    rows = list(STORE.config.find(q).sort([("entity_id", 1), ("version", -1)]))
-    return [_clean(r) for r in rows]
-
-
-@app.post("/config/instructions")
-def publish_instruction(req: InstructionPublish):
-    mgr = _guard_cfg()
-    mgr.publish_instruction(
-        strategy_id=req.strategy_id,
-        version=req.version,
-        instruction_text=req.instruction_text,
-        instruction_uri=req.instruction_uri,
-        changed_by=req.changed_by,
-    )
-    if req.activate:
-        mgr.activate_instruction(req.strategy_id, req.version, changed_by=req.changed_by)
-    return {"status": "ok", "strategy_id": req.strategy_id, "version": req.version,
-            "activated": req.activate}
-
-
-@app.post("/config/instructions/activate")
-def activate_instruction(strategy_id: str, version: str, changed_by: str = "admin_user"):
-    _guard_cfg().activate_instruction(strategy_id, version, changed_by=changed_by)
-    return {"status": "ok", "strategy_id": strategy_id, "version": version}
-
-
 # ============================================================================
 # DELETE endpoints — every config entity is removable from the admin UI.
 # Each one is audited via STORE.log_admin_action so changes stay traceable.
@@ -485,100 +354,6 @@ def _find_config_for_delete(entity_type: str, entity_id: str, version: Optional[
     if STORE is None:
         return None
     return STORE.get_config(entity_type, entity_id, version=version)
-
-
-@app.delete("/config/intents/{intent_id}")
-def delete_intent(intent_id: str, changed_by: str = "admin_user"):
-    if STORE is None:
-        raise HTTPException(500, "Store not initialized")
-    before = _find_config_for_delete(ENTITY_INTENT, intent_id)
-    if not before:
-        raise HTTPException(404, f"intent {intent_id} not found")
-    n = STORE.delete_config(ENTITY_INTENT, intent_id)
-    policies_deleted = STORE.config.delete_many({
-        "entity_type": ENTITY_POLICY,
-        "intent": intent_id,
-    }).deleted_count
-    _audit_delete(ENTITY_INTENT, intent_id, changed_by, before)
-    return {
-        "status": "ok",
-        "deleted": n,
-        "policies_deleted": policies_deleted,
-        "intent_id": intent_id,
-    }
-
-
-@app.delete("/config/strategies/{strategy_id}")
-def delete_strategy(strategy_id: str, changed_by: str = "admin_user"):
-    if STORE is None:
-        raise HTTPException(500, "Store not initialized")
-    before = _find_config_for_delete(ENTITY_STRATEGY, strategy_id)
-    if not before:
-        raise HTTPException(404, f"strategy {strategy_id} not found")
-    n = STORE.delete_config(ENTITY_STRATEGY, strategy_id)
-    # Also drop all instructions for this strategy
-    STORE.config.delete_many({"entity_type": ENTITY_INSTRUCTION, "entity_id": strategy_id})
-    _audit_delete(ENTITY_STRATEGY, strategy_id, changed_by, before)
-    return {"status": "ok", "deleted": n, "strategy_id": strategy_id}
-
-
-@app.delete("/config/signal-rules/{signal_name}")
-def delete_signal_rule(signal_name: str, changed_by: str = "admin_user"):
-    if STORE is None:
-        raise HTTPException(500, "Store not initialized")
-    before = _find_config_for_delete(ENTITY_SIGNAL_RULE, signal_name)
-    if not before:
-        raise HTTPException(404, f"signal_rule {signal_name} not found")
-    n = STORE.delete_config(ENTITY_SIGNAL_RULE, signal_name)
-    _audit_delete(ENTITY_SIGNAL_RULE, signal_name, changed_by, before)
-    return {"status": "ok", "deleted": n, "signal_name": signal_name}
-
-
-@app.delete("/config/reward-scale/{category}")
-def delete_reward_value(category: str, changed_by: str = "admin_user"):
-    if STORE is None:
-        raise HTTPException(500, "Store not initialized")
-    before = _find_config_for_delete(ENTITY_REWARD_RULE, category)
-    if not before:
-        raise HTTPException(404, f"reward_scale {category} not found")
-    n = STORE.delete_config(ENTITY_REWARD_RULE, category)
-    _audit_delete(ENTITY_REWARD_RULE, category, changed_by, before)
-    return {"status": "ok", "deleted": n, "category": category}
-
-
-@app.delete("/config/policies")
-def delete_policy(
-    intent: str,
-    topic: str,
-    strategy_id: str,
-    changed_by: str = "admin_user",
-):
-    """Policy rows are keyed by `intent#topic#strategy_id` — pass each piece."""
-    if STORE is None:
-        raise HTTPException(500, "Store not initialized")
-    entity_id = f"{intent}#{topic}#{strategy_id}"
-    before = _find_config_for_delete(ENTITY_POLICY, entity_id)
-    if not before:
-        raise HTTPException(404, f"policy {entity_id} not found")
-    n = STORE.delete_config(ENTITY_POLICY, entity_id)
-    _audit_delete(ENTITY_POLICY, entity_id, changed_by, before)
-    return {"status": "ok", "deleted": n, "policy": entity_id}
-
-
-@app.delete("/config/instructions/{strategy_id}/{version}")
-def delete_instruction(strategy_id: str, version: str, changed_by: str = "admin_user"):
-    if STORE is None:
-        raise HTTPException(500, "Store not initialized")
-    before = STORE.config.find_one({
-        "entity_type": ENTITY_INSTRUCTION,
-        "entity_id":   strategy_id,
-        "version":     version,
-    })
-    if not before:
-        raise HTTPException(404, f"instruction {strategy_id}@{version} not found")
-    n = STORE.delete_config(ENTITY_INSTRUCTION, strategy_id, version=version)
-    _audit_delete(ENTITY_INSTRUCTION, f"{strategy_id}@{version}", changed_by, before)
-    return {"status": "ok", "deleted": n, "strategy_id": strategy_id, "version": version}
 
 
 # ============================================================================
@@ -641,38 +416,6 @@ def set_config_status(payload: Dict[str, Any]):
         "old_status":  old_status,
         "new_status":  new_status,
     }
-
-
-@app.delete("/admin/clear-user/{user_id}")
-def admin_clear_user(user_id: str):
-    if STORE is None:
-        raise HTTPException(500, "Store not initialized")
-    user_id_hash = hash_user_id(user_id)
-    deleted = STORE.clear_user(user_id_hash)
-    return {"status": "cleared", "user_id_hash": user_id_hash, **deleted}
-
-
-@app.delete("/admin/clear-all")
-def admin_clear_all():
-    if STORE is None:
-        raise HTTPException(500, "Store not initialized")
-    return {"status": "cleared", **STORE.clear_all_runtime()}
-
-
-@app.post("/admin/seed")
-def admin_seed():
-    if STORE is None:
-        raise HTTPException(500, "Store not initialized")
-    counts = seed_all(STORE)
-    return {"status": "seeded", **counts}
-
-
-@app.get("/admin/db-snapshot")
-def admin_db_snapshot(user_id: Optional[str] = None, limit: int = 30):
-    if STORE is None:
-        raise HTTPException(500, "Store not initialized")
-    user_id_hash = hash_user_id(user_id) if user_id else None
-    return STORE.db_snapshot(user_id_hash=user_id_hash, limit=limit)
 
 
 # ============================================================================

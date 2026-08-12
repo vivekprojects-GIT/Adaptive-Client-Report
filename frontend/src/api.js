@@ -23,8 +23,6 @@ export const api = {
   health:               ()                                 => request("GET",    "/health"),
 
   // Config — read
-  listIntents:          ()                                 => request("GET",    "/config/intents"),
-  listStrategies:       ()                                 => request("GET",    "/config/strategies"),
   listReportTypes:      ()                                 => request("GET",    "/config/report-types"),
   listClients:          (q)                                => request("GET",    "/clients" + (q ? "?q=" + encodeURIComponent(q) : "")),
   importClients:        (payload)                          => request("POST",   "/clients/import", payload),
@@ -38,25 +36,13 @@ export const api = {
   listGeneratedReports: ()                                 => request("GET",    "/reports/generated"),
   generateReports:      (payload)                          => request("POST",   "/reports/generate", payload),
   listTemplates:        (rt)                               => request("GET",    "/config/templates" + (rt ? `?report_type=${encodeURIComponent(rt)}` : "")),
-  listPolicies:         ()                                 => request("GET",    "/config/policies"),
-  listSignalRules:      ()                                 => request("GET",    "/config/signal-rules"),
-  listRewardScale:      ()                                 => request("GET",    "/config/reward-scale"),
-  listInstructions:     (strategyId = "", status = "")     => request("GET",    `/config/instructions${strategyId || status ? `?${[strategyId && `strategy_id=${encodeURIComponent(strategyId)}`, status && `status=${encodeURIComponent(status)}`].filter(Boolean).join("&")}` : ""}`),
 
   // Config — write
-  upsertIntent:         (payload)                          => request("POST",   "/config/intents", payload),
-  upsertStrategy:       (payload)                          => request("POST",   "/config/strategies", payload),
   upsertReportType:     (payload)                          => request("POST",   "/config/report-types", payload),
   upsertTemplate:       (payload)                          => request("POST",   "/config/templates", payload),
   deleteTemplate:       (templateId)                       => request("DELETE", `/config/templates/${encodeURIComponent(templateId)}`),
-  upsertSignalRule:     (payload)                          => request("POST",   "/config/signal-rules", payload),
-  upsertRewardValue:    (payload)                          => request("POST",   "/config/reward-scale", payload),
   getThompsonConfig:    ()                                 => request("GET",    "/config/thompson"),
   updateThompsonConfig: (payload)                          => request("POST",   "/config/thompson", payload),
-  upsertPolicy:         (payload)                          => request("POST",   "/config/policies", payload),
-  publishInstruction:   (payload)                          => request("POST",   "/config/instructions", payload),
-  activateInstruction:  (strategyId, version, changedBy="admin_user") =>
-                          request("POST", `/config/instructions/activate?strategy_id=${encodeURIComponent(strategyId)}&version=${encodeURIComponent(version)}&changed_by=${encodeURIComponent(changedBy)}`),
 
   // Config — flip ACTIVE / INACTIVE / DRAFT on any config doc
   setConfigStatus:      (entityType, entityId, status, version) =>
@@ -68,20 +54,7 @@ export const api = {
                           }),
 
   // Config — delete (every entity type)
-  deleteIntent:         (intentId)                         => request("DELETE", `/config/intents/${encodeURIComponent(intentId)}`),
-  deleteStrategy:       (strategyId)                       => request("DELETE", `/config/strategies/${encodeURIComponent(strategyId)}`),
-  deleteSignalRule:     (signalName)                       => request("DELETE", `/config/signal-rules/${encodeURIComponent(signalName)}`),
-  deleteRewardValue:    (category)                         => request("DELETE", `/config/reward-scale/${encodeURIComponent(category)}`),
-  deletePolicy:         (intent, topic, strategyId)        =>
-                          request("DELETE", `/config/policies?intent=${encodeURIComponent(intent)}&topic=${encodeURIComponent(topic)}&strategy_id=${encodeURIComponent(strategyId)}`),
-  deleteInstruction:    (strategyId, version)              =>
-                          request("DELETE", `/config/instructions/${encodeURIComponent(strategyId)}/${encodeURIComponent(version)}`),
 
   // Admin / ops
-  clearUser:            (userId)                           => request("DELETE", `/admin/clear-user/${encodeURIComponent(userId)}`),
-  clearAll:             ()                                 => request("DELETE", "/admin/clear-all"),
-  rebuildBandit:        ()                                 => request("POST",   "/admin/rebuild-bandit"),
-  dbSnapshot:           (userId, limit = 30)               => request("GET",    `/admin/db-snapshot?user_id=${encodeURIComponent(userId || "")}&limit=${limit}`),
   listAudit:            (date = "", limit = 100)           => request("GET",    `/admin/audit?${date ? `date=${date}&` : ""}limit=${limit}`),
-  seed:                 ()                                 => request("POST",   "/admin/seed"),
 };
