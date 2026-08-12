@@ -50,6 +50,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ape.db.models import ApeState, Conversation, Message
+from ape.reporting.chat_widgets import wants_visual
 from ape.reporting.csv_source import ClientSnapshot
 from ape.reporting.grounding import derived_facts, extract_numbers, _matches
 
@@ -330,6 +331,80 @@ def suggest_followups(report: Dict[str, Any], intent: str = "",
     return out[:limit]
 
 
+def _choose_widget(question: str, intent: str, block_type: str,
+                   snap: ClientSnapshot) -> Tuple[Optional[Dict[str, Any]], str]:
+    """Pick and draw a widget for a client who asked to see something.
+
+    Returns (widget, decline_reason). Exactly one is ever populated.
+
+    The model chooses the SUBJECT from the registry's catalogue; the kind
+    comes from the client's own words where they named one, and the numbers
+    are bound in code. If the call fails, is unavailable, or names anything
+    not on the menu, the wording-based guess stands in — a request to see
+    something should not go unanswered because a second model call did.
+
+    When nothing on the menu can be filled, the reason comes back instead
+    of a chart. A client who asked to see something and got silence has to
+    guess whether we ignored them or could not do it.
+    """
+    from ape.reporting import chat_widgets as cw
+
+    options = cw.available(snap)
+    if not options:
+        # Nothing at all is drawable. Name what they actually asked about
+        # rather than a generic apology.
+        wanted = cw.guess_binding(question, intent, block_type,
+                                  list(cw.BINDINGS))
+        return None, (cw.unavailable_reason(snap, wanted) or
+                      "this report does not carry enough detail to chart")
+
+    asked_kind = cw.named_kind(question)
+    binding = None
+
+    api_key = os.getenv("ANTHROPIC_API_KEY", "")
+    if api_key:
+        try:
+            import anthropic
+            client = anthropic.Anthropic(api_key=api_key)
+            resp = client.messages.create(
+                model=os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5"),
+                max_tokens=120,
+                system=("You match a client's request to one chart from a "
+                        "fixed menu. Reply with ONLY the binding name, "
+                        "exactly as written in the menu. No other text."),
+                messages=[{"role": "user", "content":
+                           f"MENU:\n{cw.catalogue(snap)}\n\n"
+                           f"The client is looking at: "
+                           f"{block_type or 'the whole report'}\n"
+                           f"They asked: {question}\n\n"
+                           f"Which menu entry should be drawn?"}])
+            pick = resp.content[0].text.strip().split()[0].strip(".,\"'`")
+            if pick in options:
+                binding = pick
+        except Exception:
+            binding = None
+
+    if binding is None:
+        binding = cw.guess_binding(question, intent, block_type, options)
+
+    # The subject the client actually named may be one we cannot fill even
+    # though other things are drawable. Saying "here is your allocation
+    # instead" when they asked about fee history is not an answer, so the
+    # unfillable subject is reported rather than quietly substituted.
+    named = cw.guess_binding(question, intent, block_type, list(cw.BINDINGS))
+    if named and named not in options:
+        return None, (cw.unavailable_reason(snap, named) or
+                      "this report does not carry that detail")
+
+    if binding is None:
+        return None, "this report does not carry enough detail to chart"
+    widget = cw.build(snap, binding, asked_kind)
+    if widget is None:
+        return None, (cw.unavailable_reason(snap, binding) or
+                      "that chart could not be drawn from this report")
+    return widget, ""
+
+
 def answer_question(
     session: Session,
     snap: ClientSnapshot,
@@ -353,6 +428,18 @@ def answer_question(
     if selected_text:
         facts_text += f'\nCLIENT HIGHLIGHTED THIS TEXT: "{selected_text[:400]}"'
 
+    # Resolved BEFORE the answer is written, because the writer has to know.
+    # Left until afterwards, it produced answers that apologised for being
+    # unable to draw charts while a chart was being attached below them —
+    # the model cannot see what the surrounding system does for it.
+    widget, declined = None, ""
+    if wants_visual(question):
+        try:
+            widget, declined = _choose_widget(question, intent,
+                                              block_type or "", snap)
+        except Exception:
+            widget, declined = None, ""
+
     api_key = os.getenv("ANTHROPIC_API_KEY", "")
     answer, author = DECLINE, "no_key"
     if api_key:
@@ -360,8 +447,20 @@ def answer_question(
         client = anthropic.Anthropic(api_key=api_key)
         model = os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5")
         style = STRATEGY_STYLE.get(strategy, STRATEGY_STYLE["concise_direct"])
+        if widget:
+            visual = (f"\n\nA {widget['kind']} chart titled "
+                      f"\"{widget['title']}\" is being shown directly beneath "
+                      f"your answer. Write text that complements it — do not "
+                      f"describe the chart, and never say you cannot produce "
+                      f"charts.")
+        elif declined:
+            visual = ("\n\nNo chart can be drawn for this. Answer in words "
+                      "only. Do not offer to draw one and do not explain why "
+                      "— that is handled separately.")
+        else:
+            visual = ""
         prompt = (f"FACTS:\n{facts_text}\n\nQUESTION: {question}\n\n"
-                  f"Answer format: {style}")
+                  f"Answer format: {style}{visual}")
         feedback = ""
         for attempt in range(2):
             try:
@@ -385,6 +484,17 @@ def answer_question(
         if author == "no_key":
             # Both attempts stated unlisted numbers -> the safe decline.
             author = "declined_ungrounded"
+
+    # Told plainly, in the answer itself. A client who asked to see
+    # something and received only prose cannot tell whether we ignored the
+    # request or could not fulfil it, and those warrant different next
+    # steps on their part. Code-built rather than model-written: this
+    # sentence is a claim about what the report contains, which is exactly
+    # the kind of claim we do not let a model make.
+    if declined and answer != DECLINE:
+        answer = (f"{answer}\n\nI can't chart that here — {declined}. "
+                  f"Everything above is what the report does record on it; "
+                  f"your adviser can supply the rest.")
 
     # Persist the exchange. The strategy on the assistant message is the
     # reward address for the thumb that may arrive later.
@@ -412,4 +522,5 @@ def answer_question(
     return {"answer": answer, "intent": intent, "strategy": strategy,
             "author": author, "conversation_id": conv_id,
             "message_id": a_id, "arms": table,
+            "widget": widget, "widget_declined": declined,
             "grounded_in": (block or {}).get("block_id") or "whole_report"}

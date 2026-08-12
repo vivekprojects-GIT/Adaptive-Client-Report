@@ -118,8 +118,14 @@ def compose_template(
     Diagnostics carry what was rejected and why, so a composed layout can
     be judged rather than merely trusted.
     """
+    # `skill_used` records whether a learned brief was actually in the
+    # prompt. Without it there is no way to tell a composition that ignored
+    # the brief from one that never received it, and those are different
+    # problems with different fixes.
     diag: Dict[str, Any] = {"mode": "llm_composed", "rejected": [],
-                            "reasoning": "", "error": ""}
+                            "reasoning": "", "error": "",
+                            "skill_used": bool(skill and skill.strip()),
+                            "skill": (skill or "")[:600]}
 
     api_key = os.getenv("ANTHROPIC_API_KEY", "")
     if not api_key:

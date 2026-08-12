@@ -104,10 +104,27 @@ def gather_evidence(session: Session, client_id: str) -> Dict[str, Any]:
                if n >= 2 and highlights.get(b, 0) == 0
                and b not in ("disclosures", "explainer")]
 
+    # Charts the client asked for in the chat, as (subject, treatment)
+    # pairs. This is the strongest evidence in here: everything else is
+    # inferred from behaviour, whereas this is the client stating outright
+    # how they want a particular subject shown. Declines are counted apart
+    # — they say what the client wanted, not what worked.
+    visuals, unmet = Counter(), Counter()
+    for ev in session.scalars(
+            select(Event).where(Event.client_id == client_id,
+                                Event.event_type == "visual_requested")
+            .order_by(Event.created_at.desc()).limit(40)):
+        meta = ev.metadata_json or {}
+        if meta.get("drawn") and meta.get("binding"):
+            visuals[(meta["binding"], meta.get("kind", ""))] += 1
+        elif meta.get("reason"):
+            unmet[str(meta["reason"])] += 1
+
     pref = session.get(ClientPreference, client_id)
     return {
         "highlights": highlights, "requests": requests, "intents": intents,
         "engaged": engaged, "ignored": sorted(ignored),
+        "visuals": visuals, "unmet": unmet,
         "n_questions": len(questions),
         "signals": pref.meaningful_signal_count if pref else 0,
         "dimensions": pref.as_dimensions() if pref else {},
@@ -122,6 +139,20 @@ def render_brief(evidence: Dict[str, Any]) -> str:
                 "layout and do not infer preferences from nothing.")
 
     out: List[str] = []
+
+    # First, because it is the only evidence here the client stated in so
+    # many words. Everything below it is inference from behaviour, and
+    # inference should not outrank someone telling you what they want.
+    for (binding, kind), n in evidence.get("visuals", Counter()).most_common(3):
+        subject = binding.replace("_", " ")
+        times = f" ({n}x)" if n > 1 else ""
+        out.append(f"Asked to see {subject} as a {kind} chart{times}. "
+                   f"Build that view into the report so they do not have "
+                   f"to ask again.")
+
+    for reason, n in evidence.get("unmet", Counter()).most_common(2):
+        out.append(f"Asked for a chart we could not draw{f' ({n}x)' if n > 1 else ''}: "
+                   f"{reason}. Do not promise this view — the data is not there.")
 
     top = evidence["highlights"].most_common(3)
     if top:

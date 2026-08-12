@@ -124,6 +124,11 @@ __DOC_CSS__
  .m-a strong{font-weight:600}
  .m-a h1,.m-a h2,.m-a h3{font-size:13px;margin:8px 0 4px;font-weight:600}
  .fb{display:flex;gap:6px;margin-top:7px}
+ .cw-ans{margin:9px 0 2px;border:1px solid #e2e8f0;border-radius:8px;
+   background:#fff;padding:7px 8px 2px}
+ .cw-ans>span{display:block;font-size:10px;text-transform:uppercase;
+   letter-spacing:.05em;color:#94a3b8;font-weight:700;margin-bottom:2px}
+ .cw-ans .ecw{height:168px;margin:0}
  .fb button{border:1px solid #e2e8f0;background:#fff;border-radius:5px;
    padding:2px 9px;font-size:12px;cursor:pointer;color:#64748b}
  .fb button:hover{border-color:#94a3b8}
@@ -366,6 +371,25 @@ function md(src){
 function addAnswer(res){
   var d = add("m-a", "");
   d.innerHTML = md(res.answer);
+  // A chart the client asked for, built server-side from the same frozen
+  // snapshot the report was. Same two layers as the document: the SVG is
+  // written in directly, and the runtime upgrades it if it is there.
+  if (res.widget && res.widget.svg){
+    var w = document.createElement("div"); w.className = "cw-ans";
+    var cap = document.createElement("span");
+    cap.textContent = res.widget.title;
+    w.appendChild(cap);
+    var box = document.createElement("div");
+    box.className = "ecw";
+    box.setAttribute("data-kind", res.widget.kind);
+    if (res.widget.option){
+      box.setAttribute("data-opt", JSON.stringify(res.widget.option));
+    }
+    box.innerHTML = '<div class="ecw-live"></div>' +
+                    '<div class="ecw-fallback">' + res.widget.svg + '</div>';
+    w.appendChild(box); d.appendChild(w);
+    if (window.apeEnhanceWidgets) window.apeEnhanceWidgets(d);
+  }
   var fb = document.createElement("div"); fb.className = "fb";
   var up = document.createElement("button"); up.textContent = "\\uD83D\\uDC4D helpful";
   var dn = document.createElement("button"); dn.textContent = "\\uD83D\\uDC4E not really";

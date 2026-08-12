@@ -1256,6 +1256,28 @@ async def report_chat(report_id: str, request: Request):
                      metadata={"question": question,
                                "intent": result["intent"]})
 
+        # A client asking to SEE something is the most direct statement of
+        # presentation preference this system ever receives — far stronger
+        # than inferring it from where they lingered. Recorded with what
+        # they were asking ABOUT, so the composer learns the pairing
+        # ("fees, as a bar chart") rather than a free-floating taste.
+        w = result.get("widget")
+        if w:
+            record_event(db, report["client_id"], "visual_requested",
+                         report_id=report_id, block_id=block_id or "",
+                         metadata={"binding": w["binding"], "kind": w["kind"],
+                                   "intent": result["intent"], "drawn": True})
+        elif result.get("widget_declined"):
+            # A visual we could not fill is worth recording too, and for a
+            # different reason: it is not a presentation preference to
+            # learn from but a gap in what this client's data can support.
+            # Left unrecorded, the only trace is a client being told no.
+            record_event(db, report["client_id"], "visual_requested",
+                         report_id=report_id, block_id=block_id or "",
+                         metadata={"binding": "", "kind": "",
+                                   "intent": result["intent"], "drawn": False,
+                                   "reason": result["widget_declined"]})
+
         # Every question is fresh evidence about how this client reads, so
         # the brief the composer sees next time is rebuilt now rather than
         # on a schedule — the whole point is that the next report reflects

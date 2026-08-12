@@ -70,6 +70,14 @@ D1_WEIGHTS = {
 VALID_EVENTS = set(D1_WEIGHTS) | {
     "report_unhelpful", "block_highlighted", "answer_helpful",
     "answer_unhelpful", "section_viewed",
+    # Deliberately absent from D1_WEIGHTS: asking to see a chart says a
+    # great deal about how this client wants to be shown things and
+    # nothing about whether the template they were sent was any good, so
+    # it must not reward the arm. It is also absent from _dims_from_event
+    # because the question_asked event for the same message already moved
+    # the `visual` dimension — counting it twice would let one sentence
+    # register as two pieces of evidence.
+    "visual_requested",
 }
 
 
