@@ -804,26 +804,46 @@ async def generate_one_report(request: Request):
                                           {"count": 0, "total_reward": 0.0})
                  for a in arms}
 
-    strategy, rows, method = select(
-        templates, arm_state, report_type,
-        bool(rt.get("personalisable", True)),
-        client_profile=_profile, n_signals=_nsig)
+    # Two ways to get a template, both available:
+    #   selector (default) — UCB picks among the six human-written arms,
+    #                        and the choice is an arm that can be rewarded
+    #   composer          — the LLM designs a bespoke layout from the block
+    #                        registry. Better per-client fit, but a one-off
+    #                        with no arm to reward, so it teaches D1 nothing
+    compose = str(body.get("composer") or "").lower() in ("llm", "true", "1")
+    compose_diag = None
+    if compose:
+        from .reporting.composer import compose_template
+        template, compose_diag = compose_template(snap, report_type, _profile)
+        strategy = template["strategy"]
+        method = "llm_composed"
+        rows = []
+    else:
+        strategy, rows, method = select(
+            templates, arm_state, report_type,
+            bool(rt.get("personalisable", True)),
+            client_profile=_profile, n_signals=_nsig)
 
     # count rises at SELECTION so cold-start exploration advances even
-    # before any reward lands.
-    with session_scope() as _db:
-        _row = _db.scalars(_sel(_AS).where(
-            _AS.decision == "D1", _AS.scope_type == "GLOBAL",
-            _AS.context == report_type, _AS.arm_id == strategy)).first()
-        if _row is None:
-            _row = _AS(scope_type="GLOBAL", scope_id="_global",
-                       decision="D1", context=report_type, arm_id=strategy,
-                       alpha=1.0, beta=1.0, selection_count=0,
-                       reward_count=0, total_reward=0.0)
-            _db.add(_row)
-        _row.selection_count += 1
+    # before any reward lands. A composed template is not an arm, so there
+    # is nothing to count and nothing that could later be rewarded.
+    if not compose:
+        with session_scope() as _db:
+            _row = _db.scalars(_sel(_AS).where(
+                _AS.decision == "D1", _AS.scope_type == "GLOBAL",
+                _AS.context == report_type,
+                _AS.arm_id == strategy)).first()
+            if _row is None:
+                _row = _AS(scope_type="GLOBAL", scope_id="_global",
+                           decision="D1", context=report_type,
+                           arm_id=strategy, alpha=1.0, beta=1.0,
+                           selection_count=0, reward_count=0,
+                           total_reward=0.0)
+                _db.add(_row)
+            _row.selection_count += 1
 
-    template = next(t for t in arms if t["strategy"] == strategy)
+    if not compose:
+        template = next(t for t in arms if t["strategy"] == strategy)
     report = build_report(snap, template, report_type)
 
     # Structural coverage gate: mandatory categories (costs, disclosures)
@@ -884,6 +904,7 @@ async def generate_one_report(request: Request):
         "template_label": template.get("label"),
         "blocks": [b["type"] for b in report["blocks"]],
         "enforced_blocks": enforced,
+        "composer": compose_diag,
         "authors": authors,
         "validation": "passed" if verdict.ok else "rejected_blocks",
         "validation_summary": verdict.summary(),
