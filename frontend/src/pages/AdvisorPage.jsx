@@ -214,11 +214,24 @@ export default function AdvisorPage() {
             ))}
           </select>
 
+          {/* Two mutually exclusive modes, so a toggle rather than a
+              select: both options stay visible, and which one is active
+              is readable without opening anything. */}
           <label className="adv-bar-lbl">Template</label>
-          <select value={composer} onChange={(e) => setComposer(e.target.value)}>
-            <option value="">APE selects (learns)</option>
-            <option value="llm">AI composes (one-off)</option>
-          </select>
+          <div className="adv-toggle" role="group" aria-label="Template mode">
+            {[["", "APE selects", "Learns from engagement"],
+              ["llm", "AI composes", "One-off, teaches D1 nothing"]]
+              .map(([value, label, hint]) => (
+                <button
+                  key={value || "ape"}
+                  type="button"
+                  title={hint}
+                  aria-pressed={composer === value}
+                  className={composer === value ? "on" : ""}
+                  onClick={() => setComposer(value)}
+                >{label}</button>
+              ))}
+          </div>
 
           <label className="adv-bar-lbl">Period</label>
           <select value={period} onChange={(e) => setPeriod(e.target.value)}>

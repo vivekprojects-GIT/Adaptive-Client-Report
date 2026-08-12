@@ -112,6 +112,22 @@
   background: #fff; border-bottom: 1px solid #e2e8f0; flex-wrap: wrap;
 }
 .adv-bar select { width: auto; min-width: 230px; }
+
+/* Segmented toggle — a two-state control where both states stay legible.
+   Sized to sit level with the selects beside it rather than inventing its
+   own height. */
+.adv-toggle { display: inline-flex; background: #f1f5f9; border: 1px solid #cbd5e1;
+  border-radius: 7px; padding: 2px; gap: 2px; }
+.adv-toggle button {
+  border: 0; background: transparent; cursor: pointer; font-family: inherit;
+  font-size: 12.5px; font-weight: 600; color: #64748b; padding: 6px 13px;
+  border-radius: 5px; transition: background .15s ease, color .15s ease,
+  box-shadow .15s ease; white-space: nowrap;
+}
+.adv-toggle button:hover:not(.on) { color: #334155; background: #e2e8f0; }
+.adv-toggle button.on { background: #fff; color: #1d4ed8;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, .14); }
+.adv-toggle button:focus-visible { outline: 2px solid #1d4ed8; outline-offset: 1px; }
 .adv-bar-lbl { font-size: 11px; text-transform: uppercase; letter-spacing: .05em;
   color: #94a3b8; font-weight: 700; margin-left: 6px; }
 .adv-bar-note { margin-left: auto; font-size: 11.5px; color: #94a3b8; }
