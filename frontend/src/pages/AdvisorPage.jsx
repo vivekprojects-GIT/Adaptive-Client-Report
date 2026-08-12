@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api.js";
 import Toast from "../components/Toast.jsx";
+import { BlockTree, PreferenceTree, TemplateTree }
+  from "../components/RegistryTree.jsx";
 import "../styles/advisor.css";
 
 /**
@@ -45,6 +47,10 @@ export default function AdvisorPage() {
   // The template the advisor picked for this report type. "" means the
   // AI composes one instead — those are the only two routes now.
   const [templateId, setTemplateId] = useState("");
+  // The three registries, loaded on demand: nothing needs them until
+  // the advisor opens the view.
+  const [reg, setReg] = useState({ blocks: null, templates: null, prefs: null });
+  const [regTab, setRegTab] = useState("templates");
   const [toast, setToast]       = useState({ msg: null, kind: "" });
   const fileRef = useRef(null);
   const notify = (msg, kind = "ok") => setToast({ msg, kind });
@@ -93,6 +99,14 @@ export default function AdvisorPage() {
       mine.some((t) => t.template_id === cur) ? cur
         : (mine.length ? mine[0].template_id : ""));
   }, [reportType, templates]);
+
+  useEffect(() => {
+    if (view !== "registry") return;
+    Promise.all([api.registryTemplates(), api.registryBlocks(),
+                 api.registryPreferences()])
+      .then(([t, b, pr]) => setReg({ templates: t, blocks: b, prefs: pr }))
+      .catch((e) => notify("Registry load failed: " + e.message, "error"));
+  }, [view]);
 
   async function openClientView(reportId) {
     try {
@@ -215,7 +229,7 @@ export default function AdvisorPage() {
               selection off it edits machinery nothing consults, which is
               exactly the kind of nav item this app does not carry. */}
           {[["clients", "Clients"], ["reports", "Reports"],
-            ["segments", "Segments"],
+            ["segments", "Segments"], ["registry", "Registries"],
             ...(selectorOn ? [["arms", "Templates (Arms)"]] : [])
            ].map(([id, label]) => (
             <button key={id} className={`adv-nav-item ${view === id ? "on" : ""}`}
@@ -658,6 +672,56 @@ export default function AdvisorPage() {
         )}
 
         {/* ── ARMS ──────────────────────────────────────────────── */}
+        {view === "registry" && (
+          <section className="adv-panel">
+            <div className="adv-panel-hd">
+              <h2>Registries</h2>
+              <span className="adv-count">read-only — author under Configuration</span>
+            </div>
+            <div className="reg-tabs">
+              {[["templates", "Templates by report type"],
+                ["blocks", "Widget registry"],
+                ["prefs", "Learned preferences"]].map(([id, label]) => (
+                <button key={id} type="button"
+                        className={regTab === id ? "on" : ""}
+                        onClick={() => setRegTab(id)}>{label}</button>
+              ))}
+            </div>
+
+            {regTab === "templates" && (<>
+              <p className="adv-note">
+                A template belongs to exactly one report type, because its
+                blocks assume that type's facts. Each one is an ordered list
+                drawn from the widget registry. No bandit picks between them —
+                you do, at generation time.
+              </p>
+              {reg.templates ? <TemplateTree data={reg.templates} />
+                             : <div className="adv-none">Loading…</div>}
+            </>)}
+
+            {regTab === "blocks" && (<>
+              <p className="adv-note">
+                Every widget a template or the composer can use, grouped by the
+                fact category it covers. Coverage is enforced per category, so
+                two blocks in the same group close the same gap.
+              </p>
+              {reg.blocks ? <BlockTree data={reg.blocks} />
+                          : <div className="adv-none">Loading…</div>}
+            </>)}
+
+            {regTab === "prefs" && (<>
+              <p className="adv-note">
+                What has been learned, per client and per report type. Only
+                scopes with real evidence are listed. “(all report types)” is
+                the client-wide row a report type falls back on before it has
+                history of its own.
+              </p>
+              {reg.prefs ? <PreferenceTree data={reg.prefs} />
+                         : <div className="adv-none">Loading…</div>}
+            </>)}
+          </section>
+        )}
+
         {view === "arms" && (
           <section className="adv-panel">
             <div className="adv-panel-hd">

@@ -254,6 +254,113 @@ def rag_ingest(force: bool = False):
 
 # ---- Adaptive client reporting (D1) ---------------------------------------
 
+@app.get("/registry/blocks")
+def registry_blocks():
+    """The widget palette, grouped by the fact CATEGORY each block covers.
+
+    Category is the useful grouping rather than block name: coverage is
+    enforced per category, so an author choosing between two blocks needs
+    to know which one closes the same gap.
+    """
+    from .reporting.registry import CHART_KINDS, REGISTRY
+    by_cat: Dict[str, List[Dict[str, Any]]] = {}
+    for name, meta in REGISTRY.items():
+        by_cat.setdefault(meta["category"], []).append({
+            "block": name, "shows": meta["shows"],
+            "needs": meta["needs"], "kind": "block"})
+    for kind, (cat, shows) in CHART_KINDS.items():
+        by_cat.setdefault(cat, []).append({
+            "block": f"chart:{kind}", "shows": shows,
+            "needs": "allocations", "kind": "chart"})
+    return {"categories": [
+        {"category": c, "blocks": sorted(by_cat[c], key=lambda b: b["block"])}
+        for c in sorted(by_cat)]}
+
+
+@app.get("/registry/templates")
+def registry_templates():
+    """Every template, nested under the report type that owns it.
+
+    The nesting is the point: a template belongs to exactly one report
+    type because its blocks assume that type's facts, and a flat list
+    hides the one relationship that matters.
+    """
+    cfg = _guard_cfg()
+    types = {t["report_type"]: t for t in cfg.list_report_types()}
+    by_type: Dict[str, List[Dict[str, Any]]] = {}
+    for t in cfg.list_templates():
+        by_type.setdefault(t.get("report_type", ""), []).append({
+            "template_id": t.get("template_id"),
+            "label": t.get("label") or t.get("strategy"),
+            "description": t.get("description", ""),
+            "blocks": t.get("required_blocks", []) or [],
+            "optional_blocks": t.get("optional_blocks", []) or [],
+        })
+    out = []
+    for rt in sorted(set(types) | set(by_type)):
+        tpl = sorted(by_type.get(rt, []), key=lambda x: x["label"] or "")
+        out.append({
+            "report_type": rt,
+            "label": (types.get(rt) or {}).get("label", rt.replace("_", " ")),
+            "prescribed": (types.get(rt) or {}).get("personalisable", True) is False,
+            "templates": tpl,
+        })
+    return {"report_types": out}
+
+
+@app.get("/registry/preferences")
+def registry_preferences():
+    """What has been learned, nested client -> report type.
+
+    Only scopes with evidence are listed. A row of neutral 0.5s for every
+    client against every one of sixteen report types would be a tree of
+    things nobody has observed, which reads as knowledge and is not.
+    """
+    from .db.session import init_db, session_scope
+    from .db.models import Client, ClientPreference, ClientSkill
+    from .reporting.rewards import profile_for
+    from sqlalchemy import select as _s
+    init_db()
+    out = []
+    with session_scope() as db:
+        names = {c.client_id: c.name for c in db.scalars(_s(Client))}
+        rows: Dict[str, List[Any]] = {}
+        for r in db.scalars(_s(ClientPreference)):
+            rows.setdefault(r.client_id, []).append(r)
+        skills: Dict[tuple, Any] = {
+            (sk.client_id, sk.report_type): sk
+            for sk in db.scalars(_s(ClientSkill))}
+
+        for cid, prefs in sorted(rows.items()):
+            scopes = []
+            for r in sorted(prefs, key=lambda x: x.report_type):
+                sk = skills.get((cid, r.report_type))
+                dims = profile_for(db, cid, r.report_type)
+                moved = {k: v for k, v in dims.items() if abs(v - 0.5) > 0.02}
+                # A scope with no signals, nothing moved off the prior and
+                # nothing stated is a row asserting knowledge that does not
+                # exist. The client-wide row is not exempt: a client who has
+                # never interacted should be absent from this tree, not
+                # present with a line of zeroes.
+                if (r.meaningful_signal_count <= 0 and not moved
+                        and not (sk and sk.stated_prefs)):
+                    continue
+                scopes.append({
+                    "report_type": r.report_type,
+                    "scope": r.report_type or "(all report types)",
+                    "signals": r.meaningful_signal_count,
+                    "moved": {k: round(v, 3) for k, v in moved.items()},
+                    "stated": (sk.stated_prefs if sk else []) or [],
+                    "brief_lines": [l for l in
+                                    ((sk.brief if sk else "") or "").splitlines()
+                                    if l.strip()],
+                })
+            if scopes:
+                out.append({"client_id": cid,
+                            "name": names.get(cid, cid), "scopes": scopes})
+    return {"clients": out}
+
+
 @app.get("/config/features")
 def config_features():
     """What this deployment has switched on.
