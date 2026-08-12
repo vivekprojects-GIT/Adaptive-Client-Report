@@ -109,6 +109,29 @@ export default function AdvisorPage() {
       .catch((e) => notify("Registry load failed: " + e.message, "error"));
   }, [view]);
 
+  // The report a client row should be showing RIGHT NOW, for the report
+  // type and period currently selected in the toolbar.
+  //
+  // The row used to show `last_report_id` — the client's most recent report
+  // of any type from any period — so changing either selector left the row
+  // unchanged and Preview opened a document from a different quarter. The
+  // toolbar is a filter; a row that ignores it is showing something else.
+  const reportFor = useMemo(() => {
+    const idx = {};
+    generated.forEach((r) => {
+      if (r.report_type !== reportType) return;
+      (idx[r.client_id] ||= []).push(r);
+    });
+    Object.values(idx).forEach((rs) =>
+      rs.sort((a, b) => String(b.period).localeCompare(String(a.period))));
+    return (clientId) => {
+      const rs = idx[clientId] || [];
+      // "" = latest on file, which for a filter means the newest of THIS
+      // report type — not the newest of anything.
+      return period ? rs.find((r) => r.period === period) : rs[0];
+    };
+  }, [generated, reportType, period]);
+
   async function openClientView(reportId) {
     try {
       const r = await api.reportClientLink(reportId);
@@ -353,22 +376,32 @@ export default function AdvisorPage() {
                               <div className="adv-sub">{c.email}</div></td>
                           <td>{(c.segment_id || "").replace(/_/g, " ")}</td>
                           <td>
-                            {c.last_report_id
-                              ? <><span className="adv-pill ok">{c.last_strategy}</span>
-                                  <div className="adv-sub">{c.last_report_period}</div></>
-                              : <span className="adv-pill wait">none</span>}
+                            {(() => {
+                              const rep = reportFor(c.client_id);
+                              return rep
+                                ? <><span className="adv-pill ok">{rep.label || rep.strategy}</span>
+                                    <div className="adv-sub">{rep.period}</div></>
+                                : <span className="adv-pill wait">
+                                    {period ? `none for ${period}` : "none"}
+                                  </span>;
+                            })()}
                           </td>
                           <td className="adv-row-actions">
                             <button className="adv-mini" disabled={busy}
                                     onClick={(e) => { e.stopPropagation(); generateOne(c); }}>
                               Generate
                             </button>
-                            {c.last_report_id && (
-                              <button className="adv-mini ghost"
-                                      onClick={(e) => { e.stopPropagation(); setPreview(c.last_report_id); }}>
-                                Preview
-                              </button>
-                            )}
+                            {(() => {
+                              const rep = reportFor(c.client_id);
+                              return rep ? (
+                                <button className="adv-mini ghost"
+                                        title={`${rep.period} · ${rep.label || rep.strategy}`}
+                                        onClick={(e) => { e.stopPropagation();
+                                                          setPreview(rep.report_id); }}>
+                                  Preview
+                                </button>
+                              ) : null;
+                            })()}
                           </td>
                         </tr>
                       ))}
