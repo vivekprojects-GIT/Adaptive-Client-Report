@@ -65,6 +65,32 @@ def init_db(drop: bool = False) -> None:
         Base.metadata.drop_all(engine)
     _migrate_report_type_scope(engine)
     Base.metadata.create_all(engine)
+    _add_missing_columns(engine)
+
+
+# Columns added to existing tables after they were first created. create_all
+# does not add columns to a table it can already see, so plain additions
+# (unlike the primary-key change above, which needs a rebuild) are applied
+# here with ALTER TABLE.
+_ADDED_COLUMNS = {
+    "client_skills": {"stated_prefs": "JSON DEFAULT '[]'"},
+}
+
+
+def _add_missing_columns(engine) -> None:
+    from sqlalchemy import inspect, text
+    insp = inspect(engine)
+    tables = set(insp.get_table_names())
+    for table, cols in _ADDED_COLUMNS.items():
+        if table not in tables:
+            continue
+        have = {c["name"] for c in insp.get_columns(table)}
+        for col, ddl in cols.items():
+            if col in have:
+                continue
+            with engine.begin() as conn:
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}"))
+            print(f"[migrate] {table}: added column {col}", flush=True)
 
 
 # Tables that gained `report_type` as part of their primary key when the

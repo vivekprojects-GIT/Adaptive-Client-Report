@@ -290,4 +290,13 @@ def skill_text(session: Session, client_id: str,
     else:
         brief = render_brief(gather_evidence(session, client_id, report_type))
 
+    # What the client asked for outright, which outranks anything inferred
+    # from where they clicked. Scoped statements first, falling back to the
+    # client-wide set for a report type they have not spoken about yet.
+    from ape.reporting.stated_prefs import for_composer
+    said = for_composer((scoped.stated_prefs if scoped else None)
+                        or (wide.stated_prefs if wide else None))
+    if said:
+        brief = f"{said}\n\n{brief}" if brief else said
+
     return (note + "\n" + brief) if note else brief

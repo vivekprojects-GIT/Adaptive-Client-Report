@@ -394,6 +394,12 @@ class ClientSkill(Base):
     client_id:  Mapped[str] = mapped_column(ForeignKey("clients.client_id"),
                                             primary_key=True)
     brief:      Mapped[str] = mapped_column(Text, default="")
+    # Preferences the client stated in their own words, as
+    # [{aspect, phrase, count, actionable}]. The nine dimensions are a
+    # closed vocabulary and cannot hold "put the fee line first" or "send
+    # this as a video"; this can. `actionable` records whether the
+    # composer can act on it or whether it needs a human.
+    stated_prefs: Mapped[list] = mapped_column(JSON, default=list)
     advisor_note: Mapped[str] = mapped_column(Text, default="")
     top_blocks:    Mapped[list] = mapped_column(JSON, default=list)
     ignored_blocks: Mapped[list] = mapped_column(JSON, default=list)

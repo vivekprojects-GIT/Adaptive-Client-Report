@@ -1148,11 +1148,18 @@ def client_insight(client_id: str):
         # advisor can see what the system believes and correct it.
         from .reporting.skill import refresh_skill
         skill_row = refresh_skill(db, client_id, "")
+        from .reporting.stated_prefs import for_advisor
         skill = {"brief": skill_row.brief,
                  "advisor_note": skill_row.advisor_note,
                  "evidence_count": skill_row.evidence_count,
                  "top_blocks": skill_row.top_blocks,
-                 "ignored_blocks": skill_row.ignored_blocks}
+                 "ignored_blocks": skill_row.ignored_blocks,
+                 "stated": skill_row.stated_prefs or [],
+                 # Requests no part of the generation pipeline can satisfy
+                 # — a video walkthrough, a printed copy, a phone call.
+                 # Shown to the advisor precisely because the system
+                 # cannot act on them and somebody should.
+                 "needs_a_human": for_advisor(skill_row.stated_prefs)}
 
     return {"client_id": client_id, "signals": n, "dimensions": dims,
             "reports": reports, "recent_events": recent, "skill": skill,
@@ -1326,6 +1333,21 @@ async def report_chat(report_id: str, request: Request):
         # the brief the composer sees next time is rebuilt now rather than
         # on a schedule — the whole point is that the next report reflects
         # what just happened.
+        # Anything the client said about HOW they want to be shown things,
+        # in their own words, kept against this report type. Best effort:
+        # a failed extraction costs one signal, and must never cost the
+        # client their answer.
+        try:
+            from .reporting.stated_prefs import extract, merge
+            from .reporting.skill import _skill_row
+            found = extract(question, result.get("answer", ""))
+            if found:
+                for scope in ("", _rt) if _rt else ("",):
+                    row = _skill_row(db, report["client_id"], scope)
+                    row.stated_prefs = merge(row.stated_prefs, found)
+        except Exception:
+            pass
+
         from .reporting.skill import refresh_skill
         refresh_skill(db, report["client_id"], _rt)
     return result
