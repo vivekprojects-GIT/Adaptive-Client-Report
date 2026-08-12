@@ -33,7 +33,46 @@ from typing import Any, Dict
 from ape.reporting.generate import DOC_CSS, render_body, _esc
 
 
-def render_viewer(report: Dict[str, Any], token: str) -> str:
+# Three at most, here and in the follow-ups. A chip row is a suggestion,
+# not a menu: past three it starts reading as the set of things you are
+# allowed to ask, which is the opposite of what it is for.
+MAX_CHIPS = 3
+
+OPENING_CHIPS = [
+    ("Give me a quick summary of this report.", "Quick summary"),
+    ("How did I do against the benchmark?", "vs benchmark"),
+    ("Explain the fees I paid this period.", "Explain my fees"),
+]
+
+
+def _opening_chips(snapshot=None) -> str:
+    """The chips a client sees before they have asked anything.
+
+    One offers a chart, because most people do not know they can ask for
+    one and a chip is how an interface says what it can do. It is only
+    offered when this client's data can actually fill it — a control that
+    leads to "sorry, not enough data" teaches the opposite lesson.
+
+    The chart chip takes a slot rather than being appended, so the row
+    stays at three.
+    """
+    chips = list(OPENING_CHIPS)
+    if snapshot is not None:
+        try:
+            from ape.reporting import chat_widgets as cw
+            for binding in cw.chip_bindings(snapshot):
+                chip = cw.CHIPS.get(binding)
+                if chip:
+                    chips = chips[:MAX_CHIPS - 1] + [(chip, "See it as a chart")]
+                    break
+        except Exception:
+            pass
+    return "\n".join(
+        f'    <button data-q="{_esc(q)}">{_esc(label)}</button>'
+        for q, label in chips[:MAX_CHIPS])
+
+
+def render_viewer(report: Dict[str, Any], token: str, snapshot=None) -> str:
     doc = render_body(report, internal=False)
     first_name = _esc(str(report.get("client_name", "")).split(" ")[0])
     rid = _esc(report["report_id"])
@@ -59,6 +98,7 @@ def render_viewer(report: Dict[str, Any], token: str) -> str:
         .replace("__PERIOD__", period) \
         .replace("__RTYPE__", rtype) \
         .replace("__RID__", rid) \
+        .replace("__CHIPS__", _opening_chips(snapshot)) \
         .replace("__TOKEN__", _esc(token))
 
 
@@ -205,10 +245,7 @@ __DOC_CSS__
       figures, nothing else.</div>
   </div>
   <div class="chips" id="chips">
-    <button data-q="Give me a quick summary of this report.">Quick summary</button>
-    <button data-q="How did I do against the benchmark?">vs benchmark</button>
-    <button data-q="Explain the fees I paid this period.">Explain my fees</button>
-    <button data-q="What drove my return this period?">What drove returns</button>
+__CHIPS__
   </div>
   <div class="ask">
     <input id="q" placeholder="Ask a follow up question..." autocomplete="off">

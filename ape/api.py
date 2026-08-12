@@ -1040,8 +1040,23 @@ def client_report_view(report_id: str, token: str = ""):
     if not f.is_file():
         raise HTTPException(404, "report not found")
     report = json.loads(f.read_text(encoding="utf-8"))
+
+    # The snapshot is loaded only so the opening chips know which charts
+    # this client's data can fill. A failure here must not cost anyone
+    # their report — the chips fall back to text-only questions.
+    snap = None
+    try:
+        from .db.session import init_db, session_scope
+        from .db.repository import load_snapshot as _sql_snapshot
+        init_db()
+        with session_scope() as _db:
+            snap = _sql_snapshot(_db, report["client_id"],
+                                 report.get("period"))
+    except Exception:
+        snap = None
+
     from .reporting.viewer import render_viewer
-    return HTMLResponse(render_viewer(report, token))
+    return HTMLResponse(render_viewer(report, token, snapshot=snap))
 
 
 def _viewer_auth(report_id: str, token: str) -> None:
@@ -1247,7 +1262,8 @@ async def report_chat(report_id: str, request: Request):
         asked = list(db.scalars(_select(Message.content).where(
             Message.report_id == report_id, Message.role == "client")))
         result["followups"] = suggest_followups(
-            report, result.get("intent", ""), asked)
+            report, result.get("intent", ""), asked, snap=snap,
+            block_type=(block or {}).get("block_type", ""))
 
         # The question itself is a signal: engagement for D1, and its
         # wording may carry format preferences for the profile.

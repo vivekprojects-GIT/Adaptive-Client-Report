@@ -67,7 +67,12 @@ BINDINGS: Dict[str, Dict[str, Any]] = {
     },
     "allocation_vs_target": {
         "shape": "paired", "title": "Where you sit against your target",
-        "words": ("target", "drift", "rebalanc", "off target", "strategic"),
+        # The long phrases matter: "allocation against target" also
+        # contains "allocat", and scoring by matched LENGTH is what stops
+        # the more specific subject losing to the more general one.
+        "words": ("against target", "vs target", "versus target",
+                  "compared to target", "target allocation", "target weight",
+                  "target", "drift", "rebalanc", "off target", "strategic"),
     },
     "attribution": {
         "shape": "categorical", "title": "What drove your return",
@@ -94,7 +99,8 @@ BINDINGS: Dict[str, Dict[str, Any]] = {
     },
     "cash_flows": {
         "shape": "parts", "title": "Money in and out",
-        "words": ("cash", "contribut", "withdraw", "deposit", "paid in",
+        "words": ("cash flow", "money in and out", "in and out", "cash",
+                  "contribut", "withdraw", "deposit", "paid in",
                   "took out", "flow"),
     },
 }
@@ -304,43 +310,100 @@ def catalogue(snap: ClientSnapshot) -> str:
     return "\n".join(lines)
 
 
+# What a client was looking at, and what they were asking about, mapped to
+# the subject they most likely want drawn. Module-level so the follow-up
+# chips and the resolver agree by construction — a chip that resolved to a
+# different chart than it offered would be worse than no chip.
+BINDING_BY_BLOCK = {
+    "allocation_donut": "allocation",
+    "allocation_vs_target": "allocation_vs_target",
+    "fees_table": "fees", "holdings_table": "holdings",
+    "top_contributors": "attribution", "top_detractors": "attribution",
+    "comparison_chart": "portfolio_vs_benchmark",
+    "comparison_table": "portfolio_vs_benchmark",
+    "performance_history": "performance_history",
+    "performance_line": "performance_history",
+}
+
+BINDING_BY_INTENT = {
+    "fees_cashflow_question": "fees",
+    "allocation_question": "allocation",
+    "performance_question": "portfolio_vs_benchmark",
+    "benchmark_comparison": "portfolio_vs_benchmark",
+    "holdings_question": "holdings",
+    "report_summary": "allocation",
+}
+
+# The chip text offered for each subject. Written so that feeding it back
+# through wants_visual / guess_binding / named_kind returns this same
+# binding and this same kind — enforced by test_widgets, because a chip
+# that draws something other than what it promised is a broken control.
+CHIPS = {
+    "allocation": "Show me my asset allocation as a donut chart.",
+    "allocation_vs_target": "Show me my allocation against target as a bar chart.",
+    "attribution": "Show me what drove my return as a waterfall chart.",
+    "holdings": "Show me my largest holdings as a treemap.",
+    "performance_history": "Plot my return over time as a line chart.",
+    "portfolio_vs_benchmark": "Chart my return against the benchmark as a bar chart.",
+    "fees": "Show me what I paid as a donut chart.",
+    "cash_flows": "Show me my cash flow in and out as a donut chart.",
+}
+
+
+def chip_bindings(snap: ClientSnapshot, intent: str = "",
+                  block_type: str = "") -> List[str]:
+    """Subjects worth offering as a chart, most relevant first.
+
+    Only bindings this client's data can actually fill are returned, so a
+    chip can never lead to the decline path — offering a chart and then
+    explaining why it cannot be drawn is a worse experience than never
+    offering it.
+    """
+    options = available(snap)
+    ordered: List[str] = []
+    for cand in (BINDING_BY_BLOCK.get(block_type or ""),
+                 BINDING_BY_INTENT.get(intent or "")):
+        if cand and cand in options and cand not in ordered:
+            ordered.append(cand)
+    ordered += [b for b in options if b not in ordered]
+    return ordered
+
+
 def guess_binding(question: str, intent: str, block_type: str,
                   options: List[str]) -> Optional[str]:
     """Resolve the subject without a model call where the wording allows.
 
-    Scored by how many of a binding's words appear, so "how do my fees
-    compare to the benchmark" lands on fees rather than on the first
-    binding that happened to match one word.
+    Scored by the LENGTH of the wording each binding matches, not the
+    count. "Show me my allocation against target" matches "allocat" for
+    allocation and "against target" for allocation_vs_target; counting
+    would tie them and hand it to whichever came first, which is how a
+    request for drift silently returned a plain allocation chart. The
+    longer match is the more specific subject, and specificity is what
+    the client actually said.
+
+    A question naming two subjects ("how do my fees compare to the
+    benchmark") resolves to whichever it names more strongly, which is not
+    always the one a human would pick. That is tolerable because this is
+    the FALLBACK: the model picks first, with the whole catalogue in front
+    of it, and this only runs when that call is unavailable or returns
+    something not on the menu.
     """
     if not options:
         return None
     low = (question or "").lower()
     best, best_score = None, 0
     for b in options:
-        score = sum(1 for w in BINDINGS[b]["words"] if w in low)
+        score = sum(len(w) for w in BINDINGS[b]["words"] if w in low)
         if score > best_score:
             best, best_score = b, score
     if best:
         return best
     # Nothing named. Fall back to what the client was looking at, then to
-    # the report's most common subject.
-    by_block = {"allocation_donut": "allocation",
-                "allocation_vs_target": "allocation_vs_target",
-                "fees_table": "fees", "holdings_table": "holdings",
-                "top_contributors": "attribution",
-                "top_detractors": "attribution",
-                "comparison_chart": "portfolio_vs_benchmark",
-                "comparison_table": "portfolio_vs_benchmark",
-                "performance_history": "performance_history",
-                "performance_line": "performance_history"}
-    cand = by_block.get(block_type or "")
+    # what they were asking about.
+    cand = BINDING_BY_BLOCK.get(block_type or "")
     if cand in options:
         return cand
-    by_intent = {"fees_cashflow_question": "fees",
-                 "allocation_question": "allocation",
-                 "performance_question": "portfolio_vs_benchmark",
-                 "holdings_question": "holdings"}
-    cand = by_intent.get(intent or "")
+    cand = BINDING_BY_INTENT.get(intent or "")
     return cand if cand in options else options[0]
 
 

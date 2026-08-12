@@ -268,6 +268,38 @@ def main() -> None:
             failures.append(f"chart:{kind} {type(exc).__name__}: {exc}")
             print(f"  FAIL  {kind:<12} {type(exc).__name__}: {exc}")
 
+    # ---- 3. follow-up chips round-trip --------------------------------
+    # A chip that offers "as a treemap" and then draws a donut is a broken
+    # control, and nothing else in the system would catch it: the chip text
+    # and the resolver are separate code paths that only meet at runtime.
+    print("\nCHART CHIPS")
+    from ape.reporting import chat_widgets as cw
+    for binding, chip in cw.CHIPS.items():
+        problems = []
+        if not cw.wants_visual(chip):
+            problems.append("not detected as a visual request")
+        got = cw.guess_binding(chip, "", "", list(cw.BINDINGS))
+        if got != binding:
+            problems.append(f"resolves to {got}")
+        # The kind the chip names must survive resolve_kind for its shape.
+        named = cw.named_kind(chip)
+        if named and cw.resolve_kind(binding, named) != named:
+            problems.append(f"names {named}, which its shape rejects")
+        if problems:
+            failures.append(f"chip:{binding} {'; '.join(problems)}")
+            print(f"  FAIL  {binding:<22} {'; '.join(problems)}")
+        else:
+            print(f"  ok    {binding:<22} -> {binding} as {named or 'default'}")
+
+    # A chip must never be offered for something this client cannot fill.
+    offered = cw.chip_bindings(SNAP)
+    unfillable = [b for b in offered if cw.unavailable_reason(SNAP, b)]
+    if unfillable:
+        failures.append(f"chips offered for unfillable bindings: {unfillable}")
+        print(f"  FAIL  offered but unfillable: {unfillable}")
+    else:
+        print(f"  ok    {'availability':<22} {len(offered)} offered, all fillable")
+
     # ---- gallery ------------------------------------------------------
     out = ROOT / "data" / "generated" / "_widget_gallery.html"
     out.parent.mkdir(parents=True, exist_ok=True)

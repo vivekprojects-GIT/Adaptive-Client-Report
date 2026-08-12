@@ -307,14 +307,35 @@ _FOLLOWUP_BY_INTENT = {
 
 def suggest_followups(report: Dict[str, Any], intent: str = "",
                       asked: Optional[List[str]] = None,
-                      limit: int = 4) -> List[str]:
-    """Chips grounded in THIS report's blocks, minus anything already asked."""
+                      limit: int = 3,
+                      snap: Optional[ClientSnapshot] = None,
+                      block_type: str = "") -> List[str]:
+    """Chips grounded in THIS report's blocks, minus anything already asked.
+
+    When a snapshot is supplied, one chip offers a CHART of whatever the
+    conversation is currently about — most clients do not know they can ask
+    for one, and a chip is how an interface says what it can do.
+
+    Only one, and only ever drawable: the chip list is also the shortest
+    route to the next question, so filling it with charts would crowd out
+    the questions a client actually came with. Availability is checked
+    against this client's own data, so a chip can never lead to the
+    "cannot be drawn" path.
+    """
     seen = {q.strip().lower() for q in (asked or [])}
     out: List[str] = []
 
     nxt = _FOLLOWUP_BY_INTENT.get(intent)
     if nxt and nxt.lower() not in seen:
         out.append(nxt)
+
+    if snap is not None:
+        from ape.reporting import chat_widgets as cw
+        for binding in cw.chip_bindings(snap, intent, block_type):
+            chip = cw.CHIPS.get(binding)
+            if chip and chip.lower() not in seen and chip not in out:
+                out.append(chip)
+                break
 
     present = [b.get("type") for b in report.get("blocks", [])]
     for block_type in present:
