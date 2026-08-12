@@ -941,6 +941,16 @@ async def import_clients(request: Request):
     from .reporting.csv_source import parse_csv
     body = await request.json()
     snaps, errors = parse_csv(body.get("csv_text", ""))
+
+    # SQL is the data home reports are generated FROM; Mongo keeps a copy
+    # for the transition but nothing reads it any more.
+    from .db.session import init_db, session_scope
+    from .db.repository import ingest_snapshot
+    init_db()
+    with session_scope() as db:
+        for s in snaps:
+            ingest_snapshot(db, s)
+
     store = _guard_store()
     for s in snaps:
         store.db["ape_clients"].update_one(
@@ -974,15 +984,25 @@ async def import_clients(request: Request):
 
 @app.get("/clients")
 def list_clients(q: Optional[str] = None, limit: int = 200):
-    store = _guard_store()
-    query: Dict[str, Any] = {}
-    if q:
-        query["$or"] = [
-            {"display_name": {"$regex": q, "$options": "i"}},
-            {"client_id": {"$regex": q, "$options": "i"}},
-            {"email": {"$regex": q, "$options": "i"}},
-        ]
-    rows = list(store.db["ape_clients"].find(query).limit(limit))
+    """The advisor's book, from SQL — the same tables generation reads."""
+    from .db.session import init_db, session_scope
+    from .db.repository import list_clients as _sql_clients, list_periods
+    init_db()
+    rows = []
+    with session_scope() as db:
+        for c in _sql_clients(db):
+            if q and q.lower() not in (c.client_id + c.name + c.email).lower():
+                continue
+            periods = list_periods(db, c.client_id)
+            rows.append({
+                "client_id": c.client_id, "display_name": c.name,
+                "email": c.email, "segment_id": c.segment_id,
+                "risk_profile": c.risk_profile,
+                "periods": periods,
+                "last_period": periods[-1] if periods else None,
+            })
+            if len(rows) >= limit:
+                break
     # Latest report per client, for the "Last report / Status" columns.
     gen = Path(__file__).resolve().parents[1] / "data" / "generated"
     latest: Dict[str, Dict[str, Any]] = {}
@@ -995,9 +1015,9 @@ def list_clients(q: Optional[str] = None, limit: int = 200):
             latest[r.get("client_id")] = r
     out = []
     for r in rows:
-        r.pop("_id", None)
         rep = latest.get(r.get("client_id"))
         out.append({**r,
+                    "portfolio_value": None,
                     "last_report_period": (rep or {}).get("period"),
                     "last_report_id": (rep or {}).get("report_id"),
                     "last_strategy": (rep or {}).get("template_strategy"),
@@ -1092,16 +1112,27 @@ async def generate_one_report(request: Request):
     report_type = body.get("report_type") or "quarterly_portfolio_review"
 
     store = _guard_store(); cfg = _guard_cfg()
-    doc = store.db["ape_clients"].find_one({"client_id": client_id})
-    if not doc or not doc.get("snapshot"):
+
+    # Snapshot from SQL — the shared relational book. Mongo fallback covers
+    # anything imported before the SQL layer existed.
+    from .db.session import init_db, session_scope
+    from .db.repository import load_snapshot as _sql_snapshot
+    init_db()
+    snap = None
+    try:
+        with session_scope() as db:
+            snap = _sql_snapshot(db, client_id, body.get("period"))
+    except LookupError:
+        doc = store.db["ape_clients"].find_one({"client_id": client_id})
+        if doc and doc.get("snapshot"):
+            snap = ClientSnapshot(**doc["snapshot"])
+    if snap is None:
         raise HTTPException(404, f"no stored snapshot for client '{client_id}'")
 
     rt = next((r for r in cfg.list_report_types()
                if r.get("report_type") == report_type), None)
     if rt is None:
         raise HTTPException(404, f"unknown report type '{report_type}'")
-
-    snap = ClientSnapshot(**doc["snapshot"])
     templates = cfg.list_templates()
     arms = eligible_arms(templates, report_type)
     if not arms:
@@ -1132,13 +1163,27 @@ async def generate_one_report(request: Request):
     template = next(t for t in arms if t["strategy"] == strategy)
     report = build_report(snap, template, report_type)
 
+    # THE LLM WRITES THE PROSE. Style comes from the control plane: the
+    # selected template's strategy plus this client's learned dimensions.
+    # Every model sentence goes through the same grounding gate below; a
+    # rejected draft falls back to the code-built block, so a bad model day
+    # degrades style, never truth.
+    from .reporting.writer import write_prose_blocks
+    from .db.models import ClientPreference
+    dims = None
+    with session_scope() as db:
+        prefs = db.get(ClientPreference, client_id)
+        if prefs is not None:
+            dims = prefs.as_dimensions()
+    authors = write_prose_blocks(report, snap, strategy, dims)
+
     # GROUNDING GATE. Every number in every block must trace to the frozen
     # snapshot. Rejected blocks are DROPPED, not corrected and not rendered
     # with a warning — a plausible wrong figure is worse than a missing
     # section. Today all blocks are code-built so this should always pass;
     # it becomes load-bearing the moment the LLM writes one.
     from .reporting.grounding import validate_report
-    verdict = validate_report(report, snap.numeric_facts())
+    verdict = validate_report(report, snap.numeric_facts(), snap.label_terms())
     if verdict.rejected:
         report["blocks"] = verdict.accepted
         report["rejected_blocks"] = [
@@ -1152,11 +1197,21 @@ async def generate_one_report(request: Request):
     (out / f"{rid}.html").write_text(render_html(report), encoding="utf-8")
     (out / f"{rid}.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
 
+    # SQL: the report row (arm, method — the reward address) and every
+    # block (source_refs — the localisation for highlight-to-ask).
+    from .db.repository import persist_report
+    with session_scope() as db:
+        persist_report(db, report, strategy, method,
+                       template.get("template_id") or "",
+                       "passed" if verdict.ok else "rejected_blocks",
+                       authors)
+
     return {
         "report_id": rid, "client_id": client_id, "strategy": strategy,
         "method": method, "template_id": template.get("template_id"),
         "template_label": template.get("label"),
         "blocks": [b["type"] for b in report["blocks"]],
+        "authors": authors,
         "validation": "passed" if verdict.ok else "rejected_blocks",
         "validation_summary": verdict.summary(),
         "validation_findings": [
@@ -1274,10 +1329,107 @@ def client_report_view(report_id: str, token: str = ""):
             f'to send a fresh one.</p></div>', status_code=403)
 
     gen = Path(__file__).resolve().parents[1] / "data" / "generated"
-    f = gen / f"{report_id}.html"
+    f = gen / f"{report_id}.json"
     if not f.is_file():
         raise HTTPException(404, "report not found")
-    return HTMLResponse(f.read_text(encoding="utf-8"))
+    report = json.loads(f.read_text(encoding="utf-8"))
+    from .reporting.viewer import render_viewer
+    return HTMLResponse(render_viewer(report, token))
+
+
+def _viewer_auth(report_id: str, token: str) -> None:
+    from .reporting.tokens import TokenError, verify as _verify
+    try:
+        _verify(token, report_id=report_id)
+    except TokenError as exc:
+        raise HTTPException(403, str(exc))
+
+
+def _report_json(report_id: str) -> dict:
+    f = (Path(__file__).resolve().parents[1] / "data" / "generated"
+         / f"{report_id}.json")
+    if not f.is_file():
+        raise HTTPException(404, "report not found")
+    return json.loads(f.read_text(encoding="utf-8"))
+
+
+@app.post("/r/{report_id}/chat")
+async def report_chat(report_id: str, request: Request):
+    """The client talks to the report. Token-gated like the page itself;
+    the highlighted block localises the answer to its own facts."""
+    body = await request.json()
+    _viewer_auth(report_id, str(body.get("token", "")))
+
+    report = _report_json(report_id)
+    question = str(body.get("question", "")).strip()
+    if not question:
+        raise HTTPException(400, "empty question")
+    block_id = body.get("block_id") or None
+
+    from .db.session import init_db, session_scope
+    from .db.models import ReportBlock
+    from .db.repository import load_snapshot as _sql_snapshot
+    from .reporting.csv_source import ClientSnapshot as _CS
+    from .reporting.d2 import answer_question
+    from .reporting.rewards import record_event
+    from sqlalchemy import select as _select
+    init_db()
+
+    with session_scope() as db:
+        try:
+            snap = _sql_snapshot(db, report["client_id"], report.get("period"))
+        except LookupError:
+            raise HTTPException(404, "client facts not on file")
+
+        block = None
+        if block_id:
+            row = db.scalars(_select(ReportBlock).where(
+                ReportBlock.report_id == report_id,
+                ReportBlock.block_id == block_id)).first()
+            if row is not None:
+                block = {"block_id": row.block_id,
+                         "block_type": row.block_type,
+                         "content_json": row.content_json,
+                         "source_refs": row.source_refs}
+            else:
+                # Report predates SQL persistence: fall back to the JSON.
+                block = next((b for b in report["blocks"]
+                              if b["block_id"] == block_id), None)
+
+        result = answer_question(
+            db, snap, report_id, question, block,
+            selected_text=str(body.get("selected_text", "")),
+            conversation_id=body.get("conversation_id"))
+
+        # The question itself is a signal: engagement for D1, and its
+        # wording may carry format preferences for the profile.
+        record_event(db, report["client_id"], "question_asked",
+                     report_id=report_id, block_id=block_id or "",
+                     metadata={"question": question,
+                               "intent": result["intent"]})
+    return result
+
+
+@app.post("/r/{report_id}/events")
+async def report_events(report_id: str, request: Request):
+    """Engagement signals from the viewer. Every event is stored raw, then
+    routed: D2 reward, D1 reward, preference profile — or all three."""
+    body = await request.json()
+    _viewer_auth(report_id, str(body.get("token", "")))
+    report = _report_json(report_id)
+
+    from .db.session import init_db, session_scope
+    from .reporting.rewards import record_event
+    init_db()
+    with session_scope() as db:
+        out = record_event(
+            db, report["client_id"],
+            str(body.get("event_type", "")),
+            report_id=report_id,
+            block_id=str(body.get("block_id", "") or ""),
+            message_id=str(body.get("message_id", "") or ""),
+            metadata=body.get("metadata") or {})
+    return out
 
 
 def _esc_html(s: str) -> str:

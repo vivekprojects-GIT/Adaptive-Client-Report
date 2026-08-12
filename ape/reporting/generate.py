@@ -728,7 +728,84 @@ def _render_block(b: Dict[str, Any], number: Optional[int] = None) -> str:
 UNNUMBERED = {"narrative", "callout", "disclosures", "explainer", "kpi_grid"}
 
 
-def render_html(report: Dict[str, Any]) -> str:
+def doc_css() -> str:
+    """The document stylesheet, shared by the advisor preview, the client
+    viewer and the print/PDF path — one look everywhere, by construction."""
+    return DOC_CSS
+
+
+DOC_CSS = """ body{font-family:"Segoe UI",system-ui,Arial,sans-serif;color:#0f172a;margin:0;
+   background:#f8fafc;font-size:14px;line-height:1.5}
+ .doc{max-width:760px;margin:0 auto;background:#fff;padding:32px 40px;
+   min-height:100vh;box-shadow:0 0 24px rgba(15,23,42,.06)}
+ .hd{border-bottom:2px solid #0f172a;padding-bottom:14px;margin-bottom:22px}
+ .hd h1{margin:0 0 4px;font-size:20px} .hd .m{color:#64748b;font-size:12.5px}
+ .badge{display:inline-block;background:#eff6ff;color:#1d4ed8;font-size:11px;
+   font-weight:700;padding:2px 8px;border-radius:4px;margin-left:8px}
+ section{margin-bottom:22px} h3{font-size:14px;margin:0 0 8px}
+ .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+ .kpi{background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:9px 11px}
+ .kpi span{display:block;font-size:10.5px;text-transform:uppercase;
+   letter-spacing:.05em;color:#94a3b8}
+ .kpi b{font-size:16px}
+ .alloc,.cmp>div{display:flex;align-items:center;gap:9px;margin-bottom:6px;font-size:12.5px}
+ .alloc span,.cmp span{width:130px;color:#334155}
+ .alloc i,.cmp i{height:9px;background:#3b82f6;border-radius:3px;display:block}
+ .cmp i.bm{background:#94a3b8}
+ .alloc b,.cmp b{margin-left:auto;font-variant-numeric:tabular-nums}
+ table{width:100%;border-collapse:collapse;font-size:12.5px}
+ th{text-align:left;font-size:10.5px;text-transform:uppercase;color:#94a3b8;
+   border-bottom:1.5px solid #cbd5e1;padding:0 8px 5px 0}
+ td{padding:6px 8px 6px 0;border-bottom:1px solid #e2e8f0}
+ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+ tr.tot td{font-weight:700;border-top:1.5px solid #cbd5e1}
+ .callout{padding:10px 14px;border-radius:6px;background:#eff6ff;
+   border-left:3px solid #1d4ed8;font-size:13px}
+ .callout.positive{background:#ecfdf5;border-color:#047857}
+ .risk,.series{display:flex;gap:10px;font-size:12.5px;align-items:baseline}
+ .risk span,.series span{width:130px;color:#334155}
+ .series b{margin-right:14px;font-variant-numeric:tabular-nums}
+ .num{color:#94a3b8;font-weight:600}
+ .sub{color:#94a3b8;font-size:11.5px;margin:-4px 0 8px}
+ td em{color:#94a3b8;font-style:normal;font-size:11px;margin-left:4px}
+ td.bar,th.bar{width:90px}
+ td.bar i{display:block;height:8px;border-radius:3px;background:#059669}
+ td.bar i.neg{background:#dc2626}
+ td.n.up{color:#047857} td.n.dn{color:#b91c1c}
+ .vs{display:flex;align-items:center;gap:9px;margin-bottom:7px;font-size:12.5px}
+ .vs span{width:118px;color:#334155}
+ .vs .tracks{flex:1;display:flex;flex-direction:column;gap:2px}
+ .vs .tracks i{height:7px;border-radius:3px;background:#3b82f6;display:block}
+ .vs .tracks i.bm{background:#cbd5e1}
+ .vs b{width:52px;text-align:right;font-variant-numeric:tabular-nums}
+ .vs u{width:46px;text-align:right;text-decoration:none;font-size:11.5px;color:#94a3b8}
+ .vs u.over{color:#b45309} .vs u.under{color:#0369a1}
+ .lgd{font-size:11px;color:#94a3b8;margin-top:8px;display:flex;align-items:center;gap:5px}
+ .lgd i{width:10px;height:7px;border-radius:2px;background:#3b82f6;display:inline-block}
+ .lgd i.bm{background:#cbd5e1;margin-left:8px}
+ .takes{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+ .take{border:1px solid #e2e8f0;border-left:3px solid #3b82f6;border-radius:6px;
+   padding:10px 13px;background:#fbfdff}
+ .take.positive{border-left-color:#047857;background:#f6fffb}
+ .take.caution{border-left-color:#b45309;background:#fffcf5}
+ .take b{display:block;font-size:12.5px;margin-bottom:3px}
+ .take p{margin:0;font-size:12px;color:#475569;line-height:1.5}
+ .expl{margin:0;font-size:12px}
+ .expl dt{font-weight:700;margin-top:8px;color:#0f172a}
+ .expl dd{margin:2px 0 0;color:#475569;line-height:1.5}
+ .disc{border-top:1px solid #e2e8f0;padding-top:12px;font-size:11px;color:#94a3b8}
+ .disc p{margin:0 0 4px} .disc .src{color:#cbd5e1}
+ section[data-block-id]:hover{outline:2px solid #dbeafe;outline-offset:6px;border-radius:4px}"""
+
+
+def render_body(report: Dict[str, Any], internal: bool = True) -> str:
+    """The document itself: header + blocks, no <html> wrapper.
+
+    internal=True is the ADVISOR's view and shows the control-plane detail —
+    which template arm, which report id. The CLIENT's view (internal=False)
+    hides all of it: templates are the advisor's machinery, and a client
+    should see a report, not the mechanism that shaped it.
+    """
     rendered, n = [], 0
     for b in report["blocks"]:
         if b.get("title") and b["type"] not in UNNUMBERED:
@@ -737,76 +814,24 @@ def render_html(report: Dict[str, Any]) -> str:
         else:
             rendered.append(_render_block(b))
     blocks = "\n".join(rendered)
-    return f"""<!doctype html><html><head><meta charset="utf-8">
-<title>{_esc(report['client_name'])} — {_esc(report['period'])}</title>
-<style>
- body{{font-family:"Segoe UI",system-ui,Arial,sans-serif;color:#0f172a;margin:0;
-   background:#f8fafc;font-size:14px;line-height:1.5}}
- .doc{{max-width:760px;margin:0 auto;background:#fff;padding:32px 40px;
-   min-height:100vh;box-shadow:0 0 24px rgba(15,23,42,.06)}}
- .hd{{border-bottom:2px solid #0f172a;padding-bottom:14px;margin-bottom:22px}}
- .hd h1{{margin:0 0 4px;font-size:20px}} .hd .m{{color:#64748b;font-size:12.5px}}
- .badge{{display:inline-block;background:#eff6ff;color:#1d4ed8;font-size:11px;
-   font-weight:700;padding:2px 8px;border-radius:4px;margin-left:8px}}
- section{{margin-bottom:22px}} h3{{font-size:14px;margin:0 0 8px}}
- .kpis{{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}}
- .kpi{{background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:9px 11px}}
- .kpi span{{display:block;font-size:10.5px;text-transform:uppercase;
-   letter-spacing:.05em;color:#94a3b8}}
- .kpi b{{font-size:16px}}
- .alloc,.cmp>div{{display:flex;align-items:center;gap:9px;margin-bottom:6px;font-size:12.5px}}
- .alloc span,.cmp span{{width:130px;color:#334155}}
- .alloc i,.cmp i{{height:9px;background:#3b82f6;border-radius:3px;display:block}}
- .cmp i.bm{{background:#94a3b8}}
- .alloc b,.cmp b{{margin-left:auto;font-variant-numeric:tabular-nums}}
- table{{width:100%;border-collapse:collapse;font-size:12.5px}}
- th{{text-align:left;font-size:10.5px;text-transform:uppercase;color:#94a3b8;
-   border-bottom:1.5px solid #cbd5e1;padding:0 8px 5px 0}}
- td{{padding:6px 8px 6px 0;border-bottom:1px solid #e2e8f0}}
- td.n,th.n{{text-align:right;font-variant-numeric:tabular-nums}}
- tr.tot td{{font-weight:700;border-top:1.5px solid #cbd5e1}}
- .callout{{padding:10px 14px;border-radius:6px;background:#eff6ff;
-   border-left:3px solid #1d4ed8;font-size:13px}}
- .callout.positive{{background:#ecfdf5;border-color:#047857}}
- .risk,.series{{display:flex;gap:10px;font-size:12.5px;align-items:baseline}}
- .risk span,.series span{{width:130px;color:#334155}}
- .series b{{margin-right:14px;font-variant-numeric:tabular-nums}}
- .num{{color:#94a3b8;font-weight:600}}
- .sub{{color:#94a3b8;font-size:11.5px;margin:-4px 0 8px}}
- td em{{color:#94a3b8;font-style:normal;font-size:11px;margin-left:4px}}
- td.bar,th.bar{{width:90px}}
- td.bar i{{display:block;height:8px;border-radius:3px;background:#059669}}
- td.bar i.neg{{background:#dc2626}}
- td.n.up{{color:#047857}} td.n.dn{{color:#b91c1c}}
- .vs{{display:flex;align-items:center;gap:9px;margin-bottom:7px;font-size:12.5px}}
- .vs span{{width:118px;color:#334155}}
- .vs .tracks{{flex:1;display:flex;flex-direction:column;gap:2px}}
- .vs .tracks i{{height:7px;border-radius:3px;background:#3b82f6;display:block}}
- .vs .tracks i.bm{{background:#cbd5e1}}
- .vs b{{width:52px;text-align:right;font-variant-numeric:tabular-nums}}
- .vs u{{width:46px;text-align:right;text-decoration:none;font-size:11.5px;color:#94a3b8}}
- .vs u.over{{color:#b45309}} .vs u.under{{color:#0369a1}}
- .lgd{{font-size:11px;color:#94a3b8;margin-top:8px;display:flex;align-items:center;gap:5px}}
- .lgd i{{width:10px;height:7px;border-radius:2px;background:#3b82f6;display:inline-block}}
- .lgd i.bm{{background:#cbd5e1;margin-left:8px}}
- .takes{{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}}
- .take{{border:1px solid #e2e8f0;border-left:3px solid #3b82f6;border-radius:6px;
-   padding:10px 13px;background:#fbfdff}}
- .take.positive{{border-left-color:#047857;background:#f6fffb}}
- .take.caution{{border-left-color:#b45309;background:#fffcf5}}
- .take b{{display:block;font-size:12.5px;margin-bottom:3px}}
- .take p{{margin:0;font-size:12px;color:#475569;line-height:1.5}}
- .expl{{margin:0;font-size:12px}}
- .expl dt{{font-weight:700;margin-top:8px;color:#0f172a}}
- .expl dd{{margin:2px 0 0;color:#475569;line-height:1.5}}
- .disc{{border-top:1px solid #e2e8f0;padding-top:12px;font-size:11px;color:#94a3b8}}
- .disc p{{margin:0 0 4px}} .disc .src{{color:#cbd5e1}}
- section[data-block-id]:hover{{outline:2px solid #dbeafe;outline-offset:6px;border-radius:4px}}
-</style></head><body><div class="doc">
-<div class="hd">
-  <h1>{_esc(report['client_name'])}<span class="badge">{_esc(report['template_label'])}</span></h1>
-  <div class="m">{_esc(report['report_type'].replace('_', ' ').title())} &middot;
-    {_esc(report['period'])} &middot; {_esc(report['report_id'])}</div>
-</div>
-{blocks}
-</div></body></html>"""
+
+    badge = (f'<span class="badge">{_esc(report.get("template_label") or "")}</span>'
+             if internal and report.get("template_label") else "")
+    meta_bits = [_esc(str(report.get("report_type", "")).replace("_", " ").title()),
+                 _esc(report.get("period", ""))]
+    if internal:
+        meta_bits.append(_esc(report.get("report_id", "")))
+    meta = " &middot; ".join(x for x in meta_bits if x)
+
+    return (f'<div class="doc">\n<div class="hd">\n'
+            f'  <h1>{_esc(report["client_name"])}{badge}</h1>\n'
+            f'  <div class="m">{meta}</div>\n'
+            f'</div>\n{blocks}\n</div>')
+
+
+def render_html(report: Dict[str, Any], internal: bool = True) -> str:
+    return (f'<!doctype html><html><head><meta charset="utf-8">\n'
+            f'<title>{_esc(report["client_name"])} — {_esc(report["period"])}</title>\n'
+            f'<style>\n{DOC_CSS}\n</style></head><body>'
+            f'{render_body(report, internal)}</body></html>'
+            )
