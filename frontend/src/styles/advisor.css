@@ -239,3 +239,19 @@
 }
 .reg-tabs button:hover { border-color: #94a3b8; color: #334155; }
 .reg-tabs button.on { background: #4F46E5; border-color: #4F46E5; color: #fff; }
+
+/* Signal class carries the weight the system gives it, so it is coloured
+   rather than left as another word in a row of words. */
+.sig-cls {
+  font-size: 9.5px; font-weight: 800; text-transform: uppercase;
+  letter-spacing: .04em; padding: 1px 6px; border-radius: 4px; flex: none;
+  min-width: 62px; text-align: center;
+}
+.sig-cls.quality    { background: #ecfdf5; color: #047857; }
+.sig-cls.preference { background: #eef2ff; color: #4338ca; }
+.sig-cls.attention  { background: #eff6ff; color: #1d4ed8; }
+.sig-cls.ambiguous  { background: #fffbeb; color: #b45309; }
+.sig-cls.engagement { background: #f1f5f9; color: #64748b; }
+.sig-cls.other      { background: #f1f5f9; color: #94a3b8; }
+.sig-at { margin-left: auto; font-size: 10px; color: #cbd5e1;
+  font-variant-numeric: tabular-nums; flex: none; }

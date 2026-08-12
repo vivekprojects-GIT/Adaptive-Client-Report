@@ -361,6 +361,83 @@ def registry_preferences():
     return {"clients": out}
 
 
+# What each signal class is FOR. Shown beside the raw event so an advisor
+# reads consequence, not just occurrence — "they opened it" and "they said
+# it was confusing" are both events and are not remotely the same thing.
+_SIGNAL_MEANING = {
+    "report_opened":     ("engagement", "Opened the report"),
+    "dwell_60s":         ("engagement", "Stayed with it over a minute"),
+    "pdf_downloaded":    ("engagement", "Downloaded a copy"),
+    "block_highlighted": ("attention",  "Highlighted a section"),
+    "section_viewed":    ("attention",  "Scrolled a section into view"),
+    "question_asked":    ("ambiguous",  "Asked a question"),
+    "visual_requested":  ("preference", "Asked to see a chart"),
+    "answer_helpful":    ("quality",    "Marked an answer helpful"),
+    "answer_unhelpful":  ("quality",    "Marked an answer unhelpful"),
+    "report_helpful":    ("quality",    "Said the report helped"),
+    "report_unhelpful":  ("quality",    "Said the report was not helpful"),
+}
+
+
+@app.get("/registry/signals")
+def registry_signals(limit: int = 400):
+    """The raw signals, nested client -> report type -> event.
+
+    The preference tree shows what was CONCLUDED. This shows what was
+    observed, which is the only way to check a conclusion — an advisor
+    surprised by a profile needs to see the clicks behind it, not a
+    better summary of them.
+
+    Every event is stored verbatim and nothing here is derived; the only
+    additions are the signal's class and a plain-English label, so the
+    difference between "opened it" and "said it was confusing" is legible
+    without knowing the event vocabulary.
+    """
+    from .db.session import init_db, session_scope
+    from .db.models import Client, Event, Report
+    from sqlalchemy import select as _s
+    init_db()
+    out: List[Dict[str, Any]] = []
+    with session_scope() as db:
+        names = {c.client_id: c.name for c in db.scalars(_s(Client))}
+        rtype = {r.report_id: r.report_type
+                 for r in db.scalars(_s(Report))}
+
+        rows = list(db.scalars(_s(Event)
+                               .order_by(Event.created_at.desc())
+                               .limit(max(1, min(limit, 2000)))))
+        by_client: Dict[str, Dict[str, List[Dict[str, Any]]]] = {}
+        for e in rows:
+            scope = rtype.get(e.report_id, "") or "(no report)"
+            meta = e.metadata_json or {}
+            detail = ""
+            if e.event_type == "question_asked":
+                detail = str(meta.get("question", ""))[:150]
+            elif e.event_type == "visual_requested":
+                detail = (f"{meta.get('binding')} as {meta.get('kind')}"
+                          if meta.get("drawn")
+                          else f"could not draw — {str(meta.get('reason',''))[:90]}")
+            cls, label = _SIGNAL_MEANING.get(e.event_type,
+                                             ("other", e.event_type))
+            by_client.setdefault(e.client_id, {}).setdefault(scope, []).append({
+                "event_type": e.event_type, "label": label, "class": cls,
+                "block_id": e.block_id or "", "detail": detail,
+                "applies_to": e.applies_to or "",
+                "at": e.created_at.isoformat(timespec="seconds"),
+            })
+
+        for cid, scopes in by_client.items():
+            total = sum(len(v) for v in scopes.values())
+            out.append({
+                "client_id": cid, "name": names.get(cid, cid), "total": total,
+                "scopes": [{"scope": sc.replace("_", " "), "events": ev}
+                           for sc, ev in sorted(scopes.items())],
+            })
+    out.sort(key=lambda c: -c["total"])
+    return {"clients": out, "shown": sum(c["total"] for c in out),
+            "limit": limit}
+
+
 @app.get("/config/features")
 def config_features():
     """What this deployment has switched on.

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api.js";
 import Toast from "../components/Toast.jsx";
-import { BlockTree, PreferenceTree, TemplateTree }
+import { BlockTree, PreferenceTree, SignalTree, TemplateTree }
   from "../components/RegistryTree.jsx";
 import "../styles/advisor.css";
 
@@ -49,7 +49,7 @@ export default function AdvisorPage() {
   const [templateId, setTemplateId] = useState("");
   // The three registries, loaded on demand: nothing needs them until
   // the advisor opens the view.
-  const [reg, setReg] = useState({ blocks: null, templates: null, prefs: null });
+  const [reg, setReg] = useState({ blocks: null, templates: null, prefs: null, signals: null });
   const [regTab, setRegTab] = useState("templates");
   const [toast, setToast]       = useState({ msg: null, kind: "" });
   const fileRef = useRef(null);
@@ -103,8 +103,9 @@ export default function AdvisorPage() {
   useEffect(() => {
     if (view !== "registry") return;
     Promise.all([api.registryTemplates(), api.registryBlocks(),
-                 api.registryPreferences()])
-      .then(([t, b, pr]) => setReg({ templates: t, blocks: b, prefs: pr }))
+                 api.registryPreferences(), api.registrySignals()])
+      .then(([t, b, pr, sg]) =>
+        setReg({ templates: t, blocks: b, prefs: pr, signals: sg }))
       .catch((e) => notify("Registry load failed: " + e.message, "error"));
   }, [view]);
 
@@ -681,7 +682,8 @@ export default function AdvisorPage() {
             <div className="reg-tabs">
               {[["templates", "Templates by report type"],
                 ["blocks", "Widget registry"],
-                ["prefs", "Learned preferences"]].map(([id, label]) => (
+                ["prefs", "Learned preferences"],
+                ["signals", "Signals received"]].map(([id, label]) => (
                 <button key={id} type="button"
                         className={regTab === id ? "on" : ""}
                         onClick={() => setRegTab(id)}>{label}</button>
@@ -718,6 +720,19 @@ export default function AdvisorPage() {
               </p>
               {reg.prefs ? <PreferenceTree data={reg.prefs} />
                          : <div className="adv-none">Loading…</div>}
+            </>)}
+
+            {regTab === "signals" && (<>
+              <p className="adv-note">
+                Every signal a client has given, exactly as it was recorded.
+                The tab beside this one shows what was CONCLUDED; this shows
+                what was OBSERVED — the only way to check a conclusion is to
+                see the clicks behind it. The coloured tag is the weight the
+                system gives each class: quality verdicts count for far more
+                than an open.
+              </p>
+              {reg.signals ? <SignalTree data={reg.signals} />
+                           : <div className="adv-none">Loading…</div>}
             </>)}
           </section>
         )}

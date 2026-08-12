@@ -31,6 +31,7 @@ export const api = {
   reportClientLink:     (reportId)                         => request("GET",    `/reports/${encodeURIComponent(reportId)}/link`),
   registryBlocks:       ()                                 => request("GET",    `/registry/blocks`),
   registryTemplates:    ()                                 => request("GET",    `/registry/templates`),
+  registrySignals:      (limit)                            => request("GET",    `/registry/signals?limit=${limit || 400}`),
   registryPreferences:  ()                                 => request("GET",    `/registry/preferences`),
   features:             ()                                 => request("GET",    `/config/features`),
   clientInsight:        (clientId)                         => request("GET",    `/clients/${encodeURIComponent(clientId)}/insight`),

@@ -142,3 +142,42 @@ export function PreferenceTree({ data }) {
     </ul>
   );
 }
+
+/* ---- 4. signals: client -> report type -> the raw events -------------- */
+export function SignalTree({ data }) {
+  if (!data?.clients?.length) {
+    return <div className="adv-none">No signals captured yet.</div>;
+  }
+  return (
+    <>
+      <div className="adv-sub" style={{ marginBottom: 8 }}>
+        {data.shown} most recent signal{data.shown === 1 ? "" : "s"}, newest
+        first. Every one is stored verbatim — this is what was observed,
+        not what was concluded from it.
+      </div>
+      <ul className="tr">
+        {data.clients.map((c) => (
+          <Node key={c.client_id} label={c.name} meta={c.client_id}
+                count={c.total}>
+            {c.scopes.map((s) => (
+              <Node key={s.scope} label={s.scope} count={s.events.length}>
+                {s.events.map((e, i) => (
+                  <li key={i} className="tr-node">
+                    <div className="tr-row">
+                      <i className="tr-leaf" />
+                      <span className={`sig-cls ${e.class}`}>{e.class}</span>
+                      <span className="tr-label">{e.label}</span>
+                      {e.block_id && <span className="tr-meta mono">{e.block_id}</span>}
+                      {e.detail && <span className="tr-meta">“{e.detail}”</span>}
+                      <span className="sig-at">{e.at.replace("T", " ")}</span>
+                    </div>
+                  </li>
+                ))}
+              </Node>
+            ))}
+          </Node>
+        ))}
+      </ul>
+    </>
+  );
+}
