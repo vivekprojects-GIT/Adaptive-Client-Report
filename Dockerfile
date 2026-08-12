@@ -97,18 +97,26 @@ USER user
 # Pre-download the Chroma embedding model (all-MiniLM-L6-v2 ONNX) at build
 # time and warm the persistent store, so the first request isn't blocked on a
 # model download and RAG works even if runtime egress is restricted.
-RUN python -c "from ape.rag import RagStore; print('warm RAG:', RagStore().ingest())"
+# Skipped: retrieval is disabled in api.py, so downloading the embedding model
+# would add minutes to every build and hundreds of MB to the image for a code
+# path nothing calls. Re-enable together with the RAG init.
+# RUN python -c "from ape.rag import RagStore; print('warm RAG:', RagStore().ingest())"
 
+# The HOST decides the port: Render injects $PORT, HF Spaces expects 7860.
+# Defaulting to 7860 keeps one image working on both.
+ENV PORT=7860
 EXPOSE 7860
 
-# Lightweight liveness probe — HF Spaces uses this to mark the Space healthy
+# Probe whatever port the app is actually on, not a hardcoded one.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD curl --fail --silent http://localhost:7860/health || exit 1
+  CMD curl --fail --silent "http://localhost:${PORT}/health" || exit 1
 
-# tini handles signals cleanly so Spaces can stop/restart the container.
+# tini handles signals cleanly so the host can stop/restart the container.
 ENTRYPOINT ["/usr/bin/tini", "--"]
 
-# Bind to 0.0.0.0 (NOT localhost) so the port is reachable from outside the container.
-# Single worker — the orchestrator + bandit state are process-local; multi-worker
-# would multiply LLM connections and split cache. Scale horizontally instead.
-CMD ["python", "-m", "uvicorn", "ape.api:app", "--host", "0.0.0.0", "--port", "7860", "--log-level", "info"]
+# Shell form deliberately: $PORT must be expanded at RUNTIME from the host's
+# value. Exec form would hand uvicorn the literal string "$PORT".
+# Bind 0.0.0.0 (not localhost) so the port is reachable from outside.
+# Single worker — orchestrator and bandit state are process-local; more workers
+# would split that state and multiply LLM connections.
+CMD python -m uvicorn ape.api:app --host 0.0.0.0 --port ${PORT} --log-level info
