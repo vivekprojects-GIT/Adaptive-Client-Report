@@ -429,8 +429,15 @@ def _key_takeaways(s: ClientSnapshot, n: int):
         "type": "key_takeaways",
         "title": "Key takeaways",
         "data": {"items": items[:4]},
-        "source_refs": ["quarter_return_pct", "benchmark_return_pct",
-                        "excess_return_pct", "fees.total", "fees.drag_pct"],
+        # Only declare refs this snapshot actually has: fees.drag_pct is
+        # absent when portfolio_value is 0 (the division is guarded), and a
+        # block naming a ref that does not exist is rejected wholesale by
+        # the validator — losing the takeaways for a data problem that has
+        # nothing to do with them.
+        "source_refs": [r for r in ("quarter_return_pct",
+                                    "benchmark_return_pct",
+                                    "excess_return_pct", "fees.total",
+                                    "fees.drag_pct") if r in facts],
     }
 
 

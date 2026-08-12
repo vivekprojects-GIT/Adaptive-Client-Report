@@ -239,6 +239,14 @@ def parse_csv(text: str) -> Tuple[List[ClientSnapshot], List[RowError]]:
             total = round(sum(a["weight_pct"] for a in allocations), 2)
             if abs(total - 100.0) > ALLOC_TOLERANCE:
                 problems.append(f"allocations sum to {total}%, expected 100%")
+        else:
+            # A row with no alloc_ columns passed every other check and
+            # produced a report of zeros: no holdings, no allocation, every
+            # figure 0.00. A client must never receive that, and the
+            # importer is the right place to stop it — refusing here costs
+            # one rejected row, refusing later costs a sent report.
+            problems.append("no alloc_* columns — a report cannot be built "
+                            "from a row with no allocation")
 
         attribution = []
         for c in attr_cols:
