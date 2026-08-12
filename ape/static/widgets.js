@@ -169,6 +169,13 @@
     tbl.classList.add("sortable");
 
     Array.prototype.forEach.call(ths, function (th, i) {
+      // A column with no heading is a visual one — an in-cell bar, say.
+      // It has nothing to sort by, and offering the control anyway means
+      // a click that appears to do nothing.
+      if (!(th.textContent || "").trim()) {
+        th.classList.add("nosort");
+        return;
+      }
       th.tabIndex = 0;
       th.setAttribute("role", "button");
       var dir = 0;

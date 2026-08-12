@@ -55,16 +55,75 @@ def _pct(v: float) -> str:
 # ---------------------------------------------------------------------------
 
 def _kpi_grid(s: ClientSnapshot, n: int) -> Dict[str, Any]:
+    """The glance block: four numbers, each with as much context as the
+    source can evidence and no more.
+
+    A KPI is only worth glancing at if it carries its own direction, so
+    where history exists each card gains the prior periods as a sparkline
+    and the change since the last one. Where it does not, the card stays a
+    number — an arrow with no prior period behind it would be asserting a
+    direction nobody measured, which is the same offence as charting a
+    single value.
+    """
+    hist = s.history or []
+
+    # The prior period is found by NAME, not by position. Today the last
+    # history row is the current period, so hist[-2] happens to be right —
+    # but a source that supplied only past periods would make hist[-2] the
+    # quarter before last, and the card would state a change against the
+    # wrong quarter with no sign that anything was amiss.
+    prior = None
+    periods = [str(h.get("period", "")) for h in hist]
+    if str(s.period) in periods:
+        idx = periods.index(str(s.period))
+        prior = hist[idx - 1] if idx > 0 else None
+    elif hist:
+        prior = hist[-1]          # history is entirely in the past
+
+    def series(key: str) -> Optional[Dict[str, Any]]:
+        if len(hist) < 2:
+            return None
+        vals, labels = [], []
+        for h in hist:
+            try:
+                vals.append(float(h.get(key)))
+            except (TypeError, ValueError):
+                return None
+            labels.append(str(h.get("period", "")))
+        return {"values": vals, "labels": labels}
+
+    def delta(now: float, key: str) -> Optional[Dict[str, Any]]:
+        if prior is None:
+            return None
+        try:
+            was = float(prior.get(key))
+        except (TypeError, ValueError):
+            return None
+        return {"change": round(now - was, 2),
+                "since": str(prior.get("period", ""))}
+
+    ret_spark, bm_spark = series("portfolio"), series("benchmark")
+    items = [
+        {"label": "Portfolio value", "value": s.portfolio_value,
+         "format": "currency"},
+        {"label": "Return", "value": s.quarter_return_pct, "format": "percent",
+         "spark": ret_spark, "delta": delta(s.quarter_return_pct, "portfolio"),
+         # The gap against the benchmark is the one comparison a client
+         # makes unprompted, so it is on the card rather than two blocks
+         # further down. Subtraction of two figures already on the page.
+         "note": {"value": round(s.quarter_return_pct
+                                 - s.benchmark_return_pct, 2),
+                  "unit": "pp", "against": "benchmark"}},
+        {"label": "Benchmark", "value": s.benchmark_return_pct,
+         "format": "percent", "spark": bm_spark,
+         "delta": delta(s.benchmark_return_pct, "benchmark")},
+        {"label": "Risk level", "value": s.risk_level, "format": "text"},
+    ]
     return {
         "block_id": f"kpi_grid_{n:02d}",
         "type": "kpi_grid",
         "title": "At a glance",
-        "data": {"items": [
-            {"label": "Portfolio value", "value": s.portfolio_value, "format": "currency"},
-            {"label": "Return", "value": s.quarter_return_pct, "format": "percent"},
-            {"label": "Benchmark", "value": s.benchmark_return_pct, "format": "percent"},
-            {"label": "Risk level", "value": s.risk_level, "format": "text"},
-        ]},
+        "data": {"items": items},
         "source_refs": ["portfolio_value", "quarter_return_pct",
                         "benchmark_return_pct"],
     }
@@ -713,6 +772,42 @@ def _fmt(value: Any, fmt: str) -> str:
     return _esc(value)
 
 
+def _sparkline(spark: Optional[Dict[str, Any]]) -> str:
+    """A KPI's own history, drawn small enough to read without reading.
+
+    Inline SVG rather than a chart instance: at 96x22 there is nothing for
+    a chart engine to do that costs less than it costs to start one, and a
+    report can carry four of these. Each point keeps a native <title> so
+    the period and value are one hover away without any script at all.
+    """
+    if not spark or len(spark.get("values") or []) < 2:
+        return ""
+    vals = [float(v) for v in spark["values"]]
+    labels = spark.get("labels") or [""] * len(vals)
+    w, h, pad = 96.0, 22.0, 3.0
+    lo, hi = min(vals), max(vals)
+    span = (hi - lo) or 1.0
+    step = (w - pad * 2) / max(len(vals) - 1, 1)
+
+    def xy(idx: int, v: float):
+        return (pad + step * idx, h - pad - (v - lo) / span * (h - pad * 2))
+
+    pts = [xy(k, v) for k, v in enumerate(vals)]
+    path = " ".join(f"{x:.1f},{y:.1f}" for x, y in pts)
+    last_up = vals[-1] >= vals[0]
+    col = "#059669" if last_up else "#DC2626"
+    dots = "".join(
+        f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{2.6 if k == len(pts)-1 else 1.5}" '
+        f'fill="{col}"><title>{_esc(labels[k])}: {vals[k]:.2f}%</title></circle>'
+        for k, (x, y) in enumerate(pts))
+    return (f'<svg class="spark" viewBox="0 0 {w:.0f} {h:.0f}" '
+            f'preserveAspectRatio="none" role="img" '
+            f'aria-label="History: {_esc(", ".join(labels))}">'
+            f'<polyline points="{path}" fill="none" stroke="{col}" '
+            f'stroke-width="1.6" stroke-linejoin="round" '
+            f'stroke-linecap="round"/>{dots}</svg>')
+
+
 def _ecw(option: Optional[Dict[str, Any]], fallback: str, kind: str) -> str:
     """A chart box holding both renderings of the same data.
 
@@ -743,11 +838,28 @@ def _render_block(b: Dict[str, Any], number: Optional[int] = None) -> str:
                     str(d.get("kind", "bar")))
 
     elif t == "kpi_grid":
-        items = "".join(
-            f'<div class="kpi"><span>{_esc(i["label"])}</span>'
-            f'<b>{_fmt(i["value"], i.get("format", "text"))}</b></div>'
-            for i in d.get("items", []))
-        body = f'<div class="kpis">{items}</div>'
+        cards = []
+        for i in d.get("items", []):
+            extra = ""
+            dl = i.get("delta")
+            if dl is not None:
+                c = float(dl["change"])
+                tone = "up" if c > 0 else ("dn" if c < 0 else "flat")
+                arrow = "▲" if c > 0 else ("▼" if c < 0 else "–")
+                extra += (f'<u class="{tone}">{arrow} {c:+.2f}pp '
+                          f'<i>since {_esc(dl["since"])}</i></u>')
+            note = i.get("note")
+            if note is not None:
+                v = float(note["value"])
+                tone = "up" if v > 0 else ("dn" if v < 0 else "flat")
+                extra += (f'<u class="{tone}">{v:+.2f}{_esc(note["unit"])} '
+                          f'<i>vs {_esc(note["against"])}</i></u>')
+            spark = _sparkline(i.get("spark"))
+            cards.append(
+                f'<div class="kpi"><span>{_esc(i["label"])}</span>'
+                f'<b>{_fmt(i["value"], i.get("format", "text"))}</b>'
+                f'{extra}{spark}</div>')
+        body = f'<div class="kpis">{"".join(cards)}</div>'
 
     elif t == "allocation_donut":
         total = sum(s["value_pct"] for s in d.get("segments", [])) or 1
@@ -787,10 +899,18 @@ def _render_block(b: Dict[str, Any], number: Optional[int] = None) -> str:
                         f"<td class='n'>{_money(d['total'])}</td></tr>")
             body = f"<table><tbody>{trs}</tbody></table>"
         elif t == "holdings_table":
-            trs = "".join(f"<tr><td>{_esc(r['name'])}</td>"
-                          f"<td class='n'>{r['weight_pct']:.1f}%</td>"
-                          f"<td class='n'>{_money(r['value'])}</td></tr>" for r in rows)
+            # A weight column answers "how much" only after the reader has
+            # compared every row to every other. A bar in the cell answers
+            # it before they start.
+            span = max([float(r["weight_pct"]) for r in rows] or [1]) or 1
+            trs = "".join(
+                f"<tr><td>{_esc(r['name'])}</td>"
+                f"<td class='n'>{r['weight_pct']:.1f}%</td>"
+                f"<td class='bar'><i style=\"width:"
+                f"{float(r['weight_pct'])/span*100:.0f}%\"></i></td>"
+                f"<td class='n'>{_money(r['value'])}</td></tr>" for r in rows)
             body = ("<table><thead><tr><th>Asset class</th><th class='n'>Weight</th>"
+                    "<th class='bar'></th>"
                     f"<th class='n'>Value</th></tr></thead><tbody>{trs}</tbody></table>")
         else:
             cells = []
@@ -864,6 +984,28 @@ def _render_block(b: Dict[str, Any], number: Optional[int] = None) -> str:
                 "<td class='bar'></td></tr>")
         body = ("<table><thead><tr><th>Holding</th><th class='n'>Contribution</th>"
                 f"<th class='bar'>Impact</th></tr></thead><tbody>{trs}</tbody></table>")
+        # A signed contribution is a magnitude AND a direction, and a column
+        # of "+0.42% / -0.18%" makes the reader do the sorting. Horizontal
+        # bars off a shared baseline do it for them. The table stays as the
+        # fallback and as the precise reading.
+        opt = build_option({
+            "kind": "hbar", "unit": "%", "dp": 2,
+            "items": [{"label": r["name"], "value": float(r["contribution_pct"])}
+                      for r in rows]})
+        if opt and opt.get("series"):
+            # Gains and losses must not take colours from the series
+            # palette — in a financial document those two hues carry
+            # meaning, and letting position decide them would be a lie.
+            opt["series"][0]["data"] = [
+                {"value": float(r["contribution_pct"]),
+                 "itemStyle": {"color": "#059669"
+                               if float(r["contribution_pct"]) >= 0
+                               else "#DC2626",
+                               "borderRadius": [0, 4, 4, 0]
+                               if float(r["contribution_pct"]) >= 0
+                               else [4, 0, 0, 4]}}
+                for r in rows]
+        body = _ecw(opt, body, "contrib")
 
     elif t == "allocation_vs_target":
         rows = d.get("rows", [])
@@ -1018,9 +1160,17 @@ DOC_CSS = """ body{font-family:"Segoe UI",system-ui,Arial,sans-serif;color:#0f17
    border:1px solid #e2e8f0;letter-spacing:.02em}
  .riskscale i.on{background:#4F46E5;border-color:#4F46E5;color:#fff;font-weight:700;
    box-shadow:0 2px 7px rgba(79,70,229,.30)}
- .kpi{transition:border-color .18s ease,box-shadow .18s ease}
+ .kpi{transition:border-color .18s ease,box-shadow .18s ease;
+   display:flex;flex-direction:column;position:relative;overflow:hidden}
  .kpi:hover{border-color:#c7d2fe;box-shadow:0 3px 10px rgba(79,70,229,.10)}
- .kpi b{font-variant-numeric:tabular-nums}"""
+ .kpi b{font-variant-numeric:tabular-nums;line-height:1.25}
+ .kpi u{display:block;text-decoration:none;font-size:10.5px;font-weight:700;
+   margin-top:3px;font-variant-numeric:tabular-nums}
+ .kpi u i{font-style:normal;font-weight:500;color:#94a3b8;margin-left:3px}
+ .kpi u.up{color:#047857} .kpi u.dn{color:#b91c1c} .kpi u.flat{color:#94a3b8}
+ .kpi .spark{display:block;width:100%;height:22px;margin-top:7px;overflow:visible}
+ .kpi .spark circle{transition:r .12s ease}
+ .kpi:hover .spark circle{r:2.4}"""
 
 
 def render_body(report: Dict[str, Any], internal: bool = True) -> str:
