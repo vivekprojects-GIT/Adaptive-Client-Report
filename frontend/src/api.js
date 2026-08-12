@@ -32,6 +32,7 @@ export const api = {
   generateOneReport:    (payload)                          => request("POST",   "/reports/generate-one", payload),
   reportClientLink:     (reportId)                         => request("GET",    `/reports/${encodeURIComponent(reportId)}/link`),
   clientInsight:        (clientId)                         => request("GET",    `/clients/${encodeURIComponent(clientId)}/insight`),
+  d1State:              ()                                 => request("GET",    "/ape/d1-state"),
   d2State:              ()                                 => request("GET",    "/ape/d2-state"),
   sendReport:           (reportId)                         => request("POST",   "/reports/" + encodeURIComponent(reportId) + "/send", {}),
   listGeneratedReports: ()                                 => request("GET",    "/reports/generated"),
@@ -81,22 +82,6 @@ export const api = {
   clearAll:             ()                                 => request("DELETE", "/admin/clear-all"),
   rebuildBandit:        ()                                 => request("POST",   "/admin/rebuild-bandit"),
   dbSnapshot:           (userId, limit = 30)               => request("GET",    `/admin/db-snapshot?user_id=${encodeURIComponent(userId || "")}&limit=${limit}`),
-  banditState:          (userId = "", onlyPulled = true)   => request("GET",    `/admin/bandit-state?only_pulled=${onlyPulled}${userId ? `&user_id=${encodeURIComponent(userId)}` : ""}`),
-  resetBanditCell:      (userId, domain, intent, topic, strategy = "") =>
-                          request("DELETE", `/admin/bandit-state/cell?user_id=${encodeURIComponent(userId)}&domain=${encodeURIComponent(domain)}&intent=${encodeURIComponent(intent)}&topic=${encodeURIComponent(topic)}${strategy ? `&strategy=${encodeURIComponent(strategy)}` : ""}`),
   listAudit:            (date = "", limit = 100)           => request("GET",    `/admin/audit?${date ? `date=${date}&` : ""}limit=${limit}`),
   seed:                 ()                                 => request("POST",   "/admin/seed"),
-
-  // Analytics — business layer
-  // Pass userId="" or null to get the GLOBAL aggregate view across all users.
-  activeUsers:          (days = 1, minInterest = 0, limit = 100, domain = "") =>
-                          request("GET", `/analytics/active-users?days=${days}&min_interest=${minInterest}&limit=${limit}${domain ? `&domain=${encodeURIComponent(domain)}` : ""}`),
-  unmappedIntents:      (days = 30, limit = 50, domain = "") =>
-                          request("GET", `/analytics/unmapped-intents?days=${days}&limit=${limit}${domain ? `&domain=${encodeURIComponent(domain)}` : ""}`),
-  strategyPerformance:  (userId = "", minPulls = 3, domain = "") =>
-                          request("GET", `/analytics/strategy-performance?min_pulls=${minPulls}${userId ? `&user_id=${encodeURIComponent(userId)}` : ""}${domain ? `&domain=${encodeURIComponent(domain)}` : ""}`),
-  instructionQuality:   (days = 14, minTurns = 5, sampleLimit = 5) =>
-                          request("GET", `/analytics/instruction-quality?days=${days}&min_turns=${minTurns}&sample_limit=${sampleLimit}`),
-  ragQuality:           (days = 14, minTurns = 5, sampleLimit = 5) =>
-                          request("GET", `/analytics/rag-quality?days=${days}&min_turns=${minTurns}&sample_limit=${sampleLimit}`),
 };

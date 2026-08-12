@@ -679,111 +679,6 @@ def admin_db_snapshot(user_id: Optional[str] = None, limit: int = 30):
 # Bandit state inspection (admin debug surface)
 # ============================================================================
 
-@app.get("/admin/bandit-state")
-def admin_bandit_state(user_id: Optional[str] = None, only_pulled: bool = True):
-    """List bandit_state rows. With `user_id` → only that user's cells.
-
-    Use case: debugging "why did the bandit pick X for this user?" Shows every
-    arm's count, avg_reward, cached_ucb. Rows are grouped by (domain, intent,
-    topic) on the frontend so the admin sees each cell as a unit.
-
-    `only_pulled=true` (default) filters out rows where count=0 (cold-start
-    placeholders). Set false to see every lazy-created row.
-    """
-    if STORE is None:
-        raise HTTPException(500, "Store not initialized")
-    q: Dict[str, Any] = {}
-    if user_id:
-        q["user_id_hash"] = _resolve_user_hash(user_id)
-    if only_pulled:
-        q["count"] = {"$gt": 0}
-    rows = list(STORE.bandit_state.find(q).sort([
-        ("user_id_hash", 1),
-        ("intent", 1),
-        ("topic", 1),
-        ("avg_reward", -1),
-    ]).limit(2000))
-
-    # Join display names from the directory for any user that has one
-    user_hashes = {r.get("user_id_hash") for r in rows if r.get("user_id_hash")}
-    name_map = STORE.get_display_names(user_hashes) if user_hashes else {}
-
-    # Selection score is computed LIVE (no cache) — per cell, N = sum of counts,
-    # then compute_ucb with the current c/width. Always reflects the live config.
-    from .bandit.selection import display_selection_score
-    cell_n: Dict[tuple, int] = {}
-    for r in rows:
-        key = (r.get("user_id_hash"), r.get("domain"), r.get("intent"), r.get("topic"))
-        cell_n[key] = cell_n.get(key, 0) + int(r.get("count", 0))
-
-    return [
-        {
-            "user_id_hash":    r.get("user_id_hash"),
-            "display_name":    name_map.get(r.get("user_id_hash")),
-            "domain":          r.get("domain"),
-            "intent":          r.get("intent"),
-            "topic":           r.get("topic"),
-            "strategy":        r.get("strategy"),
-            "count":           int(r.get("count", 0)),
-            "total_reward":    round(float(r.get("total_reward", 0.0)), 4),
-            "avg_reward":      round(float(r.get("avg_reward", 0.0)), 4),
-            "cached_ucb":      display_selection_score(
-                                   r.get("count", 0),
-                                   r.get("total_reward", 0.0),
-                                   cell_n[(r.get("user_id_hash"), r.get("domain"),
-                                           r.get("intent"), r.get("topic"))],
-                               ),
-            "policy_version":  r.get("policy_version"),
-            "ucb_algorithm":   r.get("ucb_algorithm"),
-            "last_updated_at": r.get("last_updated_at"),
-        }
-        for r in rows
-    ]
-
-
-@app.delete("/admin/bandit-state/cell")
-def admin_delete_bandit_cell(
-    user_id: str,
-    domain: str,
-    intent: str,
-    topic: str,
-    strategy: Optional[str] = None,
-):
-    """Delete bandit state for a user.
-
-    - With `strategy`  → delete one arm (one row).
-    - Without          → delete the whole (intent, topic) cell for this user.
-
-    The next /turn for this user re-lazy-creates the cell with cold-start
-    values, so this is a safe "reset" operation when a cell got corrupted
-    or an instruction was rewritten and you want fresh learning.
-    """
-    if STORE is None:
-        raise HTTPException(500, "Store not initialized")
-    user_id_hash = _resolve_user_hash(user_id)
-    q: Dict[str, Any] = {
-        "user_id_hash": user_id_hash,
-        "domain":       domain,
-        "intent":       intent,
-        "topic":        topic,
-    }
-    scope = f"{intent}#{topic}"
-    if strategy:
-        q["strategy"] = strategy
-        scope = f"{intent}#{topic}#{strategy}"
-    n = STORE.bandit_state.delete_many(q).deleted_count
-
-    STORE.log_admin_action(
-        action_type="BANDIT_RESET",
-        entity_type="bandit_state",
-        entity_id=f"{user_id_hash}/{scope}",
-        changed_by="admin_user",
-        before={"deleted_count": n},
-        after=None,
-    )
-    return {"status": "ok", "deleted": n, "scope": scope}
-
-
 @app.get("/admin/audit")
 def admin_audit(date: Optional[str] = None, limit: int = 100):
     return _guard_cfg().list_audit(date=date, limit=limit)
@@ -816,129 +711,6 @@ def _clean(doc):
 # ============================================================================
 # ANALYTICS (derived business stores)
 # ============================================================================
-
-@app.get("/analytics/rag-quality")
-def analytics_rag_quality(days: int = 14, min_turns: int = 5, sample_limit: int = 5):
-    """Surface TOPICS where RAG / knowledge-base content is failing.
-
-    Different lens on the same problem signals as instruction-quality:
-    - instruction_quality groups by (strategy, instruction_version)
-      → "which instruction needs rewriting?"
-    - rag_quality groups by topic
-      → "which topic's knowledge base needs enriching?"
-
-    Uses content_correction (weight 1.0) and reask_same_question
-    (weight 0.5) to compute a weighted RAG failure rate per topic.
-    """
-    if STORE is None:
-        raise HTTPException(500, "Store not initialized")
-    return compute_rag_quality(
-        STORE,
-        days=days,
-        min_turns=min_turns,
-        sample_limit=sample_limit,
-    )
-
-
-@app.get("/analytics/instruction-quality")
-def analytics_instruction_quality(days: int = 14, min_turns: int = 5, sample_limit: int = 5):
-    """Surface (strategy, instruction_version) pairs producing problem signals.
-
-    Reads format_compliance_fail / content_correction / reask_same_question
-    incidence from ape_turn_record in the window. Groups by strategy +
-    instruction version, computes failure rate, assigns tier
-    (CRITICAL/HIGH/MEDIUM/LOW/EXPLORING), and attaches up to N sample
-    failing turns per pair for admin inspection.
-
-    The admin uses this to know which instructions to rewrite — and which
-    signal type is dominating each pair's failures, so they can target
-    the fix (format clarity vs factual accuracy vs comprehension).
-    """
-    if STORE is None:
-        raise HTTPException(500, "Store not initialized")
-    return compute_instruction_quality(
-        STORE,
-        days=days,
-        min_turns=min_turns,
-        sample_limit=sample_limit,
-    )
-
-
-@app.get("/analytics/strategy-performance")
-def analytics_strategy_performance(
-    user_id: Optional[str] = None,
-    domain: Optional[str] = None,
-    min_pulls: int = 3,
-):
-    """Strategy diagnostics for the admin Policies tab.
-
-    Returns:
-      - global:    list of {strategy, total_pulls, avg_reward, performance_pct,
-                            tier, unique_users, unique_cells, best_cell, worst_cell}
-      - per_user:  same but filtered to one user (or null if user_id omitted)
-
-    Tier mapping on the 0-100 performance scale:
-      HIGH       ≥ 80    (avg_reward ≥ 0.60)
-      MEDIUM     50-80
-      LOW        < 50    (avg_reward < 0.00)
-      EXPLORING  < min_pulls — not enough data to tier
-    """
-    if STORE is None:
-        raise HTTPException(500, "Store not initialized")
-    user_hash = _resolve_user_hash(user_id) if user_id else None
-    return compute_strategy_performance(
-        STORE,
-        user_id_hash=user_hash,
-        domain=domain,
-        min_pulls=min_pulls,
-    )
-
-
-@app.get("/analytics/unmapped-intents")
-def analytics_unmapped_intents(
-    days: int = 30,
-    domain: Optional[str] = None,
-    limit: int = 50,
-):
-    """Backlog of intents the classifier saw but the taxonomy doesn't cover.
-
-    Groups turns that resolved to "unmapped" by the classifier's best-guess
-    label (suggested_intent), so an admin can decide which to promote to a
-    real intent. Aggregates only — no raw queries.
-    """
-    if STORE is None:
-        raise HTTPException(500, "Store not initialized")
-    return compute_unmapped_intents(
-        STORE,
-        days=days,
-        domain=domain,
-        limit=limit,
-    )
-
-
-@app.get("/analytics/active-users")
-def analytics_active_users(
-    days: int = 1,
-    domain: Optional[str] = None,
-    min_interest: float = 0.0,
-    limit: int = 100,
-):
-    """Admin-facing slice: who was active in the last `days` days, what
-    topics did they touch, and are they contact-ready (interest_score ≥ 0.7).
-
-    Use this to drive outreach lists — the API surfaces candidates only;
-    the contact decision must still pass downstream consent / compliance.
-    """
-    if STORE is None:
-        raise HTTPException(500, "Store not initialized")
-    return active_users_in_window(
-        STORE,
-        days=days,
-        domain=domain,
-        min_interest=min_interest,
-        limit=limit,
-    )
-
 
 # ---- Report preview (Phase 1) ---------------------------------------------
 # Serves generated report artifacts. In production these live in S3 behind a
@@ -1142,7 +914,7 @@ if _ASSETS_DIR.is_dir():
 # Known client-side routes the React app handles. Any other unmatched path
 # falls through to a 404 instead of silently serving the SPA shell.
 # "analytics" is gone — that page was the chat product's.
-_SPA_ROUTES = {"", "reports", "admin"}
+_SPA_ROUTES = {"", "admin"}
 
 
 @app.post("/reports/generate-one")
@@ -1472,6 +1244,30 @@ def client_insight(client_id: str):
                       .order_by(Event.created_at.desc()).limit(12))]
     return {"client_id": client_id, "signals": n, "dimensions": dims,
             "reports": reports, "recent_events": recent}
+
+
+@app.get("/ape/d1-state")
+def d1_state():
+    """Template-decision posteriors per report type — same shape as
+    /ape/d2-state so the two admin tabs stay twins."""
+    from .db.session import init_db, session_scope
+    from .db.models import ApeState
+    from sqlalchemy import select as _sel
+    init_db()
+    out: Dict[str, list] = {}
+    with session_scope() as db:
+        for r in db.scalars(_sel(ApeState).where(ApeState.decision == "D1")
+                            .order_by(ApeState.context, ApeState.arm_id)):
+            mean = ((1.0 + r.total_reward) /
+                    (2.0 + r.reward_count)) if r.reward_count else 0.5
+            out.setdefault(r.context, []).append({
+                "arm": r.arm_id, "selected": r.selection_count,
+                "rewarded": r.reward_count,
+                "total_reward": round(r.total_reward, 2),
+                "posterior_mean": round(mean, 3),
+                "updated_at": r.updated_at.isoformat(timespec="seconds"),
+            })
+    return {"contexts": out}
 
 
 @app.get("/ape/d2-state")

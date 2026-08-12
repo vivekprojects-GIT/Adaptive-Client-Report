@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../../api.js";
-import StrategyPerformancePanel from "./StrategyPerformancePanel.jsx";
 
 const DEFAULT_DOMAIN = "finance";
 
@@ -218,7 +217,6 @@ export default function PoliciesTab({ notify }) {
   return (
     <div className="admin-tab-content">
       <div className="admin-section">
-        <StrategyPerformancePanel notify={notify} />
       </div>
 
       <div className="admin-section">

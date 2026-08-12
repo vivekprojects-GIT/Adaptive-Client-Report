@@ -10,9 +10,8 @@ import TemplatesTab   from "./admin/TemplatesTab.jsx";
 import SignalRulesTab from "./admin/SignalRulesTab.jsx";
 import RewardScaleTab from "./admin/RewardScaleTab.jsx";
 import ThompsonTab    from "./admin/ThompsonTab.jsx";
-import ResearchTab    from "./admin/ResearchTab.jsx";
-import BanditStateTab from "./admin/BanditStateTab.jsx";
 import D2StateTab    from "./admin/D2StateTab.jsx";
+import D1StateTab    from "./admin/D1StateTab.jsx";
 import AuditTab       from "./admin/AuditTab.jsx";
 import "../styles/app-shell.css";
 import "../styles/admin.css";
@@ -29,9 +28,8 @@ const TABS = [
   { id: "signals",      label: "Signal Routing" },
   { id: "rewards",      label: "Reward Scale" },
   { id: "thompson",     label: "Selection (Thompson)" },
-  { id: "bandit",       label: "Bandit State" },
+  { id: "d1state",      label: "Templates (D1)" },
   { id: "d2",           label: "Answers (D2)" },
-  { id: "research",     label: "Research" },
   { id: "audit",        label: "Audit Log" },
 ];
 
@@ -51,7 +49,7 @@ export default function AdminPage() {
             <span className="app-brand-page">Configuration</span>
           </div>
           <div className="app-actions">
-            <Link to="/"          className="app-link">Reports</Link>
+            <Link to="/"          className="app-link">Advisor</Link>
           </div>
         </div>
         <div className="app-header-row app-header-row-tabs">
@@ -79,9 +77,8 @@ export default function AdminPage() {
         {active === "signals"      && <SignalRulesTab notify={notify} />}
         {active === "rewards"      && <RewardScaleTab notify={notify} />}
         {active === "thompson"     && <ThompsonTab    notify={notify} />}
-        {active === "bandit"       && <BanditStateTab notify={notify} />}
+        {active === "d1state"      && <D1StateTab     notify={notify} />}
         {active === "d2"           && <D2StateTab     notify={notify} />}
-        {active === "research"     && <ResearchTab />}
         {active === "audit"        && <AuditTab       notify={notify} />}
       </main>
 

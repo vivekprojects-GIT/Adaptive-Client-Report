@@ -19,8 +19,6 @@ export default function IntentsTab({ notify }) {
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  const [suggestions, setSuggestions] = useState([]);
-  const [sugLoad, setSugLoad] = useState(false);
 
   async function refresh() {
     try {
@@ -30,18 +28,7 @@ export default function IntentsTab({ notify }) {
     }
   }
 
-  async function refreshSuggestions() {
-    setSugLoad(true);
-    try {
-      setSuggestions((await api.unmappedIntents(30, 50)).suggestions || []);
-    } catch (err) {
-      notify("Suggestions load failed: " + err.message, "error");
-    } finally {
-      setSugLoad(false);
-    }
-  }
-
-  useEffect(() => { refresh(); refreshSuggestions(); }, []);
+  useEffect(() => { refresh(); }, []);
 
   function resetForm() {
     setId("");
@@ -56,13 +43,6 @@ export default function IntentsTab({ notify }) {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  function loadSuggestionIntoForm(s) {
-    const topics = (s.top_topics || []).map((t) => t.topic).slice(0, 3).join(", ");
-    setId(toPascalCase(s.suggested_intent));
-    setD(topics ? `Promoted from unmapped - seen on: ${topics}` : "Promoted from unmapped backlog");
-    setEditing(false);
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -144,52 +124,6 @@ export default function IntentsTab({ notify }) {
             )}
           </div>
         </form>
-      </div>
-
-      <div className="admin-section">
-        <div className="admin-section-head">
-          <h2 className="admin-section-title">
-            Suggested intents - unmapped backlog ({suggestions.length})
-          </h2>
-          <button type="button" className="btn-secondary" onClick={refreshSuggestions} disabled={sugLoad}>
-            {sugLoad ? "Refreshing..." : "Refresh"}
-          </button>
-        </div>
-        <p className="admin-section-sub">
-          Questions the classifier could not map to an existing intent over the
-          last 30 days, grouped by its best-guess label. Promote only labels
-          that should become part of the canonical taxonomy.
-        </p>
-        {suggestions.length === 0 ? (
-          <p className="admin-empty">
-            {sugLoad ? "Loading..." : "No unmapped intents in the last 30 days - your taxonomy is covering traffic."}
-          </p>
-        ) : (
-          <AdminTable
-            columns={[
-              { key: "suggested_intent", label: "Suggested intent", width: "200px",
-                render: (s) => <code>{s.suggested_intent}</code> },
-              { key: "count", label: "Hits", width: "80px",
-                render: (s) => <span className="ts">{s.count}</span> },
-              { key: "unique_users", label: "Users", width: "80px",
-                render: (s) => <span className="ts">{s.unique_users}</span> },
-              { key: "avg_confidence", label: "Avg conf.", width: "100px",
-                render: (s) => <span className="ts">{s.avg_confidence}</span> },
-              { key: "top_topics", label: "Top topics",
-                render: (s) => (s.top_topics || []).map((t) => `${t.topic} (${t.count})`).join(", ") || "-" },
-              { key: "last_seen", label: "Last seen", width: "180px",
-                render: (s) => <span className="ts">{(s.last_seen || "").slice(0, 19).replace("T", " ")}</span> },
-              { key: "_use", label: "", width: "150px",
-                render: (s) => (
-                  <button type="button" className="btn-secondary" onClick={() => loadSuggestionIntoForm(s)}>
-                    Use as new intent
-                  </button>
-                ) },
-            ]}
-            rows={suggestions}
-            emptyText="No unmapped intents in the window."
-          />
-        )}
       </div>
 
       <div className="admin-section">
