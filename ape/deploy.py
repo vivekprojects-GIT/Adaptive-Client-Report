@@ -148,10 +148,18 @@ def install(app) -> None:
                 '<p style="color:#b91c1c;font-size:13px">Wrong password.</p>'),
                 status_code=401)
         resp = RedirectResponse("/", status_code=302)
+        # Secure must follow the SCHEME THIS REQUEST ARRIVED ON, not
+        # APP_BASE_URL. Keying it off the configured public URL meant that
+        # once APP_BASE_URL was https (for the deployed host), local http
+        # logins set a Secure cookie the browser silently discarded — the
+        # sign-in appeared to succeed and every following request was still
+        # unauthenticated. Behind a proxy, x-forwarded-proto is the truth.
+        scheme = (request.headers.get("x-forwarded-proto")
+                  or request.url.scheme or "http")
         resp.set_cookie(
             COOKIE_NAME, _sign_session(int(time.time()) + SESSION_TTL),
             max_age=SESSION_TTL, httponly=True, samesite="lax",
-            secure=bool(os.getenv("APP_BASE_URL", "").startswith("https")))
+            secure=(scheme == "https"))
         return resp
 
 

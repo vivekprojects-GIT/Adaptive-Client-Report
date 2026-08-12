@@ -34,6 +34,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+# The server loads .env at startup; this process must too, or mint() signs
+# report links with the fallback secret and every link it creates is
+# rejected by the server as a signature mismatch.
+from dotenv import load_dotenv  # noqa: E402
+load_dotenv(ROOT / ".env", override=True)
+
 BASE = "http://127.0.0.1:8734"
 CLIENT, PERIOD = "C1004", "2026Q1"
 
