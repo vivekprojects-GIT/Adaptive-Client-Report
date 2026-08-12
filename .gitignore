@@ -36,3 +36,13 @@ credentials.json
 token.json
 data/generated/
 *.eml
+
+# Runtime artefacts — logs leak connection strings and host names, and
+# generated reports contain client figures. Neither belongs in source
+# control; the CSVs above are fixtures and deliberately do stay.
+data/*.log
+data/preview/
+data/generated/
+data/*.db
+data/last_rid.txt
+data/cookies.txt
