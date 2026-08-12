@@ -100,6 +100,11 @@ from .store.mongo_schema import (
 
 app = FastAPI(title="APE Modular — Production (MongoDB)", version="2.0.0")
 
+# Public-host hardening: advisor gate, gmail token from secret, boot
+# seeding. Every piece is env-driven and a no-op in local dev.
+from .deploy import install as _install_deploy_gate
+_install_deploy_gate(app)
+
 ORCHESTRATOR: Optional[ApeOrchestrator] = None
 STORE: Optional[MongoStore] = None
 CONFIG_MGR: Optional[ConfigManager] = None
@@ -171,6 +176,8 @@ def _build() -> ApeOrchestrator:
 
 @app.on_event("startup")
 def startup() -> None:
+    from .deploy import run_boot_tasks
+    run_boot_tasks()
     global ORCHESTRATOR
     ORCHESTRATOR = _build()
 

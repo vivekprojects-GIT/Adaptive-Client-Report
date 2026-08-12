@@ -8,15 +8,23 @@
 #                                Spaces default).
 #
 # Required HF Space secrets (Settings → Variables and Secrets):
-#   ANTHROPIC_API_KEY   sk-ant-...           — required for /turn LLM calls
-#                                              (Anthropic Claude)
-#   APE_MONGO_URI       mongodb+srv://...    — required for state + history
+#   ANTHROPIC_API_KEY        sk-ant-...          LLM writer + report chat
+#   APE_MONGO_URI            mongodb+srv://...   config store (templates etc.)
+#   APE_REPORT_TOKEN_SECRET  long random string  signs report links + sessions
+#   ADVISOR_PASSWORD         choose one          gates advisor/admin surfaces
+#   APP_BASE_URL             https://<space>.hf.space   absolute link base
 #
-# Optional secrets / env:
-#   ANTHROPIC_MODEL     claude-haiku-4-5     (default in env_default below)
+# Email (optional — without these, sends write .eml files):
+#   EMAIL_PROVIDER      gmail
+#   EMAIL_FROM          the Gmail address that granted consent
+#   GMAIL_TOKEN_JSON    contents of token.json (materialised at boot)
+#
+# Optional:
+#   ANTHROPIC_MODEL     claude-haiku-4-5     (default)
 #   APE_MONGO_DB        ape                  (default)
-#   APE_DOMAIN          finance              (default)
-#   APE_UCB_C           1.0                  (default)
+#   SEED_ON_EMPTY       1                    reseed synthetic book on empty DB
+#   DATABASE_URL        postgres URL         durable learning state; SQLite
+#                                            on ephemeral disk otherwise
 #
 # Build locally:
 #   docker build -t ape-modulor .
