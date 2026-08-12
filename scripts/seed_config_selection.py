@@ -215,7 +215,12 @@ def blocks_for(report_type: str, strategy: str) -> list:
             body.append("holdings_table")
         if not any(_category(b) == "attribution" for b in body):
             body.append("comparison_table")
-        return ["kpi_grid"] + body
+        # Narrative and takeaways stay. What distinguishes this arm is
+        # tables instead of charts, not the absence of words — an earlier
+        # cut dropped all prose and produced a report of bare tables with
+        # no interpretation, and no LLM personalisation at all, since the
+        # writer only touches prose blocks.
+        return ["kpi_grid", "narrative"] + body + ["key_takeaways"]
 
     if strategy == "narrative":
         # Prose leads and carries the argument, with one supporting block

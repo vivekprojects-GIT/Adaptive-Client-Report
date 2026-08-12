@@ -124,9 +124,14 @@ def main():
     rid = gen["report_id"]
     check("report generated", bool(rid), rid)
     authors = gen.get("authors", {})
+    # Arms carry different numbers of prose blocks by design (concise has
+    # one, balanced three), so assert on the RATIO written rather than a
+    # fixed count — and that the arm has prose at all, since an arm the
+    # writer cannot touch gets no personalisation.
     llm_blocks = [k for k, v in authors.items() if v.startswith("llm")]
-    check("LLM wrote the prose blocks", len(llm_blocks) >= 2,
-          f"{authors}")
+    check("arm has prose for the LLM to write", len(authors) >= 1, f"{authors}")
+    check("LLM wrote them (not all fallback)",
+          len(llm_blocks) >= max(1, len(authors) - 1), f"{authors}")
     check("grounding verdict clean", gen["validation"] == "passed",
           gen["validation_summary"])
 
