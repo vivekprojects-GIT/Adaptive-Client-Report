@@ -36,6 +36,9 @@ export default function AdvisorPage() {
   const [importInfo, setImport] = useState(null);
   const [preview, setPreview]   = useState(null);
   const [period, setPeriod]     = useState("");        // "" = latest on file
+  // "" = APE selects a written template (and the choice is a rewardable
+  // arm). "llm" = the model composes a bespoke one from the block registry.
+  const [composer, setComposer] = useState("");
   const [insight, setInsight]   = useState(null);
   const [toast, setToast]       = useState({ msg: null, kind: "" });
   const fileRef = useRef(null);
@@ -111,12 +114,16 @@ export default function AdvisorPage() {
     try {
       const r = await api.generateOneReport({
         client_id: client.client_id, report_type: reportType,
-        ...(period ? { period } : {}) });
+        ...(period ? { period } : {}),
+        ...(composer ? { composer } : {}) });
       setStatus({ snapshot: "done", generate: "done",
                   validate: r.validation === "passed" ? "passed" : "failed",
                   validation_summary: r.validation_summary,
                   validation_findings: r.validation_findings || [],
                   authors: r.authors || {},
+                  method: r.method, arm: r.strategy,
+                  blocks: r.blocks || [],
+                  composer: r.composer || null,
                   review: "pending", email: "pending", report_id: r.report_id });
       await refreshAll();
       notify(`${client.display_name}: ${r.strategy}`);
@@ -135,7 +142,8 @@ export default function AdvisorPage() {
       for (const c of clients) {
         const r = await api.generateOneReport({
           client_id: c.client_id, report_type: reportType,
-          ...(period ? { period } : {}) });
+          ...(period ? { period } : {}),
+          ...(composer ? { composer } : {}) });
         arms[r.strategy] = (arms[r.strategy] || 0) + 1;
       }
       await refreshAll();
@@ -205,6 +213,12 @@ export default function AdvisorPage() {
             ))}
           </select>
 
+          <label className="adv-bar-lbl">Template</label>
+          <select value={composer} onChange={(e) => setComposer(e.target.value)}>
+            <option value="">APE selects (learns)</option>
+            <option value="llm">AI composes (one-off)</option>
+          </select>
+
           <label className="adv-bar-lbl">Period</label>
           <select value={period} onChange={(e) => setPeriod(e.target.value)}>
             <option value="">Latest on file</option>
@@ -219,6 +233,9 @@ export default function AdvisorPage() {
             Generate for all {clients.length || ""}
           </button>
           <span className="adv-bar-note">
+            {composer === "llm"
+              ? "Composed layouts are one-offs — no arm to reward, so they teach APE nothing. "
+              : ""}
             {selType?.personalisable === false
               ? "Prescribed — mandated template, D1 not consulted"
               : `${armTemplates.length} arms available`}
@@ -393,6 +410,34 @@ export default function AdvisorPage() {
                 {status.validation_summary && (
                   <div className="adv-sub" style={{ margin: "6px 0 10px" }}>
                     Grounding: {status.validation_summary}
+                  </div>
+                )}
+                {status.method && (
+                  <div className="adv-sub" style={{ margin: "0 0 8px" }}>
+                    <b>{status.method === "llm_composed"
+                        ? "AI composed this layout"
+                        : `APE chose "${status.arm}" via ${status.method}`}</b>
+                    {status.blocks?.length > 0 && (
+                      <div style={{ marginTop: 3 }}>
+                        {status.blocks.length} blocks: {status.blocks.join(" · ")}
+                      </div>
+                    )}
+                    {status.composer?.reasoning && (
+                      <div style={{ marginTop: 4, fontStyle: "italic" }}>
+                        "{status.composer.reasoning}"
+                      </div>
+                    )}
+                    {status.composer?.rejected?.length > 0 && (
+                      <div style={{ marginTop: 4, color: "#b45309" }}>
+                        ignored invalid block names:{" "}
+                        {status.composer.rejected.join(", ")}
+                      </div>
+                    )}
+                    {status.composer?.error && (
+                      <div style={{ marginTop: 4, color: "#b91c1c" }}>
+                        composer fell back — {status.composer.error}
+                      </div>
+                    )}
                   </div>
                 )}
                 {status.authors && Object.keys(status.authors).length > 0 && (
