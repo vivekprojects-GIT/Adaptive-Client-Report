@@ -1143,6 +1143,7 @@ async def report_chat(report_id: str, request: Request):
     from .reporting.d2 import answer_question
     from .reporting.rewards import record_event
     from sqlalchemy import select as _select
+    from .db.models import Message
     init_db()
 
     with session_scope() as db:
@@ -1170,6 +1171,15 @@ async def report_chat(report_id: str, request: Request):
             db, snap, report_id, question, block,
             selected_text=str(body.get("selected_text", "")),
             conversation_id=body.get("conversation_id"))
+
+        # Chips for the NEXT turn, drawn from the blocks this report actually
+        # contains and what was just asked — so they stay relevant to this
+        # document instead of offering the same four questions forever.
+        from .reporting.d2 import suggest_followups
+        asked = list(db.scalars(_select(Message.content).where(
+            Message.report_id == report_id, Message.role == "client")))
+        result["followups"] = suggest_followups(
+            report, result.get("intent", ""), asked)
 
         # The question itself is a signal: engagement for D1, and its
         # wording may carry format preferences for the profile.

@@ -240,14 +240,22 @@ def _check_answer(text: str, facts: Dict[str, float],
                   labels: List[str]) -> List[str]:
     """Every number in the answer must be in the allowlist. Returns the
     offending fragments; empty means grounded."""
-    from ape.reporting.grounding import _label_spans, _inside, _is_prose_number
+    from ape.reporting.grounding import (_MULT_SUFFIX, _inside,
+                                         _is_prose_number, _label_spans)
     spans = _label_spans(text, labels)
     allowed = set(facts.values())
     bad = []
     for val, dp, raw, start in extract_numbers(text):
         if _is_prose_number(val, dp, raw) or _inside(start, spans):
             continue
-        if _matches(val, dp, allowed) or _matches(-val, dp, allowed):
+        # A figure written with a multiplier ("£14.3K") is deliberately
+        # rounded and earns the relative tolerance; one written to the penny
+        # is claiming that precision and is held to it. Same rule the report
+        # validator applies — the two must not diverge, or an answer could
+        # state a figure the report itself would have rejected.
+        rounded = bool(_MULT_SUFFIX.search(raw))
+        if (_matches(val, dp, allowed, rounded)
+                or _matches(-val, dp, allowed, rounded)):
             continue
         bad.append(raw)
     return bad
@@ -256,6 +264,70 @@ def _check_answer(text: str, facts: Dict[str, float],
 DECLINE = ("I can only speak to what's in your report, and it doesn't "
            "contain what I'd need to answer that properly. Your adviser "
            "will be able to help — you can reach them from this page.")
+
+
+# Follow-ups a client can actually ask HERE. Generated from the blocks this
+# report contains and the intent just answered — a fixed list would offer
+# "what drove returns" on a report with no attribution section, which
+# teaches the client the assistant is not really reading their document.
+_FOLLOWUP_BY_BLOCK = {
+    "fees_table":           ["Is that a normal level of fees?",
+                             "How do fees compare with my return?"],
+    "top_contributors":     ["Which holding helped most?",
+                             "Why did that one do well?"],
+    "top_detractors":       ["What lost me money this period?",
+                             "Should I be worried about that?"],
+    "allocation_donut":     ["Why am I invested this way?",
+                             "What is my biggest holding?"],
+    "allocation_vs_target": ["Am I off my target mix?",
+                             "What does drift mean?"],
+    "returns_table":        ["How have I done over time?",
+                             "Which quarter was best?"],
+    "performance_line":     ["How have I done over time?"],
+    "comparison_chart":     ["How did I do against the benchmark?",
+                             "What is my benchmark?"],
+    "comparison_table":     ["What drove my return?"],
+    "holdings_table":       ["What do I actually own?"],
+    "risk_card":            ["How risky is my portfolio?"],
+    "key_takeaways":        ["Explain the main point in simple terms."],
+}
+
+# Asked one thing, likely to ask this next.
+_FOLLOWUP_BY_INTENT = {
+    "fees_cashflow_question":  "What am I getting for those fees?",
+    "performance_question":    "Which holdings drove that?",
+    "benchmark_comparison":    "Why did I differ from the benchmark?",
+    "allocation_question":     "Should my mix change?",
+    "risk_question":           "How does my risk compare to last quarter?",
+    "holdings_question":       "Which holding is my largest?",
+    "report_summary":          "Explain that in simpler terms.",
+}
+
+
+def suggest_followups(report: Dict[str, Any], intent: str = "",
+                      asked: Optional[List[str]] = None,
+                      limit: int = 4) -> List[str]:
+    """Chips grounded in THIS report's blocks, minus anything already asked."""
+    seen = {q.strip().lower() for q in (asked or [])}
+    out: List[str] = []
+
+    nxt = _FOLLOWUP_BY_INTENT.get(intent)
+    if nxt and nxt.lower() not in seen:
+        out.append(nxt)
+
+    present = [b.get("type") for b in report.get("blocks", [])]
+    for block_type in present:
+        for q in _FOLLOWUP_BY_BLOCK.get(block_type, []):
+            if q.lower() not in seen and q not in out:
+                out.append(q)
+            if len(out) >= limit:
+                return out[:limit]
+
+    for q in ("Give me a quick summary of this report.",
+              "Explain this in simpler terms."):
+        if len(out) < limit and q.lower() not in seen and q not in out:
+            out.append(q)
+    return out[:limit]
 
 
 def answer_question(

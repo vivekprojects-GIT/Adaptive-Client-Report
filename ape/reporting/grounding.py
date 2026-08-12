@@ -67,6 +67,9 @@ _NUMBER = re.compile(
     re.VERBOSE,
 )
 
+# Written with a multiplier => deliberately rounded => relative tolerance.
+_MULT_SUFFIX = re.compile(r"(m|M|k|K|bn|billion|million|thousand)")
+
 _MULTIPLIER = {
     "m": 1e6, "M": 1e6, "million": 1e6,
     "k": 1e3, "K": 1e3, "thousand": 1e3,
@@ -155,14 +158,27 @@ def _is_prose_number(val: float, dp: int, raw: str) -> bool:
     return abs(val) < IGNORE_BELOW
 
 
-def _matches(value: float, dp: int, allowed: Iterable[float]) -> bool:
+def _matches(value: float, dp: int, allowed: Iterable[float],
+             rounded: bool = False) -> bool:
+    """Does `value` correspond to any allowed fact?
+
+    Two tolerances, and which applies depends on HOW THE NUMBER WAS WRITTEN:
+
+      absolute  — always. Tight, scaled to the stated decimal places.
+      relative  — only when `rounded`, i.e. the figure carried a multiplier
+                  ("14.3K", "$1.24M"). Those are deliberately imprecise
+                  renderings and need the slack.
+
+    The relative band must NOT apply to a figure written out in full: 0.5%
+    of £10,517.81 is ±£52, so "£10,518.81" would sail through despite being
+    wrong. A number written to the penny is claiming that precision, and is
+    held to it.
+    """
     abs_tol = TOLERANCE_BY_DP.get(dp, 0.0051)
     for a in allowed:
         if abs(a - value) <= abs_tol:
             return True
-        # Relative tolerance for figures written in millions/thousands, where
-        # "1.24M" is a legitimate rendering of 1,240,000 but not exact.
-        if a != 0 and abs(a - value) / abs(a) <= REL_TOLERANCE:
+        if rounded and a != 0 and abs(a - value) / abs(a) <= REL_TOLERANCE:
             return True
     return False
 
@@ -282,9 +298,10 @@ def validate_block(
         for val, dp, raw, start in extract_numbers(text):
             if _is_prose_number(val, dp, raw) or _inside(start, exempt):
                 continue
-            if _matches(val, dp, allowed):
+            rounded = bool(_MULT_SUFFIX.search(raw))
+            if _matches(val, dp, allowed, rounded):
                 continue
-            if (val > 0 and _matches(-val, dp, allowed)
+            if (val > 0 and _matches(-val, dp, allowed, rounded)
                     and _has_negative_cue(text, start)):
                 continue
             findings.append(Finding(bid, "ungrounded_number",

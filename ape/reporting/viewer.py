@@ -88,8 +88,12 @@ __DOC_CSS__
  .doc{min-height:auto;box-shadow:0 1px 4px rgba(15,23,42,.08);border-radius:8px}
  section[data-block-id]{cursor:pointer;border-radius:4px}
  section[data-block-id].sel{outline:2px solid #2563eb;outline-offset:8px}
- .chat{width:340px;min-width:340px;background:#fff;border-left:1px solid #e2e8f0;
-   display:flex;flex-direction:column}
+ .chat{width:340px;min-width:280px;max-width:70vw;background:#fff;
+   border-left:1px solid #e2e8f0;display:flex;flex-direction:column;
+   position:relative;flex-shrink:0}
+ .grip{position:absolute;left:-3px;top:0;bottom:0;width:6px;cursor:col-resize;
+   z-index:5}
+ .grip:hover,.grip.on{background:#bfdbfe}
  .chat .hd2{padding:14px 16px;border-bottom:1px solid #e2e8f0;font-weight:700;
    font-size:14px;color:#0f172a}
  .chat .ctx{display:none;margin:10px 14px 0;background:#eff6ff;
@@ -106,8 +110,16 @@ __DOC_CSS__
    padding:8px 12px;font-size:13px;max-width:85%}
  .m-a{align-self:flex-start;background:#f8fafc;border:1px solid #e2e8f0;
    border-radius:12px 12px 12px 2px;padding:9px 12px;font-size:13px;max-width:92%;
-   color:#0f172a;line-height:1.55;white-space:pre-wrap}
- .m-a table{margin:6px 0;font-size:12px}
+   color:#0f172a;line-height:1.55}
+ .m-a table{margin:6px 0;font-size:12px;border-collapse:collapse;width:100%}
+ .m-a th,.m-a td{border-bottom:1px solid #e2e8f0;padding:4px 6px;text-align:left}
+ .m-a th{font-size:10.5px;text-transform:uppercase;color:#94a3b8}
+ .m-a p{margin:0 0 7px} .m-a p:last-child{margin-bottom:0}
+ .m-a ul,.m-a ol{margin:6px 0;padding-left:18px}
+ .m-a li{margin-bottom:3px}
+ .m-a code{background:#eef2f7;padding:1px 4px;border-radius:3px;font-size:11.5px}
+ .m-a strong{font-weight:600}
+ .m-a h1,.m-a h2,.m-a h3{font-size:13px;margin:8px 0 4px;font-weight:600}
  .fb{display:flex;gap:6px;margin-top:7px}
  .fb button{border:1px solid #e2e8f0;background:#fff;border-radius:5px;
    padding:2px 9px;font-size:12px;cursor:pointer;color:#64748b}
@@ -132,6 +144,21 @@ __DOC_CSS__
  .rfb button.on{background:#eff6ff;border-color:#2563eb;color:#1d4ed8}
  .note{padding:0 14px 10px;font-size:10.5px;color:#94a3b8}
  .typing{align-self:flex-start;color:#94a3b8;font-size:12px;padding:4px 2px}
+ /* The document must never be squeezed to an unreadable column. Below
+    these widths the side panes give way rather than compete: the nav goes
+    first (it is a convenience), then the chat moves under the document —
+    which is the phone layout, and these links get opened on phones. */
+ .mid{min-width:0}
+ @media (max-width:1180px){ .side{display:none} }
+ @media (max-width:900px){
+   body{flex-direction:column;height:auto}
+   .mid{order:1;overflow:visible}
+   .chat{order:2;width:auto!important;max-width:none;min-width:0;
+     border-left:0;border-top:1px solid #e2e8f0;height:70vh;
+     position:sticky;bottom:0}
+   .grip{display:none}
+   .doc{border-radius:0}
+ }
  @media print{
    .side,.chat,.mid .bar{display:none!important}
    body{display:block;background:#fff}
@@ -159,7 +186,8 @@ __DOC_CSS__
   __DOC__
 </div>
 
-<div class="chat">
+<div class="chat" id="chat">
+  <div class="grip" id="grip" title="Drag to resize"></div>
   <div class="hd2">Ask about your report</div>
   <div class="ctx" id="ctx"><button id="ctxoff">clear</button>
     <b>Asking about:</b><span id="ctxlabel"></span></div>
@@ -264,8 +292,77 @@ function add(cls, text){
   d.textContent = text; msgs.appendChild(d);
   msgs.scrollTop = msgs.scrollHeight; return d;
 }
+
+// Minimal markdown, escaped FIRST so a model that emits raw HTML cannot
+// inject it. Only the constructs answers actually use are supported:
+// tables, lists, bold, code, paragraphs.
+function esc(t){
+  return t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+function md(src){
+  var lines = esc(src).split(/\\r?\\n/), out = [], i = 0;
+  function inline(t){
+    return t.replace(/\\*\\*([^*]+)\\*\\*/g, "<strong>$1</strong>")
+            .replace(/(^|[^*])\\*([^*\\n]+)\\*/g, "$1<em>$2</em>")
+            .replace(/`([^`]+)`/g, "<code>$1</code>");
+  }
+  while (i < lines.length){
+    var ln = lines[i];
+    // table: header row, separator, body
+    if (/^\\s*\\|.*\\|\\s*$/.test(ln) && i + 1 < lines.length &&
+        /^\\s*\\|[\\s:|-]+\\|\\s*$/.test(lines[i+1])){
+      var cells = function(r){
+        return r.trim().replace(/^\\||\\|$/g, "").split("|")
+                .map(function(c){ return inline(c.trim()); });
+      };
+      var head = cells(ln); i += 2;
+      var body = [];
+      while (i < lines.length && /^\\s*\\|.*\\|\\s*$/.test(lines[i])){
+        body.push(cells(lines[i])); i++;
+      }
+      out.push("<table><thead><tr>" +
+        head.map(function(c){ return "<th>" + c + "</th>"; }).join("") +
+        "</tr></thead><tbody>" +
+        body.map(function(r){
+          return "<tr>" + r.map(function(c){ return "<td>" + c + "</td>"; })
+                           .join("") + "</tr>"; }).join("") +
+        "</tbody></table>");
+      continue;
+    }
+    // list
+    var m = ln.match(/^\\s*([-*]|\\d+\\.)\\s+(.*)$/);
+    if (m){
+      var ordered = /\\d/.test(m[1]), items = [];
+      while (i < lines.length){
+        var mm = lines[i].match(/^\\s*([-*]|\\d+\\.)\\s+(.*)$/);
+        if (!mm) break;
+        items.push("<li>" + inline(mm[2]) + "</li>"); i++;
+      }
+      out.push((ordered ? "<ol>" : "<ul>") + items.join("") +
+               (ordered ? "</ol>" : "</ul>"));
+      continue;
+    }
+    // heading
+    var h = ln.match(/^\\s*#{1,3}\\s+(.*)$/);
+    if (h){ out.push("<h3>" + inline(h[1]) + "</h3>"); i++; continue; }
+    // paragraph
+    if (ln.trim()){
+      var para = [];
+      while (i < lines.length && lines[i].trim() &&
+             !/^\\s*([-*]|\\d+\\.)\\s+/.test(lines[i]) &&
+             !/^\\s*\\|/.test(lines[i]) && !/^\\s*#{1,3}\\s/.test(lines[i])){
+        para.push(lines[i]); i++;
+      }
+      out.push("<p>" + inline(para.join(" ")) + "</p>");
+      continue;
+    }
+    i++;
+  }
+  return out.join("");
+}
 function addAnswer(res){
-  var d = add("m-a", res.answer);
+  var d = add("m-a", "");
+  d.innerHTML = md(res.answer);
   var fb = document.createElement("div"); fb.className = "fb";
   var up = document.createElement("button"); up.textContent = "\\uD83D\\uDC4D helpful";
   var dn = document.createElement("button"); dn.textContent = "\\uD83D\\uDC4E not really";
@@ -291,8 +388,13 @@ function ask(question){
                  selected_text: selText, conversation_id: conversationId})
     .then(function(res){
       t.remove();
-      if (res.answer){ conversationId = res.conversation_id; addAnswer(res); }
-      else add("m-a", "Something went wrong — please try again.");
+      if (res.answer){
+        conversationId = res.conversation_id;
+        addAnswer(res);
+        setChips(res.followups);
+      } else {
+        add("m-a", "Something went wrong — please try again.");
+      }
     })
     .catch(function(){ t.remove();
       add("m-a", "Something went wrong — please try again."); })
@@ -310,4 +412,45 @@ document.getElementById("chips").addEventListener("click", function(e){
   var q = e.target.getAttribute && e.target.getAttribute("data-q");
   if (q) ask(q);
 });
+
+// Chips come from the server, built from the blocks THIS report contains
+// and what has already been asked — so they stop repeating and stay
+// relevant to the document in front of the client.
+function setChips(list){
+  if (!list || !list.length) return;
+  var box = document.getElementById("chips");
+  box.innerHTML = "";
+  list.forEach(function(q){
+    var b = document.createElement("button");
+    b.setAttribute("data-q", q);
+    b.textContent = q.length > 34 ? q.slice(0, 32) + "…" : q;
+    b.title = q;
+    box.appendChild(b);
+  });
+}
+
+// Drag the divider to widen the conversation. Persisted so the choice
+// survives a reload — a client who wants a big chat pane wants it every time.
+(function(){
+  var chat = document.getElementById("chat"), grip = document.getElementById("grip");
+  var saved = localStorage.getItem("ape_chat_w");
+  if (saved) chat.style.width = saved + "px";
+  var dragging = false;
+  grip.addEventListener("mousedown", function(e){
+    dragging = true; grip.classList.add("on");
+    document.body.style.userSelect = "none"; e.preventDefault();
+  });
+  window.addEventListener("mousemove", function(e){
+    if (!dragging) return;
+    var w = Math.min(Math.max(window.innerWidth - e.clientX, 280),
+                     window.innerWidth * 0.7);
+    chat.style.width = w + "px";
+  });
+  window.addEventListener("mouseup", function(){
+    if (!dragging) return;
+    dragging = false; grip.classList.remove("on");
+    document.body.style.userSelect = "";
+    localStorage.setItem("ape_chat_w", parseInt(chat.style.width, 10));
+  });
+})();
 </script></body></html>"""
