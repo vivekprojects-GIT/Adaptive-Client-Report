@@ -92,6 +92,11 @@ COPY --chown=user:user scripts/  ./scripts/
 # Copy built frontend from Stage 1
 COPY --from=frontend-build --chown=user:user /app/frontend/dist ./frontend/dist
 
+# WORKDIR created /app as root and COPY --chown only set ownership on the
+# files, not the directory — so the app could read everything and create
+# nothing. Needed for the SQLite book, generated reports and the Gmail token.
+RUN chown -R user:user /app
+
 USER user
 
 # Pre-download the Chroma embedding model (all-MiniLM-L6-v2 ONNX) at build
