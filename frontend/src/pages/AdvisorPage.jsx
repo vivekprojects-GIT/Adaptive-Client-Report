@@ -36,15 +36,15 @@ export default function AdvisorPage() {
   const [importInfo, setImport] = useState(null);
   const [preview, setPreview]   = useState(null);
   const [period, setPeriod]     = useState("");        // "" = latest on file
-  // "" = APE selects a written template (and the choice is a rewardable
-  // arm). "llm" = the model composes a bespoke one from the block registry.
-  const [composer, setComposer] = useState("");
   const [insight, setInsight]   = useState(null);
   const [note, setNote]         = useState("");
   // Which modes this deployment offers. Read from the server rather
   // than assumed, so a control that the server would override is
   // never drawn in the first place.
   const [selectorOn, setSelectorOn] = useState(true);
+  // The template the advisor picked for this report type. "" means the
+  // AI composes one instead — those are the only two routes now.
+  const [templateId, setTemplateId] = useState("");
   const [toast, setToast]       = useState({ msg: null, kind: "" });
   const fileRef = useRef(null);
   const notify = (msg, kind = "ok") => setToast({ msg, kind });
@@ -65,10 +65,7 @@ export default function AdvisorPage() {
        .then((f) => {
          const on = f.template_selection !== false;
          setSelectorOn(on);
-         if (!on) {
-           setComposer("llm");            // the only mode left
-           setView((v) => (v === "arms" ? "clients" : v));
-         }
+         if (!on) setView((v) => (v === "arms" ? "clients" : v));
        })
        .catch(() => setSelectorOn(true));
   }, []);
@@ -86,6 +83,16 @@ export default function AdvisorPage() {
        .then((v) => { setInsight(v); setNote(v?.skill?.advisor_note || ""); })
        .catch(() => { setInsight(null); setNote(""); });
   }, [selected, reportType, selectorOn]);
+
+  // Templates belong to one report type, so a pick cannot survive a change
+  // of type. Defaults to the first authored template where one exists, so
+  // the common case needs no interaction at all.
+  useEffect(() => {
+    const mine = templates.filter((t) => t.report_type === reportType);
+    setTemplateId((cur) =>
+      mine.some((t) => t.template_id === cur) ? cur
+        : (mine.length ? mine[0].template_id : ""));
+  }, [reportType, templates]);
 
   async function openClientView(reportId) {
     try {
@@ -137,7 +144,7 @@ export default function AdvisorPage() {
       const r = await api.generateOneReport({
         client_id: client.client_id, report_type: reportType,
         ...(period ? { period } : {}),
-        ...(composer ? { composer } : {}) });
+        ...(templateId ? { template_id: templateId } : { composer: "llm" }) });
       setStatus({ snapshot: "done", generate: "done",
                   validate: r.validation === "passed" ? "passed" : "failed",
                   validation_summary: r.validation_summary,
@@ -165,7 +172,7 @@ export default function AdvisorPage() {
         const r = await api.generateOneReport({
           client_id: c.client_id, report_type: reportType,
           ...(period ? { period } : {}),
-          ...(composer ? { composer } : {}) });
+          ...(templateId ? { template_id: templateId } : { composer: "llm" }) });
         arms[r.strategy] = (arms[r.strategy] || 0) + 1;
       }
       await refreshAll();
@@ -240,27 +247,23 @@ export default function AdvisorPage() {
             ))}
           </select>
 
-          {/* Two mutually exclusive modes, so a toggle rather than a
-              select: both options stay visible, and which one is active
-              is readable without opening anything. Hidden entirely when
-              arm selection is switched off — a two-state control with one
-              reachable state is not a control. */}
-          {selectorOn && <label className="adv-bar-lbl">Template</label>}
-          {selectorOn &&
-          <div className="adv-toggle" role="group" aria-label="Template mode">
-            {[["", "APE selects", "Learns from engagement"],
-              ["llm", "AI composes", "One-off, teaches D1 nothing"]]
-              .map(([value, label, hint]) => (
-                <button
-                  key={value || "ape"}
-                  type="button"
-                  title={hint}
-                  aria-pressed={composer === value}
-                  className={composer === value ? "on" : ""}
-                  onClick={() => setComposer(value)}
-                >{label}</button>
-              ))}
-          </div>}
+          {/* One control, listing every template authored for this
+              report type plus the composer. No bandit is involved: the
+              advisor picks, or the model builds one. Templates are per
+              report type because their blocks assume that type's facts,
+              so the list changes with the type above it. */}
+          <label className="adv-bar-lbl">Template</label>
+          <select value={templateId}
+                  onChange={(e) => setTemplateId(e.target.value)}>
+            {armTemplates.map((t) => (
+              <option key={t.template_id} value={t.template_id}>
+                {t.label || t.strategy}
+                {t.required_blocks?.length
+                  ? `  (${t.required_blocks.length} blocks)` : ""}
+              </option>
+            ))}
+            <option value="">AI composes a new one</option>
+          </select>
 
           <label className="adv-bar-lbl">Period</label>
           <select value={period} onChange={(e) => setPeriod(e.target.value)}>
@@ -276,17 +279,12 @@ export default function AdvisorPage() {
             Generate for all {clients.length || ""}
           </button>
           <span className="adv-bar-note">
-            {!selectorOn
-              ? "Arm selection is off in this environment — every report is "
-                + "composed from the block registry."
-              : <>
-                  {composer === "llm"
-                    ? "Composed layouts are one-offs — no arm to reward, so they teach APE nothing. "
-                    : ""}
-                  {selType?.personalisable === false
-                    ? "Prescribed — mandated template, D1 not consulted"
-                    : `${armTemplates.length} arms available`}
-                </>}
+            {templateId
+              ? `${armTemplates.length} template`
+                + `${armTemplates.length === 1 ? "" : "s"} for this report type`
+                + ` — edit them under Configuration`
+              : "The model designs a layout from the block registry, "
+                + "guided by what this client has asked for."}
           </span>
         </header>
 

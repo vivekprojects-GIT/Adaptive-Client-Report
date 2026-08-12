@@ -98,19 +98,9 @@ from .store.mongo_schema import (
 )
 
 
-def template_selection_enabled() -> bool:
-    """Whether APE's bandit picks among the six written template arms.
-
-    Off, the LLM composer is the only route to a template. Gated by
-    environment rather than deleted, because the two modes are a real
-    product choice and one deployment wanting only the composer is not a
-    reason for every deployment to lose the selector.
-
-    Read per call, not cached at import: a flag flipped in .env should take
-    effect on the next request, not the next redeploy.
-    """
-    return os.getenv("APE_TEMPLATE_SELECTION", "1").strip().lower() \
-        not in ("0", "false", "off", "no")
+from .reporting.policy_config import (  # noqa: E402
+    template_selection_enabled,
+)
 
 
 app = FastAPI(title="APE Modular — Production (MongoDB)", version="2.0.0")
@@ -858,14 +848,40 @@ async def generate_one_report(request: Request):
     #                        registry. Better per-client fit, but a one-off
     #                        with no arm to reward, so it teaches D1 nothing
     compose = str(body.get("composer") or "").lower() in ("llm", "true", "1")
-    if not template_selection_enabled():
-        # Arm selection is switched off in this environment: the composer
-        # is the only way a template gets made. Forced here rather than
-        # trusted to the UI, because an old browser tab or a direct API
-        # call would otherwise still reach the selector.
+
+    # An advisor naming a template they authored. This is NOT the bandit:
+    # nothing is explored, nothing is rewarded, and the flag that switches
+    # off UCB does not switch this off — picking your own template is the
+    # alternative to arm selection, not a form of it.
+    chosen_id = str(body.get("template_id") or "").strip()
+    chosen = None
+    if chosen_id:
+        chosen = next((t for t in templates
+                       if t.get("template_id") == chosen_id), None)
+        if chosen is None:
+            raise HTTPException(404, f"no template '{chosen_id}'")
+        if chosen.get("report_type") != report_type:
+            # Templates bind to a report type because their blocks assume
+            # that type's facts. Silently rendering one against another
+            # would produce a document that looks authored and is not.
+            raise HTTPException(
+                400, f"template '{chosen_id}' belongs to "
+                     f"'{chosen.get('report_type')}', not '{report_type}'")
+        compose = False
+    elif not template_selection_enabled():
+        # Arm selection is switched off in this environment and the advisor
+        # named nothing, so the composer is the only route left. Forced
+        # here rather than trusted to the UI, because an old browser tab or
+        # a direct API call would otherwise still reach the selector.
         compose = True
+
     compose_diag = None
-    if compose:
+    if chosen is not None:
+        template = chosen
+        strategy = chosen.get("strategy") or chosen_id
+        method = "advisor_choice"
+        rows = []
+    elif compose:
         from .reporting.composer import compose_template
         from .reporting.skill import skill_text
         with session_scope() as _db:
@@ -882,9 +898,11 @@ async def generate_one_report(request: Request):
             client_profile=_profile, n_signals=_nsig)
 
     # count rises at SELECTION so cold-start exploration advances even
-    # before any reward lands. A composed template is not an arm, so there
-    # is nothing to count and nothing that could later be rewarded.
-    if not compose:
+    # before any reward lands. Neither a composed template nor one the
+    # advisor named is an arm: nothing was explored, so counting it would
+    # tell the bandit it tried something it did not, and the arm's mean
+    # would fall for reports it never produced.
+    if not compose and chosen is None:
         with session_scope() as _db:
             _row = _db.scalars(_sel(_AS).where(
                 _AS.decision == "D1", _AS.scope_type == "GLOBAL",
@@ -899,7 +917,7 @@ async def generate_one_report(request: Request):
                 _db.add(_row)
             _row.selection_count += 1
 
-    if not compose:
+    if not compose and chosen is None:
         template = next(t for t in arms if t["strategy"] == strategy)
     report = build_report(snap, template, report_type)
 

@@ -18,7 +18,28 @@ most a few times a day. Failure of any kind falls back to the defaults —
 selection must never break because config is unreachable.
 """
 
+
 from __future__ import annotations
+import os as _os
+
+
+def template_selection_enabled() -> bool:
+    """Whether a bandit picks the report template. Off by default.
+
+    Templates are chosen, not learned: the advisor picks one they authored
+    for that report type, or the LLM composes a bespoke one. UCB plays no
+    part in either. D1's machinery stays behind this flag rather than
+    being deleted so the arm history and the selector remain recoverable,
+    but nothing turns it on by default.
+
+    D2 is untouched — choosing how to ANSWER a question is a different
+    decision with its own evidence, and it still learns.
+
+    Defined here rather than in api.py because the reward path needs it
+    too, and two copies of a switch is how one of them gets flipped alone.
+    """
+    return _os.getenv("APE_TEMPLATE_SELECTION", "0").strip().lower()         in ("1", "true", "on", "yes")
+
 
 import time
 from typing import Dict

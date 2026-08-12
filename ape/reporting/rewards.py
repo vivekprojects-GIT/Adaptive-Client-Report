@@ -143,6 +143,18 @@ def _reward_d2(session: Session, message_id: str, reward: float) -> Dict:
 # ---------------------------------------------------------------------------
 
 def _reward_d1(session: Session, report_id: str, event_type: str) -> Dict:
+    """Accrue engagement against the report, and — only when a bandit is
+    actually choosing templates — against the arm that produced it.
+
+    The two halves are separated deliberately. The per-report engagement
+    score survives switching selection off: it is how much of this report
+    the client actually used, it feeds the composer's brief through
+    skill.py, and it means something whether or not anything chose the
+    layout. The ARM write does not survive, because paying an arm whose
+    selection count nothing increments makes its mean climb on reports it
+    never chose, and leaves a history that is wrong for anyone who later
+    turns selection back on.
+    """
     rep = session.get(Report, report_id)
     if rep is None:
         return {"applied": False, "reason": "report not in SQL"}
@@ -181,6 +193,15 @@ def _reward_d1(session: Session, report_id: str, event_type: str) -> Dict:
     if delta <= 0:
         return {"applied": False, "reason": "report reward capped at 1.0",
                 "accrued": already}
+
+    # Everything above stands regardless. Below this line is arm
+    # bookkeeping, and it only happens when an arm was actually selected.
+    from ape.reporting.policy_config import template_selection_enabled
+    if not template_selection_enabled():
+        return {"applied": True, "scope": "report_only",
+                "accrued": rep.normalized_reward,
+                "note": "template selection is off — engagement recorded "
+                        "against the report, no arm to reward"}
 
     # D1 selection reads SQL ape_state, so the reward lands there too —
     # same session, same transaction as the event row itself.
