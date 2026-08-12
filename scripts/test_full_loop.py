@@ -22,9 +22,12 @@ returns 200 while learning nothing must fail here.
 
 from __future__ import annotations
 
+import http.cookiejar
 import json
+import os
 import sys
 import time
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -42,19 +45,45 @@ def check(name, cond, detail=""):
     print(f"  {'ok  ' if cond else 'FAIL'}  {name}" + (f"   {detail}" if detail else ""))
 
 
+# Advisor endpoints sit behind the session gate whenever ADVISOR_PASSWORD is
+# set, so the test signs in exactly as an advisor does. Client-facing /r/
+# routes stay open and need no cookie — which this run also proves.
+_OPENER = urllib.request.build_opener(
+    urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+
+
 def http(method, path, body=None):
     req = urllib.request.Request(
         BASE + path, method=method,
         data=json.dumps(body).encode() if body is not None else None,
         headers={"Content-Type": "application/json"})
     try:
-        with urllib.request.urlopen(req, timeout=180) as r:
+        with _OPENER.open(req, timeout=180) as r:
             raw = r.read().decode()
     except urllib.error.HTTPError as e:
         # Error bodies matter here: the bad-token test asserts on the 403
         # page's wording, not just its status.
         raw = e.read().decode()
     return json.loads(raw) if raw.strip().startswith(("{", "[")) else raw
+
+
+def advisor_login():
+    """No-op when the gate is disabled; required when it is not."""
+    from dotenv import dotenv_values
+    pw = (os.getenv("ADVISOR_PASSWORD")
+          or dotenv_values(ROOT / ".env").get("ADVISOR_PASSWORD", ""))
+    if not pw:
+        print("  advisor gate disabled (no ADVISOR_PASSWORD)")
+        return
+    req = urllib.request.Request(
+        BASE + "/login", method="POST",
+        data=urllib.parse.urlencode({"password": pw}).encode(),
+        headers={"Content-Type": "application/x-www-form-urlencoded"})
+    try:
+        _OPENER.open(req, timeout=30)
+        print("  advisor signed in")
+    except urllib.error.HTTPError as e:
+        sys.exit(f"advisor login failed ({e.code}) — check ADVISOR_PASSWORD")
 
 
 def reset_fixture():
@@ -80,6 +109,7 @@ def reset_fixture():
 
 
 def main():
+    advisor_login()
     reset_fixture()
     print("1. ADVISOR GENERATES (LLM writes, grounding gates, SQL persists)")
     gen = http("POST", "/reports/generate-one",
