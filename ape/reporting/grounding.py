@@ -206,6 +206,14 @@ def derived_facts(facts: Dict[str, float]) -> Dict[str, float]:
     if adv is not None and fund is not None:
         put("derived.fees_total", adv + fund)
 
+    # Return BEFORE fees. Standard in wealth reporting ("you earned 5.08%
+    # gross, 4.74% after costs") and unambiguously derivable, but it existed
+    # nowhere in the allowlist — so a model stating a correct gross figure
+    # had its whole block rejected and replaced with plainer text.
+    drag = facts.get("fees.drag_pct")
+    if q is not None and drag is not None:
+        put("derived.gross_return", q + drag)
+
     c, w = facts.get("flows.contributions"), facts.get("flows.withdrawals")
     if c is not None and w is not None:
         put("derived.net_flow", c - w)

@@ -205,12 +205,20 @@ def write_block(
     labels = snap.label_terms()
     feedback = ""
 
+    reason = ""
     for attempt in range(MAX_ATTEMPTS):
         try:
             raw = _call(anthropic_client, model,
                         _PROMPTS[block_type](snap, brief, feedback))
-        except Exception:
-            break                      # API trouble -> code-built, silently
+        except Exception as exc:
+            # Falling back is right — the client still gets a grounded block.
+            # Doing it SILENTLY was not: a rate-limited batch and a model
+            # inventing figures produced identical output, so neither could
+            # be told apart afterwards. Name the cause.
+            reason = f"{type(exc).__name__}: {str(exc)[:110]}"
+            print(f"[writer] {block_type}: LLM call failed, using code-built "
+                  f"block ({reason})", flush=True)
+            break
         data = _parse_json(raw)
         if not data:
             feedback = ("Your last reply was not valid JSON. Return only "
@@ -229,12 +237,17 @@ def write_block(
         # Quote the exact rejection back. Models fix concrete complaints
         # far more reliably than "try again".
         quoted = "; ".join(f.detail for f in findings[:3])
+        reason = f"ungrounded — {quoted[:110]}"
         feedback = (f"Your previous draft was rejected by the fact checker: "
                     f"{quoted}. Every number must appear in the fact sheet "
                     f"exactly.\n")
+        if attempt == MAX_ATTEMPTS - 1:
+            print(f"[writer] {block_type}: draft rejected twice, using "
+                  f"code-built block ({quoted[:100]})", flush=True)
 
     out = dict(fallback_block)
     out["_author"] = "fallback"
+    out["_fallback_reason"] = reason or "model returned no usable JSON"
     return out, "fallback"
 
 
@@ -267,5 +280,10 @@ def write_prose_blocks(
         written, author = write_block(client, model, block["type"], snap,
                                       brief, block)
         report["blocks"][i] = written
-        authors[block["block_id"]] = author
+        # A fallback carries WHY, so an advisor reviewing a draft can tell a
+        # rate-limited batch from a model that invented a figure.
+        authors[block["block_id"]] = (
+            f"{author} ({written['_fallback_reason']})"
+            if author == "fallback" and written.get("_fallback_reason")
+            else author)
     return authors
