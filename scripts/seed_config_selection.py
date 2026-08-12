@@ -92,35 +92,155 @@ FOCUS = {
 }
 
 
+# Two renderings of the same fact. Swapping along these pairs changes the
+# document's character without changing what it tells the client.
+AS_CHART = {
+    "returns_table":        "performance_history",
+    "comparison_table":     "comparison_chart",
+    "holdings_table":       "chart:treemap",
+    "allocation_vs_target": "chart:bar",
+    "top_contributors":     "chart:hbar",
+    "top_detractors":       "chart:waterfall",
+    "fees_table":           "chart:donut",
+}
+AS_TABLE = {
+    "performance_history":  "returns_table",
+    "performance_line":     "returns_table",
+    "comparison_chart":     "comparison_table",
+    "allocation_donut":     "holdings_table",
+    "chart:donut":          "holdings_table",
+    "chart:bar":            "allocation_vs_target",
+    "chart:treemap":        "holdings_table",
+    "chart:gauge":          "comparison_table",
+    "chart:progress":       "returns_table",
+    "chart:waterfall":      "comparison_table",
+}
+
+# fees_table and disclosures are appended by the coverage gate regardless,
+# so no arm has to carry them explicitly.
+
+
+# Which fact category each block speaks to. Chart variants are listed
+# individually: chartifying top_contributors yields chart:hbar, and if that
+# were filed under "allocation" the attribution category would silently
+# vanish from the visual arm — which is the exact failure this map exists
+# to prevent.
+CATEGORY = {
+    "performance_history": "performance", "returns_table": "performance",
+    "performance_line": "performance", "comparison_chart": "performance",
+    "chart:progress": "performance",
+    "allocation_donut": "allocation", "allocation_vs_target": "allocation",
+    "holdings_table": "allocation", "chart:donut": "allocation",
+    "chart:treemap": "allocation", "chart:bar": "allocation",
+    "top_contributors": "attribution", "top_detractors": "attribution",
+    "comparison_table": "attribution", "chart:hbar": "attribution",
+    "chart:waterfall": "attribution",
+    "risk_card": "risk", "chart:gauge": "risk",
+    "fees_table": "costs",
+}
+
+
+def _category(spec: str) -> str:
+    return CATEGORY.get(spec, CATEGORY.get(spec.split(":")[0], spec))
+
+
+def _one_per_category(blocks, limit=None):
+    """First block of each distinct category, order preserved."""
+    out, seen = [], set()
+    for b in blocks:
+        c = _category(b)
+        if c in seen:
+            continue
+        seen.add(c)
+        out.append(b)
+    return out[:limit] if limit else out
+
+
+# Two renderings of the same fact. Swapping along these pairs changes the
+# document's character without changing what it tells the client.
+AS_CHART = {
+    "returns_table":        "performance_history",
+    "comparison_table":     "comparison_chart",
+    "holdings_table":       "chart:treemap",
+    "allocation_vs_target": "chart:bar",
+    "top_contributors":     "chart:hbar",
+    "top_detractors":       "chart:waterfall",
+}
+AS_TABLE = {
+    "performance_history":  "returns_table",
+    "performance_line":     "returns_table",
+    "comparison_chart":     "comparison_table",
+    "allocation_donut":     "holdings_table",
+    "chart:donut":          "holdings_table",
+    "chart:bar":            "allocation_vs_target",
+    "chart:treemap":        "holdings_table",
+    "chart:hbar":           "top_contributors",
+    "chart:waterfall":      "top_detractors",
+    "chart:gauge":          "comparison_table",
+    "chart:progress":       "returns_table",
+}
+
+
+def _chartify(blocks):
+    return [AS_CHART.get(b, b) for b in blocks]
+
+
+def _tabulate(blocks):
+    return [AS_TABLE.get(b, b) for b in blocks]
+
+
 def blocks_for(report_type: str, strategy: str) -> list:
+    """One arm's document.
+
+    Every arm covers the same categories; they differ in how many blocks
+    they spend per category and whether those blocks are charts, tables or
+    prose. fees_table and disclosures are appended by the coverage gate, so
+    no arm needs to carry them explicitly.
+    """
     focus = FOCUS.get(report_type, ["returns_table", "allocation_donut"])
-    if strategy == "concise":
-        # Trims DEPTH (fewer breakdowns), never fact CATEGORIES: headline
-        # figures, the type's top two focus blocks, and always the fees
-        # table when the type carries one — costs are facts a client is
-        # entitled to see regardless of how tersely they like their report.
-        keep = focus[:2]
-        if "fees_table" in focus and "fees_table" not in keep:
-            keep = keep + ["fees_table"]
-        return CORE_TOP + keep + CORE_END
+
     if strategy == "visual":
-        charts = [b for b in focus if b.startswith("chart")] or ["chart:donut"]
-        rest = [b for b in focus if not b.startswith("chart")]
-        return CORE_TOP + charts + rest + CORE_END
+        # Charts only — every table becomes its chart equivalent, so the
+        # figures are all present, drawn rather than listed.
+        body = _chartify(focus)
+        if not any(b.startswith("chart") or "history" in b for b in body):
+            body.insert(0, "chart:donut")
+        return ["kpi_grid", "callout"] + body + ["key_takeaways"]
+
     if strategy == "numeric":
-        tables = [b for b in focus if "table" in b]
-        rest = [b for b in focus if "table" not in b]
-        return CORE_TOP + tables + rest + CORE_END
+        # Tables only, no charts, plus holdings detail. Precision over
+        # impression.
+        body = [b for b in _tabulate(focus) if not b.startswith("chart")]
+        if "holdings_table" not in body:
+            body.append("holdings_table")
+        if not any(_category(b) == "attribution" for b in body):
+            body.append("comparison_table")
+        return ["kpi_grid"] + body
+
     if strategy == "narrative":
-        return (["narrative", "kpi_grid", "callout"] + focus
-                + ["explainer" if "explainer" not in focus else "chart:donut"]
-                + CORE_END)
+        # Prose leads and carries the argument, with one supporting block
+        # per category so nothing is merely asserted.
+        return (["narrative", "kpi_grid", "callout"]
+                + _one_per_category(focus) + ["key_takeaways", "explainer"])
+
+    if strategy == "concise":
+        # Short means fewer blocks PER CATEGORY, never fewer categories:
+        # dropping allocation or attribution would tell this client less
+        # than the next one, which is the line personalisation must not
+        # cross. No narrative, no takeaways, no explainer.
+        return ["kpi_grid", "callout"] + _one_per_category(_chartify(focus))
+
     if strategy == "comparison":
-        cmp_first = [b for b in focus if "comparison" in b or "vs" in b]
-        rest = [b for b in focus if b not in cmp_first]
-        return CORE_TOP + cmp_first + rest + CORE_END
-    # balanced / mandated / anything else: the full set in natural order
-    return CORE_TOP + focus + CORE_END
+        # Everything framed against the benchmark or the prior period.
+        lead = ["comparison_chart", "returns_table", "allocation_vs_target"]
+        rest = _one_per_category(
+            [b for b in focus if _category(b) not in
+             {_category(x) for x in lead}])
+        return ["kpi_grid", "callout"] + lead + rest + ["key_takeaways"]
+
+    # balanced: the full picture, charts and tables together.
+    return (["kpi_grid", "callout", "narrative"] + focus
+            + ["key_takeaways", "explainer"])
 
 
 def dedupe(seq):
