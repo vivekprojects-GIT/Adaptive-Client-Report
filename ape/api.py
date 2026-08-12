@@ -98,6 +98,21 @@ from .store.mongo_schema import (
 )
 
 
+def template_selection_enabled() -> bool:
+    """Whether APE's bandit picks among the six written template arms.
+
+    Off, the LLM composer is the only route to a template. Gated by
+    environment rather than deleted, because the two modes are a real
+    product choice and one deployment wanting only the composer is not a
+    reason for every deployment to lose the selector.
+
+    Read per call, not cached at import: a flag flipped in .env should take
+    effect on the next request, not the next redeploy.
+    """
+    return os.getenv("APE_TEMPLATE_SELECTION", "1").strip().lower() \
+        not in ("0", "false", "off", "no")
+
+
 app = FastAPI(title="APE Modular — Production (MongoDB)", version="2.0.0")
 
 # Public-host hardening: advisor gate, gmail token from secret, boot
@@ -248,6 +263,17 @@ def rag_ingest(force: bool = False):
 # ----- Legacy turn-record view (kept for the analytics page) ----------------
 
 # ---- Adaptive client reporting (D1) ---------------------------------------
+
+@app.get("/config/features")
+def config_features():
+    """What this deployment has switched on.
+
+    The UI reads it rather than guessing, so a control that leads nowhere
+    is never drawn — the alternative is a toggle that appears to work and
+    is quietly overridden by the server.
+    """
+    return {"template_selection": template_selection_enabled()}
+
 
 @app.get("/config/report-types")
 def list_report_types():
@@ -643,6 +669,9 @@ def d1_decision(client_id: str, report_type: str):
     Returns the arm scores, the preference inputs behind them, and how much
     weight the client's own evidence currently carries. This is what the
     advisor sees when they ask 'why this template?'.
+
+    With arm selection switched off there is no such decision to explain,
+    and inventing arm scores nothing acted on would be a panel that lies.
     """
     from .reporting.d1 import (cell_key, eligible_arms, evidence_weight,
                                score_arms, select, DIMENSIONS)
@@ -829,6 +858,12 @@ async def generate_one_report(request: Request):
     #                        registry. Better per-client fit, but a one-off
     #                        with no arm to reward, so it teaches D1 nothing
     compose = str(body.get("composer") or "").lower() in ("llm", "true", "1")
+    if not template_selection_enabled():
+        # Arm selection is switched off in this environment: the composer
+        # is the only way a template gets made. Forced here rather than
+        # trusted to the UI, because an old browser tab or a direct API
+        # call would otherwise still reach the selector.
+        compose = True
     compose_diag = None
     if compose:
         from .reporting.composer import compose_template

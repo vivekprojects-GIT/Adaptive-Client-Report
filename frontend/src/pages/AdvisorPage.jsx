@@ -41,6 +41,10 @@ export default function AdvisorPage() {
   const [composer, setComposer] = useState("");
   const [insight, setInsight]   = useState(null);
   const [note, setNote]         = useState("");
+  // Which modes this deployment offers. Read from the server rather
+  // than assumed, so a control that the server would override is
+  // never drawn in the first place.
+  const [selectorOn, setSelectorOn] = useState(true);
   const [toast, setToast]       = useState({ msg: null, kind: "" });
   const fileRef = useRef(null);
   const notify = (msg, kind = "ok") => setToast({ msg, kind });
@@ -57,14 +61,31 @@ export default function AdvisorPage() {
   useEffect(() => { refreshAll().catch((e) => notify("Load failed: " + e.message, "error")); }, []);
 
   useEffect(() => {
+    api.features()
+       .then((f) => {
+         const on = f.template_selection !== false;
+         setSelectorOn(on);
+         if (!on) {
+           setComposer("llm");            // the only mode left
+           setView((v) => (v === "arms" ? "clients" : v));
+         }
+       })
+       .catch(() => setSelectorOn(true));
+  }, []);
+
+  useEffect(() => {
     if (!selected) { setDecision(null); setInsight(null); return; }
-    api.d1Decision(selected.client_id, reportType)
-       .then(setDecision)
-       .catch((e) => notify("Decision failed: " + e.message, "error"));
+    if (selectorOn) {
+      api.d1Decision(selected.client_id, reportType)
+         .then(setDecision)
+         .catch((e) => notify("Decision failed: " + e.message, "error"));
+    } else {
+      setDecision(null);
+    }
     api.clientInsight(selected.client_id)
        .then((v) => { setInsight(v); setNote(v?.skill?.advisor_note || ""); })
        .catch(() => { setInsight(null); setNote(""); });
-  }, [selected, reportType]);
+  }, [selected, reportType, selectorOn]);
 
   async function openClientView(reportId) {
     try {
@@ -183,8 +204,13 @@ export default function AdvisorPage() {
       <aside className="adv-nav">
         <div className="adv-brand"><span className="adv-logo">APE</span> Advisor</div>
         <nav>
+          {/* The arms page is the selector's own config surface. With
+              selection off it edits machinery nothing consults, which is
+              exactly the kind of nav item this app does not carry. */}
           {[["clients", "Clients"], ["reports", "Reports"],
-            ["segments", "Segments"], ["arms", "Templates (Arms)"]].map(([id, label]) => (
+            ["segments", "Segments"],
+            ...(selectorOn ? [["arms", "Templates (Arms)"]] : [])
+           ].map(([id, label]) => (
             <button key={id} className={`adv-nav-item ${view === id ? "on" : ""}`}
                     onClick={() => setView(id)}>{label}</button>
           ))}
@@ -216,8 +242,11 @@ export default function AdvisorPage() {
 
           {/* Two mutually exclusive modes, so a toggle rather than a
               select: both options stay visible, and which one is active
-              is readable without opening anything. */}
-          <label className="adv-bar-lbl">Template</label>
+              is readable without opening anything. Hidden entirely when
+              arm selection is switched off — a two-state control with one
+              reachable state is not a control. */}
+          {selectorOn && <label className="adv-bar-lbl">Template</label>}
+          {selectorOn &&
           <div className="adv-toggle" role="group" aria-label="Template mode">
             {[["", "APE selects", "Learns from engagement"],
               ["llm", "AI composes", "One-off, teaches D1 nothing"]]
@@ -231,7 +260,7 @@ export default function AdvisorPage() {
                   onClick={() => setComposer(value)}
                 >{label}</button>
               ))}
-          </div>
+          </div>}
 
           <label className="adv-bar-lbl">Period</label>
           <select value={period} onChange={(e) => setPeriod(e.target.value)}>
@@ -247,12 +276,17 @@ export default function AdvisorPage() {
             Generate for all {clients.length || ""}
           </button>
           <span className="adv-bar-note">
-            {composer === "llm"
-              ? "Composed layouts are one-offs — no arm to reward, so they teach APE nothing. "
-              : ""}
-            {selType?.personalisable === false
-              ? "Prescribed — mandated template, D1 not consulted"
-              : `${armTemplates.length} arms available`}
+            {!selectorOn
+              ? "Arm selection is off in this environment — every report is "
+                + "composed from the block registry."
+              : <>
+                  {composer === "llm"
+                    ? "Composed layouts are one-offs — no arm to reward, so they teach APE nothing. "
+                    : ""}
+                  {selType?.personalisable === false
+                    ? "Prescribed — mandated template, D1 not consulted"
+                    : `${armTemplates.length} arms available`}
+                </>}
           </span>
         </header>
 
@@ -332,7 +366,7 @@ export default function AdvisorPage() {
             </section>
 
             <div>
-              <section className="adv-panel">
+              {selectorOn && <section className="adv-panel">
                 <div className="adv-panel-hd"><h2>APE decision (D1)</h2></div>
                 {!decision ? <div className="adv-none">Select a client.</div> : (
                   <>
@@ -358,7 +392,7 @@ export default function AdvisorPage() {
                     ))}
                   </>
                 )}
-              </section>
+              </section>}
 
               <section className="adv-panel">
                 <div className="adv-panel-hd"><h2>What we've learned</h2></div>

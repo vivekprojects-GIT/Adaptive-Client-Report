@@ -144,6 +144,13 @@ def main():
         rep = db.get(Report, rid)
         check("report row in SQL", rep is not None and rep.template_arm != "",
               f"arm={rep.template_arm}, method={rep.selection_method}" if rep else "")
+        # Which template path this run actually exercised. Said out loud
+        # because APE_TEMPLATE_SELECTION=0 silently routes every report to
+        # the composer, and a suite that stops covering the selector
+        # without saying so is worse than one that never covered it.
+        if rep is not None and rep.selection_method == "llm_composed":
+            print("  note  arm selection is OFF in this environment — the "
+                  "UCB selector was NOT exercised by this run")
         nblocks = db.scalar(select(func.count()).select_from(ReportBlock)
                             .where(ReportBlock.report_id == rid))
         check("blocks persisted with source_refs", nblocks and nblocks > 5,

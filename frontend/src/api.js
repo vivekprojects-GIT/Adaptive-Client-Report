@@ -29,6 +29,7 @@ export const api = {
   d1Decision:           (clientId, reportType)             => request("GET",    "/ape/d1-decision?client_id=" + encodeURIComponent(clientId) + "&report_type=" + encodeURIComponent(reportType)),
   generateOneReport:    (payload)                          => request("POST",   "/reports/generate-one", payload),
   reportClientLink:     (reportId)                         => request("GET",    `/reports/${encodeURIComponent(reportId)}/link`),
+  features:             ()                                 => request("GET",    `/config/features`),
   clientInsight:        (clientId)                         => request("GET",    `/clients/${encodeURIComponent(clientId)}/insight`),
   setSkillNote:         (clientId, note)                   => request("POST",   `/clients/${encodeURIComponent(clientId)}/skill-note`, { note }),
   d1State:              ()                                 => request("GET",    "/ape/d1-state"),
