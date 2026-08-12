@@ -513,6 +513,90 @@ BUILDERS = {
 
 MANDATORY_BLOCK_TYPES = ("fees_table", "disclosures")
 
+# A template is written for a rich source. When a client's data is thinner —
+# a CSV upload has one period and no holdings — the blocks that need that
+# depth return None and simply vanish, and a template built around them
+# collapses: the numeric arm asked for 7 blocks and rendered 4, having lost
+# every table it was designed around.
+#
+# So coverage is repaired at RENDER time against what this client's data can
+# actually support: for each category, try candidates in order until one
+# builds. The arm still sets the document's character; this only stops a
+# category disappearing because the arm's preferred rendering of it needed
+# data that is not there.
+COVERAGE_CANDIDATES = {
+    "performance": ("returns_table", "performance_history",
+                    "comparison_chart", "comparison_table"),
+    "allocation":  ("allocation_donut", "holdings_table",
+                    "allocation_vs_target"),
+    "attribution": ("comparison_table", "top_contributors"),
+}
+
+_BLOCK_CATEGORY = {
+    "returns_table": "performance", "performance_history": "performance",
+    "performance_line": "performance", "comparison_chart": "performance",
+    "allocation_donut": "allocation", "allocation_vs_target": "allocation",
+    "holdings_table": "allocation",
+    "comparison_table": "attribution", "top_contributors": "attribution",
+    "top_detractors": "attribution",
+}
+
+
+def _chart_category(block: Dict[str, Any]) -> Optional[str]:
+    """Generic chart blocks carry their category in the data they were
+    bound to, not in the type name."""
+    if block.get("type") != "chart":
+        return None
+    title = str(block.get("title", "")).lower()
+    if "allocation" in title or "asset" in title or "holding" in title:
+        return "allocation"
+    if "contribut" in title or "driver" in title or "detract" in title:
+        return "attribution"
+    if "return" in title or "performance" in title or "period" in title:
+        return "performance"
+    # Unrecognised chart: claim NOTHING. Guessing "performance" here would
+    # mark the category covered and suppress the repair, leaving a report
+    # with no performance block at all — the opposite of the intent. An
+    # extra block is a cheap error; a missing category is not.
+    return None
+
+
+def enforce_coverage(report: Dict[str, Any],
+                     snapshot: ClientSnapshot) -> List[str]:
+    """Append a renderable block for any category the document lost.
+
+    Returns what had to be added. Nothing is added for a category this
+    client's data cannot evidence at all — a thin source yields a shorter
+    report, never an invented one.
+    """
+    present = set()
+    for b in report["blocks"]:
+        cat = _BLOCK_CATEGORY.get(b["type"]) or _chart_category(b)
+        if cat:
+            present.add(cat)
+
+    added: List[str] = []
+    n = len(report["blocks"])
+    for category, candidates in COVERAGE_CANDIDATES.items():
+        if category in present:
+            continue
+        for block_type in candidates:
+            builder = BUILDERS.get(block_type)
+            if builder is None:
+                continue
+            n += 1
+            block = builder(snapshot, n)
+            if not block:
+                continue          # data cannot support this rendering either
+            idx = next((i for i, b in enumerate(report["blocks"])
+                        if b["type"] in ("key_takeaways", "explainer",
+                                         "fees_table", "disclosures")),
+                       len(report["blocks"]))
+            report["blocks"].insert(idx, block)
+            added.append(block_type)
+            break
+    return added
+
 
 def enforce_mandatory(report: Dict[str, Any],
                       snapshot: ClientSnapshot) -> List[str]:

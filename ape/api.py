@@ -829,8 +829,11 @@ async def generate_one_report(request: Request):
     # Structural coverage gate: mandatory categories (costs, disclosures)
     # are appended if the template omitted them. Personalisation may not
     # shrink what the client is told.
-    from .reporting.generate import enforce_mandatory
-    enforced = enforce_mandatory(report, snap)
+    from .reporting.generate import enforce_coverage, enforce_mandatory
+    # Order matters: repair missing CATEGORIES first (a thin data source may
+    # have voided the arm's preferred renderings), then guarantee the
+    # mandatory blocks regardless.
+    enforced = enforce_coverage(report, snap) + enforce_mandatory(report, snap)
 
     # THE LLM WRITES THE PROSE. Style comes from the control plane: the
     # selected template's strategy plus this client's learned dimensions.
