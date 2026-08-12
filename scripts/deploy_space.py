@@ -43,7 +43,11 @@ ROOT = Path(__file__).resolve().parents[1]
 IGNORE = [
     ".env", ".env.*", "credentials.json", "token.json", "*.pem", "*.key",
     "data/**", "**/__pycache__/**", "*.pyc",
-    "node_modules/**", "frontend/node_modules/**", "frontend/dist/**",
+    "node_modules/**", "frontend/node_modules/**",
+    # frontend/dist/ is DELIBERATELY not ignored here even though .gitignore
+    # excludes it from source control: the Space has no Docker build stage
+    # to compile it, so main() builds it fresh and this push must include
+    # it. See build_frontend().
     ".git/**", ".venv/**", "venv/**", "*.zip", "*.db", "*.sqlite*",
     ".pytest_cache/**", ".ruff_cache/**",
 ]
@@ -63,6 +67,24 @@ OPTIONAL_SECRETS = [
 ]
 
 
+def build_frontend() -> None:
+    """Compile the React app. The Space has no Docker build stage any more
+    (sdk: gradio runs `python app.py` directly), so the compiled bundle
+    must be pushed as plain files rather than built on the host."""
+    import shutil
+    import subprocess
+
+    npm = shutil.which("npm") or shutil.which("npm.cmd")
+    if npm is None:
+        sys.exit("npm not found — install Node to build the frontend before "
+                 "deploying, or build it yourself: cd frontend && npm run build")
+    print("building frontend...")
+    subprocess.run([npm, "run", "build"], cwd=str(ROOT / "frontend"),
+                   check=True)
+    if not (ROOT / "frontend" / "dist" / "index.html").is_file():
+        sys.exit("frontend build did not produce dist/index.html")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--space", required=True, help="owner/space-name")
@@ -70,7 +92,13 @@ def main() -> None:
                     help="create private (client links still need the token)")
     ap.add_argument("--dry-run", action="store_true",
                     help="list what would upload and stop")
+    ap.add_argument("--skip-build", action="store_true",
+                    help="reuse the existing frontend/dist instead of "
+                        "rebuilding")
     args = ap.parse_args()
+
+    if not args.dry_run and not args.skip_build:
+        build_frontend()
 
     from huggingface_hub import HfApi
     from huggingface_hub.utils import HfHubHTTPError
@@ -114,10 +142,11 @@ def main() -> None:
               else f"STOP - would upload {leaked}")
         return
 
-    print(f"creating space {args.space} (docker sdk)")
+    print(f"creating space {args.space} (gradio sdk, app.py runs FastAPI "
+         f"directly)")
     try:
         api.create_repo(repo_id=args.space, repo_type="space",
-                        space_sdk="docker", private=args.private,
+                        space_sdk="gradio", private=args.private,
                         exist_ok=True)
     except HfHubHTTPError as exc:
         sys.exit(f"could not create space: {exc}")
