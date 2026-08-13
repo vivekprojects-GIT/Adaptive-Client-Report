@@ -33,43 +33,48 @@ from typing import Any, Dict
 from ape.reporting.generate import DOC_CSS, render_body, _esc
 
 
-# Three at most, here and in the follow-ups. A chip row is a suggestion,
-# not a menu: past three it starts reading as the set of things you are
-# allowed to ask, which is the opposite of what it is for.
-MAX_CHIPS = 3
+# Two about the content, two about what the chat can draw — the same
+# split the follow-ups use after every answer, so the row never changes
+# shape mid-conversation.
+N_CONTENT, N_CAPABILITY = 2, 2
 
-OPENING_CHIPS = [
+OPENING_CONTENT = [
     ("Give me a quick summary of this report.", "Quick summary"),
-    ("How did I do against the benchmark?", "vs benchmark"),
     ("Explain the fees I paid this period.", "Explain my fees"),
+    ("How did I do against the benchmark?", "vs benchmark"),
 ]
 
 
 def _opening_chips(snapshot=None) -> str:
     """The chips a client sees before they have asked anything.
 
-    One offers a chart, because most people do not know they can ask for
-    one and a chip is how an interface says what it can do. It is only
-    offered when this client's data can actually fill it — a control that
-    leads to "sorry, not enough data" teaches the opposite lesson.
+    Half say what the document covers; half say what can be DRAWN from it.
+    Most people do not know they can ask a report for a chart, and a chip
+    is how an interface says what it can do — but only for subjects this
+    client's own data can fill, so a chip never leads to "sorry, not
+    enough data".
 
-    The chart chip takes a slot rather than being appended, so the row
-    stays at three.
+    Falls back to content-only when the snapshot is missing or too thin to
+    draw anything, rather than showing a control that cannot deliver.
     """
-    chips = list(OPENING_CHIPS)
+    chips = list(OPENING_CONTENT[:N_CONTENT])
     if snapshot is not None:
         try:
             from ape.reporting import chat_widgets as cw
-            for binding in cw.chip_bindings(snapshot):
+            for binding in cw.chip_bindings(snapshot)[:N_CAPABILITY]:
                 chip = cw.CHIPS.get(binding)
                 if chip:
-                    chips = chips[:MAX_CHIPS - 1] + [(chip, "See it as a chart")]
-                    break
+                    chips.append((chip, "See it as a chart"))
         except Exception:
             pass
+    if len(chips) < N_CONTENT + N_CAPABILITY:
+        for extra in OPENING_CONTENT[N_CONTENT:]:
+            if len(chips) >= N_CONTENT + N_CAPABILITY:
+                break
+            chips.append(extra)
     return "\n".join(
         f'    <button data-q="{_esc(q)}">{_esc(label)}</button>'
-        for q, label in chips[:MAX_CHIPS])
+        for q, label in chips[:N_CONTENT + N_CAPABILITY])
 
 
 def render_viewer(report: Dict[str, Any], token: str, snapshot=None) -> str:

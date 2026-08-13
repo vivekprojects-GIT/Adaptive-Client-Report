@@ -305,50 +305,80 @@ _FOLLOWUP_BY_INTENT = {
 }
 
 
+N_CONTENT = 2      # about what the report SAYS
+N_CAPABILITY = 2   # about what the chat can DO with it
+
+
 def suggest_followups(report: Dict[str, Any], intent: str = "",
                       asked: Optional[List[str]] = None,
-                      limit: int = 3,
+                      limit: int = N_CONTENT + N_CAPABILITY,
                       snap: Optional[ClientSnapshot] = None,
                       block_type: str = "") -> List[str]:
-    """Chips grounded in THIS report's blocks, minus anything already asked.
+    """Four chips: two about the content, two about what can be drawn.
 
-    When a snapshot is supplied, one chip offers a CHART of whatever the
-    conversation is currently about — most clients do not know they can ask
-    for one, and a chip is how an interface says what it can do.
+    Both halves are grounded, and in different things.
 
-    Only one, and only ever drawable: the chip list is also the shortest
-    route to the next question, so filling it with charts would crowd out
-    the questions a client actually came with. Availability is checked
-    against this client's own data, so a chip can never lead to the
+    The CONTENT half is grounded in this document — drawn from the blocks
+    the report actually contains and the intent just answered, so a chip
+    never offers a question about a section the client was not sent.
+
+    The CAPABILITY half is grounded in what the model can actually produce
+    for THIS client's data. Most people do not know they can ask a report
+    for a chart, and a chip is how an interface says what it can do — but
+    only for bindings that can be filled, so a chip can never lead to the
     "cannot be drawn" path.
+
+    The split is fixed rather than best-effort. Letting content chips win
+    whenever the report is rich would mean the capabilities are advertised
+    least in exactly the reports that could show them off most.
     """
     seen = {q.strip().lower() for q in (asked or [])}
-    out: List[str] = []
 
-    nxt = _FOLLOWUP_BY_INTENT.get(intent)
-    if nxt and nxt.lower() not in seen:
-        out.append(nxt)
+    # ---- content: grounded in the blocks THIS report carries -------------
+    content: List[str] = []
 
-    if snap is not None:
-        from ape.reporting import chat_widgets as cw
-        for binding in cw.chip_bindings(snap, intent, block_type):
-            chip = cw.CHIPS.get(binding)
-            if chip and chip.lower() not in seen and chip not in out:
-                out.append(chip)
-                break
+    def add(q, bucket):
+        if q and q.lower() not in seen and q not in bucket                 and q not in content:
+            bucket.append(q)
+
+    add(_FOLLOWUP_BY_INTENT.get(intent), content)
 
     present = [b.get("type") for b in report.get("blocks", [])]
-    for block_type in present:
-        for q in _FOLLOWUP_BY_BLOCK.get(block_type, []):
-            if q.lower() not in seen and q not in out:
-                out.append(q)
-            if len(out) >= limit:
-                return out[:limit]
+    # The highlighted block first: a client pointing at the fees table is
+    # more likely to want another fees question than a generic one.
+    for bt in ([block_type] if block_type else []) + present:
+        if len(content) >= N_CONTENT:
+            break
+        for q in _FOLLOWUP_BY_BLOCK.get(bt, []):
+            add(q, content)
+            if len(content) >= N_CONTENT:
+                break
 
     for q in ("Give me a quick summary of this report.",
               "Explain this in simpler terms."):
-        if len(out) < limit and q.lower() not in seen and q not in out:
-            out.append(q)
+        if len(content) >= N_CONTENT:
+            break
+        add(q, content)
+
+    # ---- capability: grounded in what can be drawn for this client -------
+    capability: List[str] = []
+    if snap is not None:
+        from ape.reporting import chat_widgets as cw
+        for binding in cw.chip_bindings(snap, intent, block_type):
+            if len(capability) >= N_CAPABILITY:
+                break
+            add(cw.CHIPS.get(binding), capability)
+
+    # Content first — a client came with a question, not with a curiosity
+    # about the interface. Any unfilled capability slot is given back to
+    # content rather than left short.
+    out = content[:N_CONTENT] + capability[:N_CAPABILITY]
+    if len(out) < limit:
+        for q in content[N_CONTENT:]:
+            if len(out) >= limit:
+                break
+            if q not in out:
+                out.append(q)
     return out[:limit]
 
 
