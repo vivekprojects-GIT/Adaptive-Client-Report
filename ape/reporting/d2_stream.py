@@ -193,16 +193,19 @@ def stream_answer(
                         conversation_id=conv_id, client_id=snap.client_id,
                         report_id=report_id, role="client", content=question,
                         content_intent=intent, block_ids=bids))
-    session.add(Message(message_id=a_id, conversation_id=conv_id,
+    assistant = Message(message_id=a_id, conversation_id=conv_id,
                         client_id=snap.client_id, report_id=report_id,
                         role="assistant", content=answer,
                         content_intent=intent, answer_strategy=strategy,
-                        block_ids=bids))
+                        block_ids=bids)
+    session.add(assistant)
 
     try:
         sources = source_blocks(report_json or {}, snap, answer, block, intent)
     except Exception:
         sources = []
+    assistant.sources = sources
+    assistant.widget = widget or {}
 
     yield ("final", {
         "answer": answer, "intent": intent, "strategy": strategy,

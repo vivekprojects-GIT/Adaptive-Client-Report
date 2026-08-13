@@ -331,7 +331,13 @@ setTimeout(function(){ ev("dwell_60s", {}); }, 60000);
         if (m.role === "client") { add("m-q", m.content); return; }
         var el = add("m-a", "");
         el.innerHTML = md(m.content);
+        // Sources and the chart were stored with the answer, so a restored
+        // reply is the reply. Follow-up chips were not, on purpose: they
+        // suggested what to ask next, and next already happened.
+        if (m.sources && m.sources.length) el.appendChild(sourceRow(m.sources));
+        if (m.widget && m.widget.svg) el.appendChild(chartBox(m.widget));
       });
+      if (window.apeEnhanceWidgets) window.apeEnhanceWidgets(msgs);
       var mark = document.createElement("div");
       mark.className = "m-hint resumed";
       mark.textContent = "Earlier in this conversation ↑";
@@ -523,6 +529,36 @@ function md(src){
   }
   return out.join("");
 }
+// Shared by live answers and restored ones, so a reply from ten minutes
+// ago looks exactly like one from ten seconds ago.
+function sourceRow(list){
+  var src = document.createElement("div");
+  src.className = "src";
+  src.appendChild(document.createTextNode("From: "));
+  list.forEach(function(s, i){
+    if (i) src.appendChild(document.createTextNode(" · "));
+    var a = document.createElement("a");
+    a.href = "#"; a.setAttribute("data-goto", s.block_id);
+    a.textContent = s.title;
+    src.appendChild(a);
+  });
+  return src;
+}
+
+function chartBox(w){
+  var wrap = document.createElement("div"); wrap.className = "cw-ans";
+  var cap = document.createElement("span"); cap.textContent = w.title;
+  wrap.appendChild(cap);
+  var box = document.createElement("div");
+  box.className = "ecw";
+  box.setAttribute("data-kind", w.kind);
+  if (w.option) box.setAttribute("data-opt", JSON.stringify(w.option));
+  box.innerHTML = '<div class="ecw-live"></div>' +
+                  '<div class="ecw-fallback">' + w.svg + '</div>';
+  wrap.appendChild(box);
+  return wrap;
+}
+
 function addAnswer(res){
   var d = add("m-a", "");
   d.innerHTML = md(res.answer);
@@ -530,37 +566,13 @@ function addAnswer(res){
   // snapshot the report was. Same two layers as the document: the SVG is
   // written in directly, and the runtime upgrades it if it is there.
   if (res.widget && res.widget.svg){
-    var w = document.createElement("div"); w.className = "cw-ans";
-    var cap = document.createElement("span");
-    cap.textContent = res.widget.title;
-    w.appendChild(cap);
-    var box = document.createElement("div");
-    box.className = "ecw";
-    box.setAttribute("data-kind", res.widget.kind);
-    if (res.widget.option){
-      box.setAttribute("data-opt", JSON.stringify(res.widget.option));
-    }
-    box.innerHTML = '<div class="ecw-live"></div>' +
-                    '<div class="ecw-fallback">' + res.widget.svg + '</div>';
-    w.appendChild(box); d.appendChild(w);
+    d.appendChild(chartBox(res.widget));
     if (window.apeEnhanceWidgets) window.apeEnhanceWidgets(d);
   }
   // Where the answer came from. Clicking scrolls the document to that
   // section and flashes it, so a client can check any figure against the
   // report rather than taking the chat's word for it.
-  if (res.sources && res.sources.length){
-    var src = document.createElement("div");
-    src.className = "src";
-    src.appendChild(document.createTextNode("From: "));
-    res.sources.forEach(function(s, i){
-      if (i) src.appendChild(document.createTextNode(" · "));
-      var a = document.createElement("a");
-      a.href = "#"; a.setAttribute("data-goto", s.block_id);
-      a.textContent = s.title;
-      src.appendChild(a);
-    });
-    d.appendChild(src);
-  }
+  if (res.sources && res.sources.length) d.appendChild(sourceRow(res.sources));
 
   // Follow-ups belong to THIS answer, so they sit under it rather than in
   // a fixed row at the bottom of the pane. A client reading a reply sees

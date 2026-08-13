@@ -74,6 +74,10 @@ def init_db(drop: bool = False) -> None:
 # here with ALTER TABLE.
 _ADDED_COLUMNS = {
     "client_skills": {"stated_prefs": "JSON DEFAULT '[]'"},
+    # An answer's evidence and its chart, so a restored conversation shows
+    # what the client actually saw rather than a stripped transcript.
+    "messages": {"sources": "JSON DEFAULT '[]'",
+                 "widget": "JSON DEFAULT '{}'"},
 }
 
 

@@ -293,6 +293,16 @@ class Message(Base):
     # the report should have been a table.
     answer_strategy: Mapped[str] = mapped_column(String(48), default="")
     block_ids: Mapped[list] = mapped_column(JSON, default=list)
+    # What the answer was made OF, kept so a restored conversation is the
+    # same conversation. Sources are the sections it cited; widget is the
+    # chart it was shown with, SVG and all.
+    #
+    # Follow-up chips are deliberately NOT stored. They are a suggestion
+    # about what to ask NEXT, and next has already happened by the time
+    # anyone re-reads this — restoring them would put a stale prompt under
+    # an answer whose conversation moved on. They are regenerated live.
+    sources: Mapped[list] = mapped_column(JSON, default=list)
+    widget:  Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
 

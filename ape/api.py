@@ -1579,6 +1579,12 @@ def report_history(report_id: str, token: str = "", limit: int = 40):
                         "message_id": m.message_id,
                         "conversation_id": m.conversation_id,
                         "block_ids": m.block_ids or [],
+                        # The evidence and the chart, so a restored answer
+                        # IS the answer. Follow-up chips are not stored:
+                        # they suggest what to ask NEXT, and next has
+                        # already happened by the time anyone re-reads it.
+                        "sources": m.sources or [],
+                        "widget": m.widget or None,
                         "at": m.created_at.isoformat(timespec="seconds")})
     return {"messages": out,
             "conversation_id": out[-1]["conversation_id"] if out else None}

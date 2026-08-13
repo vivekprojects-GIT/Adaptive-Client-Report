@@ -812,12 +812,13 @@ def answer_question(
                         content_intent=intent,
                         block_ids=[b for b in
                                    [(block or {}).get("block_id")] if b]))
-    session.add(Message(message_id=a_id, conversation_id=conv_id,
+    assistant = Message(message_id=a_id, conversation_id=conv_id,
                         client_id=snap.client_id, report_id=report_id,
                         role="assistant", content=answer,
                         content_intent=intent, answer_strategy=strategy,
                         block_ids=[b for b in
-                                   [(block or {}).get("block_id")] if b]))
+                                   [(block or {}).get("block_id")] if b])
+    session.add(assistant)
 
     # Where this answer came from, resolved by tracing its figures back to
     # the blocks that carry them. Mandatory: an answer about someone's
@@ -828,6 +829,11 @@ def answer_question(
                                 block, intent)
     except Exception:
         sources = []
+
+    # Attached after the row is created rather than reordering the whole
+    # function: same session, same transaction, so it lands with the rest.
+    assistant.sources = sources
+    assistant.widget = widget or {}
 
     return {"answer": answer, "intent": intent, "strategy": strategy,
             "sources": sources,
