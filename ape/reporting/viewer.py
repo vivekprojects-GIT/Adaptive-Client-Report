@@ -437,6 +437,19 @@ function showAsk(sec, sel){
   hideAsk();
   var r = sel.getRangeAt(0).getBoundingClientRect();
   if (!r || (!r.width && !r.height)) return;
+
+  // Snapshot the TEXT, not the live Selection. The click that follows a
+  // drag reaches the section's own handler, which marks the passage and
+  // calls removeAllRanges — so by the time this button is pressed the
+  // live selection is empty, and reading it then would send nothing.
+  //
+  // Trim to whole words: a drag starts and ends mid-word, and "olio ended
+  // 2025 Q4 valued at" is a worse question than the passage it came from.
+  var parts = String(sel).trim().split(/ +/);
+  if (parts.length > 2) parts = parts.slice(1, parts.length - 1);
+  var joined = parts.join(' ');
+  var captured = joined.length > 3 ? joined : String(sel).trim();
+
   askBtn = document.createElement("button");
   askBtn.className = "askhl";
   askBtn.type = "button";
@@ -446,18 +459,13 @@ function showAsk(sec, sel){
   askBtn.onmousedown = function(e){ e.preventDefault(); };   // keep the range
   askBtn.onclick = function(e){
     e.stopPropagation();
-    // Trim to whole words. A drag often starts or ends mid-word, and
-    // "olio ended 2025 Q4 valued at" as the question makes the model
-    // reconcile a fragment instead of answering about the passage.
-    var parts = String(sel).trim().split(/ +/);
-    if (parts.length > 2) parts = parts.slice(1, parts.length - 1);
-    var words = parts.join(' ');
-    selText = words.length > 3 ? words : String(sel).trim();
+    selText = captured;
     setCtx(sec);
+    selText = captured;      // setCtx must not clear what we captured
     hideAsk();
-    // The selection travels as selected_text, which the prompt labels as
-    // what they are POINTING AT. Pasting it into the question makes the
-    // fragment the question, which is a different and worse thing to ask.
+    // Travels as selected_text, which the prompt labels as what they are
+    // POINTING AT. Pasting it into the question makes the fragment the
+    // question, which is a different and worse thing to ask.
     ask("Explain this");
   };
   document.body.appendChild(askBtn);
@@ -473,7 +481,11 @@ document.addEventListener("mouseup", function(e){
   if (!sec || String(sel).trim().length < 4) { hideAsk(); return; }
   showAsk(sec, sel);
 });
-document.addEventListener("scroll", hideAsk, true);
+// Deliberately no scroll handler. setCtx focuses the question box, which
+// scrolls the page, so hiding on scroll deleted the button a few hundred
+// milliseconds after every selection — the button appeared and then
+// vanished on its own. It is cleared on the next selection or click
+// instead, which is when it stops being relevant anyway.
 
 sections.forEach(function(sec){
   sec.addEventListener("click", function(){
