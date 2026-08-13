@@ -313,8 +313,12 @@ def suggest_followups(report: Dict[str, Any], intent: str = "",
                       asked: Optional[List[str]] = None,
                       limit: int = N_CONTENT + N_CAPABILITY,
                       snap: Optional[ClientSnapshot] = None,
-                      block_type: str = "") -> List[str]:
+                      block_type: str = "") -> List[Dict[str, str]]:
     """Four chips: two about the content, two about what can be drawn.
+
+    Each is {q, label, kind}: `q` is sent as the question, `label` is what
+    the client reads on the chip, and `kind` is content|capability so the
+    viewer can style the two differently.
 
     Both halves are grounded, and in different things.
 
@@ -333,13 +337,19 @@ def suggest_followups(report: Dict[str, Any], intent: str = "",
     least in exactly the reports that could show them off most.
     """
     seen = {q.strip().lower() for q in (asked or [])}
+    taken: set = set()
 
     # ---- content: grounded in the blocks THIS report carries -------------
-    content: List[str] = []
+    content: List[Dict[str, str]] = []
 
     def add(q, bucket):
-        if q and q.lower() not in seen and q not in bucket                 and q not in content:
-            bucket.append(q)
+        """Content chips label themselves: the question IS short and
+        specific already ("What is my biggest holding?"), and shortening it
+        further would only make it vaguer."""
+        if q and q.lower() not in seen and q.lower() not in taken:
+            taken.add(q.lower())
+            bucket.append({"q": q, "label": q.rstrip("?.").strip(),
+                           "kind": "content"})
 
     add(_FOLLOWUP_BY_INTENT.get(intent), content)
 
@@ -361,24 +371,26 @@ def suggest_followups(report: Dict[str, Any], intent: str = "",
         add(q, content)
 
     # ---- capability: grounded in what can be drawn for this client -------
-    capability: List[str] = []
+    capability: List[Dict[str, str]] = []
     if snap is not None:
         from ape.reporting import chat_widgets as cw
         for binding in cw.chip_bindings(snap, intent, block_type):
             if len(capability) >= N_CAPABILITY:
                 break
-            add(cw.CHIPS.get(binding), capability)
+            c = cw.chip(binding)
+            # Named specifically — "Fee breakdown (donut)", not "see it as
+            # a chart". Every generic label looks identical, which tells a
+            # client nothing about which chip answers their question.
+            if c and c["q"].lower() not in seen                     and c["q"].lower() not in taken:
+                taken.add(c["q"].lower())
+                capability.append(c)
 
     # Content first — a client came with a question, not with a curiosity
     # about the interface. Any unfilled capability slot is given back to
     # content rather than left short.
     out = content[:N_CONTENT] + capability[:N_CAPABILITY]
     if len(out) < limit:
-        for q in content[N_CONTENT:]:
-            if len(out) >= limit:
-                break
-            if q not in out:
-                out.append(q)
+        out += content[N_CONTENT:limit - len(out) + N_CONTENT]
     return out[:limit]
 
 

@@ -350,6 +350,33 @@ CHIPS = {
 }
 
 
+# The short label shown ON the chip. Names the subject and the chart, so
+# a client reads what they will get rather than "see it as a chart" — a
+# generic label makes every chip look identical and tells them nothing
+# about which one answers the question they have.
+CHIP_LABELS = {
+    "allocation":            "Allocation donut",
+    "allocation_vs_target":  "Actual vs target",
+    "attribution":           "Return drivers",
+    "holdings":              "Holdings treemap",
+    "performance_history":   "Return over time",
+    "portfolio_vs_benchmark": "You vs benchmark",
+    "fees":                  "Fee breakdown",
+    "cash_flows":            "Money in and out",
+}
+
+
+def chip(binding: str) -> Optional[Dict[str, str]]:
+    """The question to send and the label to show, for one subject."""
+    q = CHIPS.get(binding)
+    if not q:
+        return None
+    kind = resolve_kind(binding, named_kind(q))
+    return {"q": q,
+            "label": CHIP_LABELS.get(binding, binding.replace("_", " ")),
+            "kind": "capability", "chart": kind, "binding": binding}
+
+
 def chip_bindings(snap: ClientSnapshot, intent: str = "",
                   block_type: str = "") -> List[str]:
     """Subjects worth offering as a chart, most relevant first.

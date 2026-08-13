@@ -57,24 +57,29 @@ def _opening_chips(snapshot=None) -> str:
     Falls back to content-only when the snapshot is missing or too thin to
     draw anything, rather than showing a control that cannot deliver.
     """
-    chips = list(OPENING_CONTENT[:N_CONTENT])
+    chips = [(q, lab, "content") for q, lab in OPENING_CONTENT[:N_CONTENT]]
     if snapshot is not None:
         try:
             from ape.reporting import chat_widgets as cw
             for binding in cw.chip_bindings(snapshot)[:N_CAPABILITY]:
-                chip = cw.CHIPS.get(binding)
-                if chip:
-                    chips.append((chip, "See it as a chart"))
+                c = cw.chip(binding)
+                # "Fee breakdown", not "See it as a chart". A generic label
+                # makes every chip look identical and says nothing about
+                # which one answers the question the client actually has.
+                if c:
+                    chips.append((c["q"], c["label"], "capability"))
         except Exception:
             pass
     if len(chips) < N_CONTENT + N_CAPABILITY:
-        for extra in OPENING_CONTENT[N_CONTENT:]:
+        for q, lab in OPENING_CONTENT[N_CONTENT:]:
             if len(chips) >= N_CONTENT + N_CAPABILITY:
                 break
-            chips.append(extra)
+            chips.append((q, lab, "content"))
     return "\n".join(
-        f'    <button data-q="{_esc(q)}">{_esc(label)}</button>'
-        for q, label in chips[:N_CONTENT + N_CAPABILITY])
+        f'    <button data-q="{_esc(q)}" title="{_esc(q)}"'
+        f'{" class=chip-draw" if kind == "capability" else ""}'
+        f'>{_esc(label)}</button>'
+        for q, label, kind in chips[:N_CONTENT + N_CAPABILITY])
 
 
 def render_viewer(report: Dict[str, Any], token: str, snapshot=None) -> str:
@@ -168,6 +173,12 @@ __DOC_CSS__
  .m-a code{background:#eef2f7;padding:1px 4px;border-radius:3px;font-size:11.5px}
  .m-a strong{font-weight:600}
  .m-a h1,.m-a h2,.m-a h3{font-size:13px;margin:8px 0 4px;font-weight:600}
+ .chips.inline{padding:0;margin-top:9px;padding-top:8px;
+   border-top:1px solid #e2e8f0}
+ .chips.inline button{font-size:11.5px;padding:3px 9px;
+   white-space:normal;text-align:left;line-height:1.35}
+ .chips button.chip-draw{border-color:#c7d2fe;background:#eef2ff;color:#4338ca}
+ .chips button.chip-draw:hover{border-color:#4F46E5;background:#e0e7ff}
  .fb{display:flex;gap:6px;margin-top:7px}
  .cw-ans{margin:9px 0 2px;border:1px solid #e2e8f0;border-radius:8px;
    background:#fff;padding:7px 8px 2px}
@@ -432,6 +443,11 @@ function addAnswer(res){
     w.appendChild(box); d.appendChild(w);
     if (window.apeEnhanceWidgets) window.apeEnhanceWidgets(d);
   }
+  // Follow-ups belong to THIS answer, so they sit under it rather than in
+  // a fixed row at the bottom of the pane. A client reading a reply sees
+  // what to ask next without their eye leaving the reply.
+  if (res.followups && res.followups.length) d.appendChild(chipRow(res.followups));
+
   var fb = document.createElement("div"); fb.className = "fb";
   var up = document.createElement("button"); up.textContent = "\\uD83D\\uDC4D helpful";
   var dn = document.createElement("button"); dn.textContent = "\\uD83D\\uDC4E not really";
@@ -451,6 +467,11 @@ var busy = false;
 function ask(question){
   if (busy || !question.trim()) return;
   busy = true; document.getElementById("send").disabled = true;
+  // The opening row exists only before there is an answer to sit under.
+  // Left in place it would show one set of suggestions while each reply
+  // shows another.
+  var opening = document.getElementById("chips");
+  if (opening) opening.remove();
   add("m-q", question);
   var t = add("typing", "thinking…");
   post("/chat", {question: question, block_id: selBlock,
@@ -460,7 +481,6 @@ function ask(question){
       if (res.answer){
         conversationId = res.conversation_id;
         addAnswer(res);
-        setChips(res.followups);
       } else {
         add("m-a", "Something went wrong — please try again.");
       }
@@ -477,7 +497,10 @@ document.getElementById("send").onclick = function(){
 document.getElementById("q").addEventListener("keydown", function(e){
   if (e.key === "Enter"){ ask(this.value); this.value = ""; }
 });
-document.getElementById("chips").addEventListener("click", function(e){
+// Delegated at the document, because chips are now created inside every
+// answer bubble rather than living in one container that could own a
+// listener.
+document.addEventListener("click", function(e){
   var q = e.target.getAttribute && e.target.getAttribute("data-q");
   if (q) ask(q);
 });
@@ -485,17 +508,22 @@ document.getElementById("chips").addEventListener("click", function(e){
 // Chips come from the server, built from the blocks THIS report contains
 // and what has already been asked — so they stop repeating and stay
 // relevant to the document in front of the client.
-function setChips(list){
-  if (!list || !list.length) return;
-  var box = document.getElementById("chips");
-  box.innerHTML = "";
-  list.forEach(function(q){
+function chipRow(list){
+  var box = document.createElement("div");
+  box.className = "chips inline";
+  list.forEach(function(c){
+    // Server sends {q, label, kind}. Older shapes sent a bare string;
+    // tolerated so a cached page mid-deploy still renders something.
+    var q = (typeof c === "string") ? c : c.q;
+    var label = (typeof c === "string") ? c : (c.label || c.q);
     var b = document.createElement("button");
     b.setAttribute("data-q", q);
-    b.textContent = q.length > 34 ? q.slice(0, 32) + "…" : q;
+    b.className = (c && c.kind === "capability") ? "chip-draw" : "";
+    b.textContent = label.length > 38 ? label.slice(0, 36) + "…" : label;
     b.title = q;
     box.appendChild(b);
   });
+  return box;
 }
 
 // Drag the divider to widen the conversation. Persisted so the choice
