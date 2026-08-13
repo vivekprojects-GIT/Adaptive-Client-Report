@@ -38,6 +38,8 @@ def _build_message(to_email: str, client_name: str, report_url: str,
         f"Hi {client_name},\n\n"
         f"Your {period} portfolio report is ready.\n\n"
         f"Open your report:\n{report_url}\n\n"
+        "For your security you'll be asked to confirm your year of birth\n"
+        "the first time you open it.\n\n"
         "You can review it, highlight any section and ask questions about it,\n"
         "and download the PDF.\n"
     )
@@ -62,9 +64,14 @@ def _build_message(to_email: str, client_name: str, report_url: str,
       Inside the report you can highlight any section and ask questions about
       it, or download a PDF copy.
     </p>
+    <p style="color:#64748b;font-size:13px;line-height:1.55;margin:14px 0 0">
+      For your security, you'll be asked to confirm your year of birth the
+      first time you open it.
+    </p>
     <p style="color:#94a3b8;font-size:11.5px;margin:22px 0 0;
       border-top:1px solid #e2e8f0;padding-top:14px">
-      This link is personal to you and expires. Please do not forward it.
+      This link is personal to you and expires. Forwarding it will not give
+      anyone else access.
     </p>
   </div>
 </body></html>""", subtype="html")

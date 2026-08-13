@@ -57,7 +57,8 @@ from ape.reporting.chat_widgets import wants_visual
 from ape.reporting.csv_source import ClientSnapshot
 from ape.reporting.d2 import (DECLINE, STRATEGY_STYLE, _ANSWER_SYSTEM,
                               _check_answer, _choose_widget, _facts_for_scope,
-                              classify_intent, select_strategy, source_blocks,
+                              classify_intent, conversation_id_for,
+                              select_strategy, source_blocks,
                               strip_capability_disclaimer)
 
 
@@ -216,7 +217,8 @@ def stream_answer(
     # Persist exactly what was shown, for the same reason the buffered path
     # appends the decline before saving: a transcript that differs from
     # what the client read is a transcript of a different conversation.
-    conv_id = conversation_id or f"conv_{uuid.uuid4().hex[:12]}"
+    conv_id = conversation_id or conversation_id_for(snap.client_id,
+                                                     report_id)
     if session.get(Conversation, conv_id) is None:
         session.add(Conversation(conversation_id=conv_id,
                                  client_id=snap.client_id,

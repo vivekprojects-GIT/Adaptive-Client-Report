@@ -42,11 +42,13 @@ import os
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from urllib.parse import quote
 
 import anthropic
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
+from fastapi.responses import (FileResponse, HTMLResponse,
+                               RedirectResponse, StreamingResponse)
 from fastapi.staticfiles import StaticFiles
 
 from .analytics import (
@@ -1117,17 +1119,86 @@ async def send_report(report_id: str, request: Request):
     return {**result, "report_id": report_id}
 
 
-@app.get("/r/{report_id}", response_class=HTMLResponse)
-def client_report_view(report_id: str, token: str = ""):
-    """The client-facing surface. The TOKEN is the authorisation.
+def _first_name(client_id: str) -> str:
+    """First name only, for the greeting on the identity page."""
+    try:
+        from .db.models import Client
+        from .db.session import init_db, session_scope
+        init_db()
+        with session_scope() as db:
+            row = db.get(Client, client_id)
+            return (row.name or "").split()[0] if row and row.name else ""
+    except Exception:
+        return ""
 
-    Report ids are guessable, so knowing one must never be enough. A valid
-    token for a different report fails here too — that is the cross-client
-    case.
+
+@app.post("/r/{report_id}/verify", response_class=HTMLResponse)
+async def client_report_verify(request: Request, report_id: str):
+    """Check the answer; on success write the pass and open the report.
+
+    The token is re-verified here rather than trusted from the form. The
+    form field is client-controlled, so treating it as already-checked
+    would let anyone mint access by posting a report id and any string.
+    """
+    from .reporting.identity import (IdentityError, challenge_html,
+                                     cookie_name, cookie_path, mint_pass,
+                                     verify_answer, PASS_TTL_SECONDS)
+    from .reporting.tokens import TokenError, verify
+
+    form = await request.form()
+    token = str(form.get("token", ""))
+    given = str(form.get("birth_year", ""))
+
+    try:
+        _rid, client_id, _scope = verify(token, report_id=report_id)
+    except TokenError:
+        raise HTTPException(403, "link cannot be verified")
+
+    from .db.session import init_db, session_scope
+    init_db()
+    try:
+        with session_scope() as db:
+            verify_answer(db, report_id, client_id, given)
+    except IdentityError as exc:
+        # Wrong answers are logged: repeated failures on one report are
+        # what an attempt to guess a link looks like from the server side.
+        print(f"[SECURITY] identity check failed for {report_id} "
+              f"({client_id}): {exc}", flush=True)
+        return HTMLResponse(
+            challenge_html(report_id, token, first_name=_first_name(client_id),
+                           error=str(exc)),
+            status_code=401)
+
+    # 303 so the browser re-issues as GET; a refresh then reloads the
+    # report rather than re-posting the form.
+    resp = RedirectResponse(
+        url=f"/r/{report_id}?token={quote(token, safe='')}", status_code=303)
+    resp.set_cookie(
+        key=cookie_name(report_id), value=mint_pass(report_id, client_id),
+        max_age=PASS_TTL_SECONDS, path=cookie_path(report_id),
+        httponly=True,          # never readable by page script
+        samesite="lax",         # not sent on cross-site POSTs
+        secure=request.url.scheme == "https",
+    )
+    return resp
+
+
+@app.get("/r/{report_id}", response_class=HTMLResponse)
+def client_report_view(request: Request, report_id: str, token: str = ""):
+    """The client-facing surface, behind two gates.
+
+    The TOKEN proves the link is genuine — report ids are guessable, so
+    knowing one must never be enough, and a valid token for a different
+    report fails here too (the cross-client case).
+
+    The IDENTITY PASS proves the holder is the client the link was issued
+    to. The token cannot do that: it travels in a URL, and a URL can be
+    forwarded, pasted into a chat, or left in a shared inbox. Without this
+    second gate, whoever holds the link is the client.
     """
     from .reporting.tokens import TokenError, verify
     try:
-        verify(token, report_id=report_id)
+        _rid, client_id, _scope = verify(token, report_id=report_id)
     except TokenError as exc:
         # A client may be told why THEIR link failed. They may not be told
         # that the server has no signing secret — that names the exact
@@ -1148,6 +1219,16 @@ def client_report_view(report_id: str, token: str = ""):
             f'<p style="color:#64748b;font-size:14px;line-height:1.6">{shown}.'
             f'<br>Report links are personal and expire. Please ask your adviser '
             f'to send a fresh one.</p></div>', status_code=403)
+
+    # Second gate. The pass is written only after the client answers, and
+    # is scoped to this one report, so it cannot be carried across links.
+    from .reporting.identity import (challenge_html, cookie_name,
+                                     verify_pass)
+    if not verify_pass(request.cookies.get(cookie_name(report_id), ""),
+                       report_id, client_id):
+        return HTMLResponse(
+            challenge_html(report_id, token, first_name=_first_name(client_id)),
+            status_code=401)
 
     gen = Path(__file__).resolve().parents[1] / "data" / "generated"
     f = gen / f"{report_id}.json"
@@ -1173,16 +1254,34 @@ def client_report_view(report_id: str, token: str = ""):
     return HTMLResponse(render_viewer(report, token, snapshot=snap))
 
 
-def _viewer_auth(report_id: str, token: str) -> None:
+def _viewer_auth(report_id: str, token: str,
+                 request: Optional[Request] = None) -> str:
+    """Both gates on the client surface. Returns the client_id.
+
+    The token proves the URL is genuine; the identity pass proves the
+    holder answered the verification question. Gating only the HTML page
+    would be theatre — the page is a shell, and the report content, the
+    conversation history and the chat all arrive through these endpoints.
+    Anyone with the URL could read the lot with curl.
+    """
     from .reporting.tokens import TokenError, verify as _verify
     try:
-        _verify(token, report_id=report_id)
+        _rid, client_id, _scope = _verify(token, report_id=report_id)
     except TokenError as exc:
         detail = str(exc)
         if "APE_REPORT_TOKEN_SECRET" in detail:
             print(f"[SECURITY] report request refused — {detail}", flush=True)
             raise HTTPException(403, "link cannot be verified")
         raise HTTPException(403, detail)
+
+    if request is not None:
+        from .reporting.identity import cookie_name, verify_pass
+        held = request.cookies.get(cookie_name(report_id), "")
+        if not verify_pass(held, report_id, client_id):
+            # 401 rather than 403: the caller may still become authorised
+            # by answering, which is exactly what the viewer does with it.
+            raise HTTPException(401, "identity not confirmed for this report")
+    return client_id
 
 
 def _report_json(report_id: str) -> dict:
@@ -1326,7 +1425,7 @@ async def report_chat(report_id: str, request: Request):
     """The client talks to the report. Token-gated like the page itself;
     the highlighted block localises the answer to its own facts."""
     body = await request.json()
-    _viewer_auth(report_id, str(body.get("token", "")))
+    _viewer_auth(report_id, str(body.get("token", "")), request)
 
     report = _report_json(report_id)
     question = str(body.get("question", "")).strip()
@@ -1452,7 +1551,7 @@ async def report_chat_stream(report_id: str, request: Request):
     d2_stream for why that is not negotiable.
     """
     body = await request.json()
-    _viewer_auth(report_id, str(body.get("token", "")))
+    _viewer_auth(report_id, str(body.get("token", "")), request)
 
     report = _report_json(report_id)
     question = str(body.get("question", "")).strip()
@@ -1551,7 +1650,7 @@ async def report_chat_stream(report_id: str, request: Request):
 
 
 @app.get("/r/{report_id}/history")
-def report_history(report_id: str, token: str = "", limit: int = 40):
+def report_history(request: Request, report_id: str, token: str = "", limit: int = 40):
     """This client's earlier conversation about THIS report.
 
     Stored all along — every turn writes a Message row keyed by client_id
@@ -1563,7 +1662,7 @@ def report_history(report_id: str, token: str = "", limit: int = 40):
     from others through it would widen what that token grants, which is
     the sort of quiet scope creep the cross-client check exists to stop.
     """
-    _viewer_auth(report_id, token)
+    _viewer_auth(report_id, token, request)
     from .db.session import init_db, session_scope
     from .db.models import Message
     from sqlalchemy import select as _s
@@ -1595,7 +1694,7 @@ async def report_events(report_id: str, request: Request):
     """Engagement signals from the viewer. Every event is stored raw, then
     routed: D2 reward, report engagement, preference profile."""
     body = await request.json()
-    _viewer_auth(report_id, str(body.get("token", "")))
+    _viewer_auth(report_id, str(body.get("token", "")), request)
     report = _report_json(report_id)
 
     from .db.session import init_db, session_scope

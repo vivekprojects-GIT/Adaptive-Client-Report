@@ -37,6 +37,7 @@ thumb that arrives minutes later can find its way back.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import os
@@ -53,6 +54,28 @@ from ape.db.models import ApeState, Conversation, Message
 from ape.reporting.chat_widgets import wants_visual
 from ape.reporting.csv_source import ClientSnapshot
 from ape.reporting.grounding import derived_facts, extract_numbers, _matches
+
+
+def conversation_id_for(client_id: str, report_id: str) -> str:
+    """One conversation per client per report — derived, not random.
+
+    THE REPORT IS THE SESSION. A thread cannot outlive the report it is
+    about: the link authorises one report, and the grounding allowlist is
+    that report's frozen snapshot, so a thread spanning two reports would
+    hold questions whose facts are no longer in scope. Continuity across
+    reports lives in the learned profile instead, which is where it
+    belongs.
+
+    Derived rather than random because a random id has to be handed back
+    by the caller to stay on the same thread, and any caller that forgets
+    silently forks a new one. That is not hypothetical: one report had
+    accumulated 39 conversations, 34 of them holding a single exchange.
+    A deterministic id makes the fork impossible rather than merely
+    discouraged.
+    """
+    digest = hashlib.sha1(f"{client_id}|{report_id}".encode("utf-8")).hexdigest()
+    return f"conv_{digest[:16]}"
+
 
 # ---------------------------------------------------------------------------
 # Intent classification — closed vocabulary, keyword-first
@@ -866,7 +889,7 @@ def answer_question(
 
     # Persist the exchange. The strategy on the assistant message is the
     # reward address for the thumb that may arrive later.
-    conv_id = conversation_id or f"conv_{uuid.uuid4().hex[:12]}"
+    conv_id = conversation_id or conversation_id_for(snap.client_id, report_id)
     if session.get(Conversation, conv_id) is None:
         session.add(Conversation(conversation_id=conv_id,
                                  client_id=snap.client_id,

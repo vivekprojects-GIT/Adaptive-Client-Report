@@ -66,6 +66,7 @@ def init_db(drop: bool = False) -> None:
     _migrate_report_type_scope(engine)
     Base.metadata.create_all(engine)
     _add_missing_columns(engine)
+    _seed_demo_birth_years(engine)
 
 
 # Columns added to existing tables after they were first created. create_all
@@ -78,6 +79,11 @@ _ADDED_COLUMNS = {
     # what the client actually saw rather than a stripped transcript.
     "messages": {"sources": "JSON DEFAULT '[]'",
                  "widget": "JSON DEFAULT '{}'"},
+    # Second factor for report links. Backfilled to the shared demo year
+    # (see _seed_demo_birth_years below) so every client verifies the same
+    # way; a real deployment replaces these from the firm's CRM, one year
+    # per client, at which point the check becomes an actual factor.
+    "clients": {"birth_year": "INTEGER"},
 }
 
 
@@ -95,6 +101,37 @@ def _add_missing_columns(engine) -> None:
             with engine.begin() as conn:
                 conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}"))
             print(f"[migrate] {table}: added column {col}", flush=True)
+
+
+def _seed_demo_birth_years(engine) -> None:
+    """Give every client the shared demo birth year, where none is set.
+
+    Only NULL rows are touched. Once a firm loads real years from its CRM,
+    this stops finding anything to do rather than overwriting them — which
+    is what makes it safe to leave running on every startup, and what lets
+    a client imported next week verify without a manual step.
+
+    The shared year is a demo convenience and not a secret: while every
+    client answers 1998, anyone who knows one client's answer knows all of
+    them. It is the mechanism that is being demonstrated, not the strength
+    of this particular factor.
+    """
+    from sqlalchemy import inspect, text
+
+    insp = inspect(engine)
+    if "clients" not in set(insp.get_table_names()):
+        return
+    if "birth_year" not in {c["name"] for c in insp.get_columns("clients")}:
+        return
+
+    from ape.reporting.identity import DEFAULT_BIRTH_YEAR
+    with engine.begin() as conn:
+        n = conn.execute(
+            text("UPDATE clients SET birth_year = :y WHERE birth_year IS NULL"),
+            {"y": DEFAULT_BIRTH_YEAR}).rowcount
+    if n:
+        print(f"[migrate] clients: set birth_year={DEFAULT_BIRTH_YEAR} "
+              f"on {n} row(s) that had none", flush=True)
 
 
 # Tables that gained `report_type` as part of their primary key when the

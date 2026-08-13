@@ -70,6 +70,12 @@ class Client(Base):
     risk_profile: Mapped[str] = mapped_column(String(32), default="Moderate")
     adviser:     Mapped[str] = mapped_column(String(120), default="")
     status:      Mapped[str] = mapped_column(String(24), default="active")
+    # Second factor when opening a report link. Nullable because the client
+    # feed does not carry it yet — identity.DEFAULT_BIRTH_YEAR stands in
+    # until a firm populates this from its CRM. Only the year is stored:
+    # it is all the check needs, and a full date of birth is more personal
+    # data than the check justifies holding.
+    birth_year:  Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_at:  Mapped[datetime] = mapped_column(DateTime, default=_now)
 
     snapshots: Mapped[list["ReportSnapshot"]] = relationship(back_populates="client")
