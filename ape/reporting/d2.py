@@ -216,8 +216,19 @@ def _facts_for_scope(snap: ClientSnapshot,
     all_facts = derived_facts(snap.numeric_facts())
     lines = [f"client: {snap.display_name}, period {snap.period}"]
     if block:
+        # STRICT. A highlight is a SCOPE, not a hint. Only the facts this
+        # block cites are offered, and — critically — only those are
+        # ALLOWED, because the returned allowlist is what the grounding
+        # check enforces afterwards.
+        #
+        # This used to add the whole-snapshot headline figures as well,
+        # "so 'how does that compare to my total return' still works from
+        # a fees highlight". The effect was that pointing at the fees
+        # table and asking about returns produced a full performance
+        # answer — the highlight meant nothing, and convenience quietly
+        # overrode the one control a client has over scope.
         refs = block.get("source_refs") or []
-        scoped = {k: v for k, v in snap.numeric_facts().items() if k in refs}
+        scoped = {k: v for k, v in all_facts.items() if k in refs}
         for k, v in scoped.items():
             lines.append(f"{k} = {v}")
         data = block.get("content_json") or block.get("data") or {}
@@ -225,15 +236,19 @@ def _facts_for_scope(snap: ClientSnapshot,
                            if k != "_author"}, default=str)
         lines.append(f"SELECTED CONTENT ({block.get('block_type') or block.get('type')}): "
                      f"{text[:1200]}")
-        # Whole-snapshot headline facts stay available so "how does that
-        # compare to my total return" still works from a fees highlight.
-        for k in ("portfolio_value", "quarter_return_pct",
-                  "benchmark_return_pct", "excess_return_pct", "fees.total"):
-            if k in all_facts:
-                lines.append(f"{k} = {all_facts[k]}")
-    else:
-        for k, v in snap.numeric_facts().items():
-            lines.append(f"{k} = {v}")
+        lines.append(
+            "SCOPE: the client has selected ONE section, and the figures "
+            "above are the only ones in it. If they ask about anything "
+            "else, say plainly that it is not in the section they have "
+            "selected and that clearing the selection (the x on the "
+            "section) lets them ask about the whole report. Never answer "
+            "such a question from memory, and never estimate.")
+        # Derived arithmetic over the scoped facts stays legal: a fee total
+        # computed from its parts is still this section's own number.
+        return "\n".join(lines), derived_facts(scoped)
+
+    for k, v in snap.numeric_facts().items():
+        lines.append(f"{k} = {v}")
     return "\n".join(lines), all_facts
 
 

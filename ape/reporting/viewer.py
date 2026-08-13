@@ -166,6 +166,9 @@ __DOC_CSS__
    gap:10px}
  .m-hint{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;
    padding:10px 12px;font-size:12.5px;color:#475569}
+ .m-hint.resumed{background:none;border:0;text-align:center;padding:2px 0;
+   font-size:10.5px;color:#94a3b8;text-transform:uppercase;
+   letter-spacing:.05em}
  .m-q{align-self:flex-end;background:#2563eb;color:#fff;border-radius:12px 12px 2px 12px;
    padding:8px 12px;font-size:13px;max-width:85%}
  .m-a{align-self:flex-start;background:#f8fafc;border:1px solid #e2e8f0;
@@ -309,6 +312,34 @@ function ev(type, extra){
 
 ev("report_opened", {});
 setTimeout(function(){ ev("dwell_60s", {}); }, 60000);
+
+// Restore the conversation. Every turn has always been written to SQL,
+// but nothing ever read it back, so a refresh looked like the thread had
+// been thrown away. Restored answers show their text only: sources,
+// suggestions and charts were never stored, and inventing them now would
+// put things under an old answer that it never actually came with.
+(function(){
+  fetch("/r/" + RID + "/history?token=" + encodeURIComponent(TOKEN) +
+        "&limit=40", {cache: "no-store"})
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(d){
+      if (!d || !d.messages || !d.messages.length) return;
+      conversationId = d.conversation_id || null;
+      var hint = document.querySelector(".m-hint");
+      if (hint) hint.remove();
+      d.messages.forEach(function(m){
+        if (m.role === "client") { add("m-q", m.content); return; }
+        var el = add("m-a", "");
+        el.innerHTML = md(m.content);
+      });
+      var mark = document.createElement("div");
+      mark.className = "m-hint resumed";
+      mark.textContent = "Earlier in this conversation ↑";
+      msgs.insertBefore(mark, msgs.firstChild);
+      msgs.scrollTop = msgs.scrollHeight;
+    })
+    .catch(function(){ /* a lost history must never cost the page */ });
+})();
 
 document.getElementById("dl").onclick = function(){
   ev("pdf_downloaded", {}); window.print();

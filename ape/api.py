@@ -1550,6 +1550,40 @@ async def report_chat_stream(report_id: str, request: Request):
                                       "X-Accel-Buffering": "no"})
 
 
+@app.get("/r/{report_id}/history")
+def report_history(report_id: str, token: str = "", limit: int = 40):
+    """This client's earlier conversation about THIS report.
+
+    Stored all along — every turn writes a Message row keyed by client_id
+    — but the viewer never asked for it, so each visit began blank and a
+    client who came back had lost the thread they built.
+
+    Deliberately scoped to one report, not to everything the client has
+    ever asked. The token authorises ONE report; returning conversations
+    from others through it would widen what that token grants, which is
+    the sort of quiet scope creep the cross-client check exists to stop.
+    """
+    _viewer_auth(report_id, token)
+    from .db.session import init_db, session_scope
+    from .db.models import Message
+    from sqlalchemy import select as _s
+    init_db()
+    out = []
+    with session_scope() as db:
+        rows = list(db.scalars(
+            _s(Message).where(Message.report_id == report_id)
+            .order_by(Message.created_at.desc())
+            .limit(max(2, min(limit, 200)))))
+        for m in reversed(rows):
+            out.append({"role": m.role, "content": m.content,
+                        "message_id": m.message_id,
+                        "conversation_id": m.conversation_id,
+                        "block_ids": m.block_ids or [],
+                        "at": m.created_at.isoformat(timespec="seconds")})
+    return {"messages": out,
+            "conversation_id": out[-1]["conversation_id"] if out else None}
+
+
 @app.post("/r/{report_id}/events")
 async def report_events(report_id: str, request: Request):
     """Engagement signals from the viewer. Every event is stored raw, then
