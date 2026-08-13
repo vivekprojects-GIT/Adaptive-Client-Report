@@ -203,10 +203,16 @@ their own report. Rules, in order:
    estimate, never use outside knowledge, never predict.
 2. No advice, no recommendations, no opinions on what they should do.
 3. Warm, plain English. Address them as "you". Keep it brief.
-4. If SELECTED CONTENT is present, the client highlighted it — answer about
-   that specifically.
-5. Money is in pounds (£1,234.56), never dollars.
-6. NEVER comment on your own ability to produce charts, in either
+4. SELECTED CONTENT is the section the client is asking about, and the
+   FACTS above are what that section contains. Answer from those facts.
+5. HIGHLIGHTED WORDS, when present, say which part of it they mean. They
+   are the SUBJECT of the question, never a limit on what you may use —
+   a client highlights a phrase to point at it, not to forbid the rest of
+   the section. Never reply that their highlighted words are missing, and
+   never quote a figure back from the highlight itself: a selection can
+   end mid-number, and the FACTS are the authority on every value.
+6. Money is in pounds (£1,234.56), never dollars.
+7. NEVER comment on your own ability to produce charts, in either
    direction. Do not say you cannot draw one, do not offer to draw one,
    and do not tell them to ask their adviser for a visualisation. Charts
    are decided and rendered by the system around you, and a chart may well
@@ -235,11 +241,39 @@ def _facts_for_scope(snap: ClientSnapshot,
         # overrode the one control a client has over scope.
         refs = block.get("source_refs") or []
         scoped = {k: v for k, v in all_facts.items() if k in refs}
+
+        # source_refs UNDER-declares for prose. A narrative cites four
+        # refs and then quotes allocation weights, attribution
+        # contributions, fee totals and four quarters of history in its
+        # text. Scoping to the declaration alone left the model with four
+        # figures while the client pointed at a paragraph full of others,
+        # so "explain this" could only be declined — which is exactly what
+        # it did, three times in a row.
+        #
+        # So the scope is what the block actually SHOWS: its declared refs
+        # plus any fact whose value appears in its own content. Still
+        # strictly this block, and now honestly so.
+        # ensure_ascii=False is load-bearing, not cosmetic. The default
+        # escapes "£" to "£", so "£2,965.78" is read as 32,965.78 —
+        # a figure that appears nowhere — while the real 2,965.78 goes
+        # unseen. The block's own fee total then fell outside its own
+        # scope, and every answer quoting it was rejected as ungrounded.
+        blob = json.dumps(block.get("content_json")
+                          or block.get("data") or {}, default=str,
+                          ensure_ascii=False)
+        shown = extract_numbers(blob)
+        if shown:
+            for ref, val in all_facts.items():
+                if ref in scoped:
+                    continue
+                if any(_matches(v, dp, [val]) for v, dp, _r, _p in shown):
+                    scoped[ref] = val
         for k, v in scoped.items():
             lines.append(f"{k} = {v}")
         data = block.get("content_json") or block.get("data") or {}
         text = json.dumps({k: v for k, v in data.items()
-                           if k != "_author"}, default=str)
+                           if k != "_author"}, default=str,
+                          ensure_ascii=False)
         lines.append(f"SELECTED CONTENT ({block.get('block_type') or block.get('type')}): "
                      f"{text[:1200]}")
         lines.append(
@@ -754,7 +788,7 @@ def answer_question(
 
     facts_text, allowlist = _facts_for_scope(snap, block)
     if selected_text:
-        facts_text += f'\nCLIENT HIGHLIGHTED THIS TEXT: "{selected_text[:400]}"'
+        facts_text += f'\nHIGHLIGHTED WORDS (what they are pointing at, not a limit): "{selected_text[:400]}"'
 
     # Resolved BEFORE the answer is written, because the writer has to know.
     # Left until afterwards, it produced answers that apologised for being

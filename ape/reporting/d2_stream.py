@@ -30,16 +30,18 @@ failing case they see the opening of an answer replaced by the safe
 decline, which is the same outcome the non-streaming path produces, just
 visible.
 
-WHAT THIS DELIBERATELY GIVES UP
--------------------------------
-The retry. answer_question gets a second attempt with the rejected figures
-quoted back, and that recovers most violations. It cannot here: by the
-time a violation is known, text is on screen, and a silent second attempt
-would rewrite words the client has already read. Streaming therefore
-declines where the buffered path would have recovered — the trade is
-lower perceived latency against a slightly higher decline rate, and it is
-why answer_question is still the default for anything that is not the
-live chat.
+WHEN THE CHECK TRIPS
+--------------------
+The answer being written is abandoned and retried once, buffered, with the
+rejected figures quoted back — the same second chance the non-streaming
+path gets. The client sees what was on screen replaced.
+
+An earlier version skipped that retry, on the grounds that rewriting words
+someone has read is worse than declining, and that violations are rare.
+The second half was wrong: "explain this passage" against a narrative
+routinely fails the first attempt and passes the second, so streaming was
+refusing one of the commonest things a client does. A brief replacement
+beats a refusal to a question the report can answer.
 """
 
 from __future__ import annotations
@@ -94,7 +96,7 @@ def stream_answer(
 
     facts_text, allowlist = _facts_for_scope(snap, block)
     if selected_text:
-        facts_text += f'\nCLIENT HIGHLIGHTED THIS TEXT: "{selected_text[:400]}"'
+        facts_text += f'\nHIGHLIGHTED WORDS (what they are pointing at, not a limit): "{selected_text[:400]}"'
 
     # Resolved before the answer is written, for the same reason as the
     # buffered path: the writer has to know a chart is coming, or it
@@ -172,11 +174,37 @@ def stream_answer(
             tripped = True
 
         if tripped:
-            # Nothing ungrounded was ever released. What WAS released is
-            # the opening of an answer now being abandoned, so the client
-            # is told to discard it rather than left with a fragment.
-            answer, author = DECLINE, "declined_ungrounded"
-            yield ("reset", DECLINE)
+            # Nothing ungrounded was ever released, but the answer being
+            # written has to go. Retry once, buffered, with the rejected
+            # figures quoted back — the same second chance the non-
+            # streaming path gets.
+            #
+            # Dropping the retry was a mistake. It was justified as a rare
+            # cost, and it is not rare: "explain this passage" against a
+            # narrative routinely fails the first attempt and passes the
+            # second, so streaming was declining on one of the commonest
+            # things a client does. A brief replacement beats a refusal
+            # to an answerable question.
+            retry = ""
+            try:
+                resp = client.messages.create(
+                    model=os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5"),
+                    max_tokens=600, system=_ANSWER_SYSTEM,
+                    messages=[{"role": "user", "content": prompt +
+                               "\n\nYour previous answer stated figures that "
+                               "are not in the FACTS. Use only the listed "
+                               "figures, or say the report does not contain "
+                               "the answer."}])
+                cand = strip_capability_disclaimer(resp.content[0].text.strip())
+                if not _check_answer(cand, allowlist, snap.label_terms()):
+                    retry = cand
+            except Exception:
+                retry = ""
+
+            answer = retry or DECLINE
+            author = "llm_stream_retry" if retry else "declined_ungrounded"
+            # Replaces whatever was on screen, in both cases.
+            yield ("reset", answer)
 
     if declined and answer != DECLINE:
         tail = (f"\n\nI can't chart that here — {declined}. Everything above "

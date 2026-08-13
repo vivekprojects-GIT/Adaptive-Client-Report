@@ -148,6 +148,11 @@ __DOC_CSS__
    box-shadow:0 1px 4px rgba(37,99,235,.28)}
  .secx:hover{background:#2563eb;color:#fff}
  mark.selq{background:#fde68a;padding:1px 0;border-radius:2px}
+ .askhl{position:absolute;z-index:20;border:0;border-radius:14px;
+   background:#2563eb;color:#fff;font-family:inherit;font-size:11.5px;
+   font-weight:650;padding:5px 12px;cursor:pointer;
+   box-shadow:0 3px 10px rgba(37,99,235,.35)}
+ .askhl:hover{background:#1d4ed8}
  .chat{width:340px;min-width:280px;max-width:70vw;background:#fff;
    border-left:1px solid #e2e8f0;display:flex;flex-direction:column;
    position:relative;flex-shrink:0}
@@ -421,6 +426,55 @@ function setCtx(sec){
   ev("block_highlighted", {block_id: selBlock});
   document.getElementById("q").focus();
 }
+// A floating "Explain this" that follows a text selection. Selecting words
+// and then hunting for where to type is two steps; the button puts the
+// action where the client's attention already is — the same reasoning as
+// the x that clears a section.
+var askBtn = null;
+function hideAsk(){ if (askBtn){ askBtn.remove(); askBtn = null; } }
+
+function showAsk(sec, sel){
+  hideAsk();
+  var r = sel.getRangeAt(0).getBoundingClientRect();
+  if (!r || (!r.width && !r.height)) return;
+  askBtn = document.createElement("button");
+  askBtn.className = "askhl";
+  askBtn.type = "button";
+  askBtn.textContent = "Explain this";
+  askBtn.style.top  = (window.scrollY + r.bottom + 6) + "px";
+  askBtn.style.left = (window.scrollX + r.left) + "px";
+  askBtn.onmousedown = function(e){ e.preventDefault(); };   // keep the range
+  askBtn.onclick = function(e){
+    e.stopPropagation();
+    // Trim to whole words. A drag often starts or ends mid-word, and
+    // "olio ended 2025 Q4 valued at" as the question makes the model
+    // reconcile a fragment instead of answering about the passage.
+    var parts = String(sel).trim().split(/ +/);
+    if (parts.length > 2) parts = parts.slice(1, parts.length - 1);
+    var words = parts.join(' ');
+    selText = words.length > 3 ? words : String(sel).trim();
+    setCtx(sec);
+    hideAsk();
+    // The selection travels as selected_text, which the prompt labels as
+    // what they are POINTING AT. Pasting it into the question makes the
+    // fragment the question, which is a different and worse thing to ask.
+    ask("Explain this");
+  };
+  document.body.appendChild(askBtn);
+}
+
+document.addEventListener("mouseup", function(e){
+  if (askBtn && askBtn.contains(e.target)) return;
+  var sel = window.getSelection && window.getSelection();
+  if (!sel || sel.isCollapsed || !sel.rangeCount) { hideAsk(); return; }
+  var node = sel.getRangeAt(0).commonAncestorContainer;
+  var sec = (node.nodeType === 1 ? node : node.parentElement);
+  sec = sec && sec.closest && sec.closest("section[data-block-id]");
+  if (!sec || String(sel).trim().length < 4) { hideAsk(); return; }
+  showAsk(sec, sel);
+});
+document.addEventListener("scroll", hideAsk, true);
+
 sections.forEach(function(sec){
   sec.addEventListener("click", function(){
     var t = window.getSelection ? String(window.getSelection()) : "";
