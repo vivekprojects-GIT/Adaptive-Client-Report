@@ -1378,7 +1378,8 @@ async def report_chat(report_id: str, request: Request):
             Message.report_id == report_id, Message.role == "client")))
         result["followups"] = suggest_followups(
             report, result.get("intent", ""), asked, snap=snap,
-            block_type=(block or {}).get("block_type", ""))
+            block_type=(block or {}).get("block_type", ""),
+            question=question, answer=result.get("answer", ""))
 
         # The question itself is a signal: engagement on the report, and its
         # wording may carry format preferences for the profile.

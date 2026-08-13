@@ -305,6 +305,91 @@ _FOLLOWUP_BY_INTENT = {
 }
 
 
+_FOLLOWUP_SYSTEM = """You suggest what a wealth client might ask NEXT.
+
+You are given the question they just asked, the answer they were given,
+and the sections their report contains.
+
+Rules:
+- Each suggestion must follow from something the ANSWER actually said.
+  A question that ignores the answer is the same as no suggestion.
+- Each must be answerable from the sections listed. Never suggest asking
+  about data the report does not carry — a suggestion the system will
+  refuse is worse than none.
+- READ THE ANSWER FOR LIMITS. If it says something is not available, not
+  in the report, or only covers one period, do NOT suggest asking for it
+  again in another form. Being told "I can only see this quarter" and
+  then offered "what about last quarter?" makes the system look like it
+  is not listening to itself.
+- Short. Under nine words, in the client's voice, ending in a question
+  mark.
+- Never suggest asking for a chart. Something else offers those.
+
+Return ONLY JSON: {"questions": ["...", "..."]}"""
+
+
+def dynamic_followups(question: str, answer: str, report: Dict[str, Any],
+                      n: int = 2) -> List[str]:
+    """Questions that arise from THIS answer.
+
+    The static tables underneath are keyed by intent, so every fees
+    question produced the same two follow-ups no matter what the answer
+    said. That is a menu, not a conversation — and it wastes the one thing
+    the system knows that a menu cannot: what was just discussed.
+
+    Returns [] on any failure. The caller falls back to the tables, so a
+    slow or unavailable model costs relevance, never the chips themselves.
+    """
+    api_key = os.getenv("ANTHROPIC_API_KEY", "")
+    if not api_key or not (answer or "").strip():
+        return []
+
+    sections = sorted({b.get("title") or b.get("type", "")
+                       for b in report.get("blocks", [])
+                       if b.get("type") not in ("disclosures", "explainer")})
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=api_key)
+        resp = client.messages.create(
+            model=os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5"),
+            max_tokens=180, system=_FOLLOWUP_SYSTEM,
+            messages=[{"role": "user", "content":
+                       f"THEY ASKED: {question[:300]}\n\n"
+                       f"THEY WERE TOLD: {answer[:900]}\n\n"
+                       f"THEIR REPORT CONTAINS: {', '.join(sections)}\n\n"
+                       f"Suggest {n}."}])
+        raw = re.sub(r"^```(json)?|```$", "", resp.content[0].text.strip(),
+                     flags=re.M).strip()
+        data = json.loads(raw)
+    except Exception:
+        return []
+
+    # Phrases an answer uses when the report cannot support something.
+    # If one appears, follow-ups echoing the same subject are dropped —
+    # the model is told not to produce them, and this catches it when it
+    # does anyway.
+    limited = re.search(
+        r"(only (see|shows?|covers?|have)|not (available|in|shown)|"
+        r"does not (contain|include|carry)|no (data|record|history))",
+        answer, re.I)
+
+    out = []
+    for q in (data or {}).get("questions", [])[:n]:
+        q = " ".join(str(q).split())
+        if limited:
+            # "last quarter", "previous period", "over time" — the shapes a
+            # question takes when it asks for the thing just refused.
+            if re.search(r"(last|previous|prior|earlier|other)\s+"
+                         r"(quarter|period|year|month)|over time|"
+                         r"histor(y|ical)", q, re.I):
+                continue
+        # A "question" that is a paragraph, or that asks for a chart, is
+        # not what was requested and does not go in front of a client.
+        if 8 <= len(q) <= 70 and q.endswith("?")                 and not wants_visual(q):
+            out.append(q)
+    return out
+
+
 N_CONTENT = 2      # about what the report SAYS
 N_CAPABILITY = 2   # about what the chat can DO with it
 
@@ -313,7 +398,8 @@ def suggest_followups(report: Dict[str, Any], intent: str = "",
                       asked: Optional[List[str]] = None,
                       limit: int = N_CONTENT + N_CAPABILITY,
                       snap: Optional[ClientSnapshot] = None,
-                      block_type: str = "") -> List[Dict[str, str]]:
+                      block_type: str = "",
+                      question: str = "", answer: str = "") -> List[Dict[str, str]]:
     """Four chips: two about the content, two about what can be drawn.
 
     Each is {q, label, kind}: `q` is sent as the question, `label` is what
@@ -351,6 +437,14 @@ def suggest_followups(report: Dict[str, Any], intent: str = "",
             bucket.append({"q": q, "label": q.rstrip("?.").strip(),
                            "kind": "content"})
 
+    # What this ANSWER opens up, before anything generic. The tables below
+    # are keyed by intent alone, so they hand the same two questions to
+    # every fees query no matter what was said — a menu, not a
+    # conversation.
+    if answer:
+        for q in dynamic_followups(question, answer, report, N_CONTENT):
+            add(q, content)
+
     add(_FOLLOWUP_BY_INTENT.get(intent), content)
 
     present = [b.get("type") for b in report.get("blocks", [])]
@@ -374,7 +468,15 @@ def suggest_followups(report: Dict[str, Any], intent: str = "",
     capability: List[Dict[str, str]] = []
     if snap is not None:
         from ape.reporting import chat_widgets as cw
-        for binding in cw.chip_bindings(snap, intent, block_type):
+        order = cw.chip_bindings(snap, intent, block_type)
+        # Lead with whatever the ANSWER was actually about. An answer that
+        # spent four sentences on holdings should offer the holdings chart
+        # first, even if the question was classified as something else.
+        if answer:
+            spoken = cw.guess_binding(answer, intent, block_type, order)
+            if spoken in order:
+                order = [spoken] + [b for b in order if b != spoken]
+        for binding in order:
             if len(capability) >= N_CAPABILITY:
                 break
             c = cw.chip(binding)
