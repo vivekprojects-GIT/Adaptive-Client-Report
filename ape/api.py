@@ -1440,6 +1440,116 @@ async def report_chat(report_id: str, request: Request):
     return result
 
 
+@app.post("/r/{report_id}/chat/stream")
+async def report_chat_stream(report_id: str, request: Request):
+    """The same turn as /chat, delivered as it forms.
+
+    Server-Sent Events over POST rather than EventSource, because the
+    question and the token belong in a body, not a query string — a token
+    in a URL lands in access logs and browser history.
+
+    Only text that has already passed the grounding check is sent. See
+    d2_stream for why that is not negotiable.
+    """
+    body = await request.json()
+    _viewer_auth(report_id, str(body.get("token", "")))
+
+    report = _report_json(report_id)
+    question = str(body.get("question", "")).strip()
+    if not question:
+        raise HTTPException(400, "empty question")
+    block_id = body.get("block_id") or None
+
+    def events():
+        from .db.session import init_db, session_scope
+        from .db.models import ReportBlock
+        from .db.repository import load_snapshot as _sql_snapshot
+        from .reporting.d2 import suggest_followups
+        from .reporting.d2_stream import stream_answer
+        from .reporting.rewards import record_event
+        from .reporting.skill import refresh_skill
+        from sqlalchemy import select as _select
+        from .db.models import Message
+        init_db()
+
+        with session_scope() as db:
+            try:
+                snap = _sql_snapshot(db, report["client_id"],
+                                     report.get("period"))
+            except LookupError:
+                yield _sse("error", {"detail": "client facts not on file"})
+                return
+
+            block = None
+            if block_id:
+                row = db.scalars(_select(ReportBlock).where(
+                    ReportBlock.report_id == report_id,
+                    ReportBlock.block_id == block_id)).first()
+                if row is not None:
+                    block = {"block_id": row.block_id,
+                             "block_type": row.block_type,
+                             "content_json": row.content_json,
+                             "source_refs": row.source_refs}
+                else:
+                    block = next((b for b in report["blocks"]
+                                  if b["block_id"] == block_id), None)
+
+            result = None
+            for kind, payload in stream_answer(
+                    db, snap, report_id, question, block,
+                    selected_text=str(body.get("selected_text", "")),
+                    conversation_id=body.get("conversation_id"),
+                    report_json=report):
+                if kind == "final":
+                    result = payload
+                else:
+                    yield _sse(kind, {"text": payload})
+
+            if result is None:
+                yield _sse("error", {"detail": "no answer produced"})
+                return
+
+            asked = list(db.scalars(_select(Message.content).where(
+                Message.report_id == report_id, Message.role == "client")))
+            result["followups"] = suggest_followups(
+                report, result.get("intent", ""), asked, snap=snap,
+                block_type=(block or {}).get("block_type", ""),
+                question=question, answer=result.get("answer", ""),
+                sources=result.get("sources") or [])
+
+            _rt = str(report.get("report_type", "") or "")
+            record_event(db, report["client_id"], "question_asked",
+                         report_id=report_id, block_id=block_id or "",
+                         metadata={"question": question,
+                                   "intent": result["intent"]},
+                         report_type=_rt)
+            w = result.get("widget")
+            if w:
+                record_event(db, report["client_id"], "visual_requested",
+                             report_id=report_id, block_id=block_id or "",
+                             metadata={"binding": w["binding"],
+                                       "kind": w["kind"],
+                                       "intent": result["intent"],
+                                       "drawn": True}, report_type=_rt)
+            try:
+                from .reporting.stated_prefs import extract, merge
+                from .reporting.skill import _skill_row
+                found = extract(question, result.get("answer", ""))
+                if found:
+                    for scope in ("", _rt) if _rt else ("",):
+                        row = _skill_row(db, report["client_id"], scope)
+                        row.stated_prefs = merge(row.stated_prefs, found)
+            except Exception:
+                pass
+            refresh_skill(db, report["client_id"], _rt)
+
+            yield _sse("final", result)
+
+    return StreamingResponse(events(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache",
+                                      "X-Accel-Buffering": "no"})
+
+
 @app.post("/r/{report_id}/events")
 async def report_events(report_id: str, request: Request):
     """Engagement signals from the viewer. Every event is stored raw, then
@@ -1461,6 +1571,15 @@ async def report_events(report_id: str, request: Request):
             metadata=body.get("metadata") or {},
             report_type=str(report.get("report_type", "") or ""))
     return out
+
+
+def _sse(event: str, data: Any) -> str:
+    """One Server-Sent Event frame.
+
+    json.dumps also protects the wire format: a newline inside the answer
+    would otherwise terminate the frame early and truncate the message.
+    """
+    return f"event: {event}\ndata: {json.dumps(data, default=str)}\n\n"
 
 
 def _esc_html(s: str) -> str:

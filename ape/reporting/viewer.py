@@ -76,10 +76,10 @@ def _opening_chips(snapshot=None) -> str:
                 break
             chips.append((q, lab, "content"))
     return "\n".join(
-        f'    <button data-q="{_esc(q)}" title="{_esc(q)}"'
+        f'    <button data-q="{_esc(q)}"'
         f'{" class=chip-draw" if kind == "capability" else ""}'
-        f'>{_esc(label)}</button>'
-        for q, label, kind in chips[:N_CONTENT + N_CAPABILITY])
+        f'>{_esc(q)}</button>'
+        for q, _label, kind in chips[:N_CONTENT + N_CAPABILITY])
 
 
 def render_viewer(report: Dict[str, Any], token: str, snapshot=None) -> str:
@@ -140,7 +140,14 @@ __DOC_CSS__
  .btn:hover{border-color:#94a3b8}
  .doc{min-height:auto;box-shadow:0 1px 4px rgba(15,23,42,.08);border-radius:8px}
  section[data-block-id]{cursor:pointer;border-radius:4px}
- section[data-block-id].sel{outline:2px solid #2563eb;outline-offset:8px}
+ section[data-block-id].sel{outline:2px solid #2563eb;outline-offset:8px;
+   position:relative;background:#f8fbff}
+ .secx{position:absolute;top:-11px;right:-11px;width:22px;height:22px;
+   border-radius:50%;border:1.5px solid #2563eb;background:#fff;color:#2563eb;
+   font-size:14px;line-height:1;cursor:pointer;padding:0;z-index:4;
+   box-shadow:0 1px 4px rgba(37,99,235,.28)}
+ .secx:hover{background:#2563eb;color:#fff}
+ mark.selq{background:#fde68a;padding:1px 0;border-radius:2px}
  .chat{width:340px;min-width:280px;max-width:70vw;background:#fff;
    border-left:1px solid #e2e8f0;display:flex;flex-direction:column;
    position:relative;flex-shrink:0}
@@ -180,9 +187,10 @@ __DOC_CSS__
  @keyframes flash{0%,100%{background:transparent}
    25%{background:#fef9c3}70%{background:#fef9c3}}
  .chips.inline{padding:0;margin-top:9px;padding-top:8px;
-   border-top:1px solid #e2e8f0}
- .chips.inline button{font-size:11.5px;padding:3px 9px;
-   white-space:normal;text-align:left;line-height:1.35}
+   border-top:1px solid #e2e8f0;flex-direction:column;align-items:stretch;
+   gap:5px}
+ .chips.inline button{font-size:11.5px;padding:6px 10px;width:100%;
+   white-space:normal;text-align:left;line-height:1.4;border-radius:8px}
  .chips button.chip-draw{border-color:#c7d2fe;background:#eef2ff;color:#4338ca}
  .chips button.chip-draw:hover{border-color:#4F46E5;background:#e0e7ff}
  .fb{display:flex;gap:6px;margin-top:7px}
@@ -195,7 +203,9 @@ __DOC_CSS__
    padding:2px 9px;font-size:12px;cursor:pointer;color:#64748b}
  .fb button:hover{border-color:#94a3b8}
  .fb button.on{background:#eff6ff;border-color:#2563eb;color:#1d4ed8}
- .chips{padding:0 14px 8px;display:flex;flex-wrap:wrap;gap:6px}
+ .chips{padding:0 14px 8px;display:flex;flex-direction:column;
+   align-items:stretch;gap:5px}
+ .chips button{white-space:normal;text-align:left;line-height:1.4}
  .chips button{border:1px solid #dbe4f0;background:#f8fafc;border-radius:14px;
    padding:5px 11px;font-size:11.5px;color:#334155;cursor:pointer}
  .chips button:hover{border-color:#2563eb;color:#1d4ed8}
@@ -322,11 +332,50 @@ function titleOf(sec){
   var h = sec.querySelector("h3");
   return h ? h.textContent.replace(/^\\d+\\.\\s*/, "") : "this section";
 }
+// The × that clears the selection, mounted ON the chosen section. The
+// chat pane's banner already offered one, but a client looking at the
+// document had no way to tell what was selected or how to undo it without
+// looking away.
+function clearMark(){
+  document.querySelectorAll("mark.selq").forEach(function(m){
+    m.replaceWith(document.createTextNode(m.textContent));
+  });
+  var x = document.getElementById("secx");
+  if (x) x.remove();
+}
+
+// Wrap the client's own selection so it stays visible after the browser
+// drops the native highlight. Without this, "what does this mean?" against
+// a phrase looked identical to asking about the whole section.
+function markSelection(sec){
+  var s = window.getSelection && window.getSelection();
+  if (!s || s.isCollapsed || !s.rangeCount) return;
+  var r = s.getRangeAt(0);
+  if (!sec.contains(r.commonAncestorContainer)) return;
+  try {
+    var m = document.createElement("mark");
+    m.className = "selq";
+    r.surroundContents(m);          // throws if the range spans elements
+    s.removeAllRanges();
+  } catch (e) { /* partial selection across tags — the outline still shows */ }
+}
+
 function setCtx(sec){
   sections.forEach(function(s){ s.classList.remove("sel"); });
+  clearMark();
   if (!sec){ selBlock = null; selText = "";
     document.getElementById("ctx").style.display = "none"; return; }
   sec.classList.add("sel");
+  if (selText) markSelection(sec);
+
+  var x = document.createElement("button");
+  x.id = "secx"; x.className = "secx"; x.type = "button";
+  x.title = "Stop asking about this section";
+  x.setAttribute("aria-label", "Clear selection");
+  x.textContent = "×";
+  x.onclick = function(e){ e.stopPropagation(); setCtx(null); };
+  sec.appendChild(x);
+
   selBlock = sec.getAttribute("data-block-id");
   document.getElementById("ctx").style.display = "block";
   document.getElementById("ctxlabel").textContent = " " + titleOf(sec) +
@@ -513,22 +562,74 @@ function ask(question){
   if (opening) opening.remove();
   add("m-q", question);
   var t = add("typing", "thinking…");
-  post("/chat", {question: question, block_id: selBlock,
-                 selected_text: selText, conversation_id: conversationId})
-    .then(function(res){
-      t.remove();
-      if (res.answer){
-        conversationId = res.conversation_id;
-        addAnswer(res);
-      } else {
-        add("m-a", "Something went wrong — please try again.");
+
+  var bubble = null, text = "";
+  function ensure(){
+    if (!bubble){ t.remove(); bubble = add("m-a", ""); }
+    return bubble;
+  }
+  function paint(){
+    // Re-render the markdown each time rather than appending raw text: a
+    // table or list is only correct once its whole block has arrived, and
+    // half-parsed markdown looks broken in a way plain text does not.
+    ensure().innerHTML = md(text);
+    msgs.scrollTop = msgs.scrollHeight;
+  }
+  function fail(){
+    if (bubble) bubble.remove(); else t.remove();
+    add("m-a", "Something went wrong — please try again.");
+  }
+
+  fetch("/r/__RID__/chat/stream", {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({token: TOKEN, question: question,
+                          block_id: selBlock, selected_text: selText,
+                          conversation_id: conversationId})
+  }).then(function(r){
+    if (!r.ok || !r.body) throw new Error("stream failed");
+    var reader = r.body.getReader(), dec = new TextDecoder(), buf = "";
+
+    function handle(evt, data){
+      if (evt === "delta"){ text += data.text; paint(); }
+      else if (evt === "reset"){
+        // The server abandoned the answer mid-flight: something it was
+        // about to say could not be grounded. What was shown is replaced,
+        // not appended to.
+        text = data.text; paint();
       }
-    })
-    .catch(function(){ t.remove();
-      add("m-a", "Something went wrong — please try again."); })
-    .finally(function(){ busy = false;
+      else if (evt === "final"){
+        conversationId = data.conversation_id;
+        if (bubble){ bubble.remove(); bubble = null; }
+        addAnswer(data);
+      }
+      else if (evt === "error"){ fail(); }
+    }
+
+    function pump(){
+      return reader.read().then(function(res){
+        if (res.done) return;
+        buf += dec.decode(res.value, {stream: true});
+        var frames = buf.split("\\n\\n");
+        buf = frames.pop();                    // keep the partial frame
+        frames.forEach(function(f){
+          var evt = "message", data = null;
+          f.split("\\n").forEach(function(line){
+            if (line.indexOf("event:") === 0) evt = line.slice(6).trim();
+            else if (line.indexOf("data:") === 0){
+              try { data = JSON.parse(line.slice(5).trim()); } catch(e){}
+            }
+          });
+          if (data) handle(evt, data);
+        });
+        return pump();
+      });
+    }
+    return pump();
+  }).catch(fail)
+    .then(function(){ busy = false;
       document.getElementById("send").disabled = false; });
 }
+
 document.getElementById("send").onclick = function(){
   var q = document.getElementById("q");
   ask(q.value); q.value = "";
@@ -539,9 +640,16 @@ document.getElementById("q").addEventListener("keydown", function(e){
 // Delegated at the document, because chips are now created inside every
 // answer bubble rather than living in one container that could own a
 // listener.
+// Clicking a suggestion LOADS it into the box rather than sending it.
+// A chip is a starting point — the client may want to change a word, and
+// a question that fires on touch takes that away.
 document.addEventListener("click", function(e){
-  var q = e.target.getAttribute && e.target.getAttribute("data-q");
-  if (q) ask(q);
+  var el = e.target.closest && e.target.closest("[data-q]");
+  if (!el) return;
+  var box = document.getElementById("q");
+  box.value = el.getAttribute("data-q");
+  box.focus();
+  box.setSelectionRange(box.value.length, box.value.length);
 });
 
 // Chips come from the server, built from the blocks THIS report contains
@@ -558,8 +666,10 @@ function chipRow(list){
     var b = document.createElement("button");
     b.setAttribute("data-q", q);
     b.className = (c && c.kind === "capability") ? "chip-draw" : "";
-    b.textContent = label.length > 38 ? label.slice(0, 36) + "…" : label;
-    b.title = q;
+    // The whole question, not a truncated label. These stack one per row,
+    // so there is room for it — and the client is about to see this exact
+    // text land in the input, which a shortened label would not match.
+    b.textContent = q;
     box.appendChild(b);
   });
   return box;
