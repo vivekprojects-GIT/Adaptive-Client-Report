@@ -55,7 +55,8 @@ from ape.reporting.chat_widgets import wants_visual
 from ape.reporting.csv_source import ClientSnapshot
 from ape.reporting.d2 import (DECLINE, STRATEGY_STYLE, _ANSWER_SYSTEM,
                               _check_answer, _choose_widget, _facts_for_scope,
-                              classify_intent, select_strategy, source_blocks)
+                              classify_intent, select_strategy, source_blocks,
+                              strip_capability_disclaimer)
 
 
 def _safe_prefix(buf: str) -> int:
@@ -154,7 +155,13 @@ def stream_answer(
                     yield ("delta", chunk)
 
                 if not tripped:
-                    candidate = (released + buf).strip()
+                    # The disclaimer can only be judged once the sentence
+                    # is complete, so the stream may already have shown it.
+                    # Stripping here keeps it out of the STORED answer and
+                    # out of any later reload, and the system prompt is
+                    # what stops it being written in the first place.
+                    candidate = strip_capability_disclaimer(
+                        (released + buf).strip())
                     if _check_answer(candidate, allowlist, snap.label_terms()):
                         tripped = True
                     else:

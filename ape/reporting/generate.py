@@ -675,12 +675,47 @@ def enforce_coverage(report: Dict[str, Any],
     return added
 
 
+# A report must EXPLAIN itself, not merely display itself. At least one of
+# these has to be present, or the client receives tables and charts with
+# nothing in words — which is the thing this product exists to replace.
+#
+# Enforced structurally for the same reason fact coverage is: the composer
+# chooses freely now that no bandit picks a written template, and "the
+# model usually includes prose" is not a guarantee. A run that picked
+# kpi_grid + four tables produced a report with nothing for the writer to
+# write, and only a test caught it.
+PROSE_BLOCK_TYPES = ("narrative", "callout", "key_takeaways")
+
+
 def enforce_mandatory(report: Dict[str, Any],
                       snapshot: ClientSnapshot) -> List[str]:
     """Append any missing mandatory block. Returns what was added."""
     present = {b["type"] for b in report["blocks"]}
     added: List[str] = []
     n = len(report["blocks"])
+
+    if not (present & set(PROSE_BLOCK_TYPES)):
+        # narrative first: it is the one that carries interpretation
+        # rather than a headline or a summary.
+        for prose_type in PROSE_BLOCK_TYPES:
+            builder = BUILDERS.get(prose_type)
+            if builder is None:
+                continue
+            n += 1
+            block = (_narrative(snapshot, n, report.get("brief", ""))
+                     if prose_type == "narrative" else builder(snapshot, n))
+            if not block:
+                continue
+            # Ahead of the closing matter, so an explanation is read with
+            # the figures rather than after the small print.
+            idx = next((i for i, b in enumerate(report["blocks"])
+                        if b["type"] in ("key_takeaways", "explainer",
+                                         "disclosures")),
+                       len(report["blocks"]))
+            report["blocks"].insert(idx, block)
+            added.append(prose_type)
+            present.add(prose_type)
+            break
     for block_type in MANDATORY_BLOCK_TYPES:
         if block_type in present:
             continue

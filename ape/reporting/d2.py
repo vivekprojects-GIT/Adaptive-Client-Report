@@ -205,7 +205,13 @@ their own report. Rules, in order:
 3. Warm, plain English. Address them as "you". Keep it brief.
 4. If SELECTED CONTENT is present, the client highlighted it — answer about
    that specifically.
-5. Money is in pounds (£1,234.56), never dollars."""
+5. Money is in pounds (£1,234.56), never dollars.
+6. NEVER comment on your own ability to produce charts, in either
+   direction. Do not say you cannot draw one, do not offer to draw one,
+   and do not tell them to ask their adviser for a visualisation. Charts
+   are decided and rendered by the system around you, and a chart may well
+   be appearing directly beneath your answer as you write it — saying you
+   cannot make one is both untrue and visibly contradicted."""
 
 
 def _facts_for_scope(snap: ClientSnapshot,
@@ -250,6 +256,28 @@ def _facts_for_scope(snap: ClientSnapshot,
     for k, v in snap.numeric_facts().items():
         lines.append(f"{k} = {v}")
     return "\n".join(lines), all_facts
+
+
+# Sentences in which the model volunteers that it cannot draw. It has now
+# done this twice while a chart was rendering directly beneath the answer,
+# so the instruction is backed by a filter: an assistant contradicted by
+# its own page reads as broken, whatever the prompt said.
+_CANT_DRAW = re.compile(
+    r"[^.!?]*\b(?:I|i)\s*(?:'m| am|can(?:not|'t)|am not able|"
+    r"do(?:es)? not have the ability|don't have the ability)[^.!?]*"
+    r"\b(?:chart|graph|plot|visuali[sz]|diagram|image|picture)[^.!?]*[.!?]\s*",
+    re.I)
+
+
+def strip_capability_disclaimer(text: str) -> str:
+    """Remove any sentence where the answer disowns drawing.
+
+    Only whole sentences are removed, and only ones that pair a
+    first-person inability with a visual noun — so "the chart shows" and
+    "you cannot lose more than" both survive untouched.
+    """
+    out = _CANT_DRAW.sub("", text or "")
+    return re.sub(r"\n{3,}", "\n\n", out).strip()
 
 
 def _check_answer(text: str, facts: Dict[str, float],
@@ -770,6 +798,7 @@ def answer_question(
                 candidate = resp.content[0].text.strip()
             except Exception:
                 break
+            candidate = strip_capability_disclaimer(candidate)
             bad = _check_answer(candidate, allowlist, snap.label_terms())
             if not bad:
                 answer, author = candidate, ("llm" if attempt == 0
