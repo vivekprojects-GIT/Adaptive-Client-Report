@@ -305,17 +305,115 @@ _FOLLOWUP_BY_INTENT = {
 }
 
 
+# Which block types answer which intent. The inverse of BLOCK_INTENT_HINT,
+# and the reliable backbone of a citation: a fees question is answered by
+# the fees table whether or not a figure from it survived into the prose.
+_BLOCKS_FOR_INTENT: Dict[str, Tuple[str, ...]] = {
+    "fees_cashflow_question": ("fees_table",),
+    "benchmark_comparison":   ("comparison_chart", "comparison_table"),
+    "performance_question":   ("returns_table", "performance_line",
+                               "performance_history", "top_contributors",
+                               "top_detractors", "comparison_table"),
+    "allocation_question":    ("allocation_donut", "allocation_vs_target"),
+    "holdings_question":      ("holdings_table",),
+    "risk_question":          ("risk_card",),
+    "report_summary":         ("kpi_grid", "key_takeaways"),
+}
+
+MAX_SOURCES = 3
+
+
+def source_blocks(report: Dict[str, Any], snap: ClientSnapshot,
+                  answer: str, block: Optional[Dict] = None,
+                  intent: str = "") -> List[Dict[str, str]]:
+    """Which sections of the report this answer came from.
+
+    Three passes, strongest evidence first:
+
+      1. The block the client HIGHLIGHTED. They pointed at it and the
+         answer was scoped to it, so it is a source whether or not one of
+         its figures survived into the prose.
+      2. Blocks whose TYPE answers this intent. A fees question is
+         answered by the fees table; that is structural, not a guess.
+      3. Blocks carrying a DISTINCTIVE figure the answer quotes.
+
+    Pass 3 alone was the first implementation and was both too noisy and
+    too weak: a fees answer cited "Return over time" because a percentage
+    coincidentally matched, while a holdings answer cited nothing at all
+    because it quoted a value the block's refs did not name. Round numbers
+    and small integers are now excluded from matching for exactly that
+    reason — "5" appears in every report and identifies nothing.
+    """
+    cited: List[Dict[str, str]] = []
+    seen: set = set()
+    blocks = report.get("blocks", [])
+
+    def cite(b):
+        bid = b.get("block_id")
+        if not bid or bid in seen or len(cited) >= MAX_SOURCES:
+            return
+        seen.add(bid)
+        cited.append({"block_id": bid,
+                      "title": b.get("title") or
+                               str(b.get("type", "")).replace("_", " ").title()})
+
+    # 1. what they pointed at
+    if block and block.get("block_id"):
+        match = next((b for b in blocks
+                      if b.get("block_id") == block["block_id"]), None)
+        if match:
+            cite(match)
+        else:
+            cite({"block_id": block["block_id"],
+                  "title": str(block.get("block_type") or "")
+                           .replace("_", " ").title()})
+
+    # 2. what structurally answers this intent
+    for want in _BLOCKS_FOR_INTENT.get(intent, ()):
+        for b in blocks:
+            if b.get("type") == want:
+                cite(b)
+
+    # 3. what quotes a distinctive figure
+    if len(cited) < MAX_SOURCES:
+        facts = derived_facts(snap.numeric_facts())
+        # A figure is distinctive if it has decimals or is large. Bare
+        # small integers ("5 asset classes") match everything and mean
+        # nothing.
+        used = [(v, dp) for v, dp, _raw, _pos in extract_numbers(answer or "")
+                if dp > 0 or abs(v) >= 1000]
+        if used:
+            for b in blocks:
+                refs = [r for r in (b.get("source_refs") or []) if r in facts]
+                if not refs:
+                    continue
+                allowed = [facts[r] for r in refs]
+                if any(_matches(v, dp, allowed) for v, dp in used):
+                    cite(b)
+    return cited
+
+
 _FOLLOWUP_SYSTEM = """You suggest what a wealth client might ask NEXT.
 
-You are given the question they just asked, the answer they were given,
-and the sections their report contains.
+You are given the question they just asked and the CONTENTS of the report
+sections that answer came from.
+
+Suggest what to ask next about THOSE SECTIONS. Work from the section
+contents, not from the wording of any answer — the sections are what the
+report can actually evidence, and a question the data supports is worth
+more than one the prose happened to imply.
 
 Rules:
-- Each suggestion must follow from something the ANSWER actually said.
-  A question that ignores the answer is the same as no suggestion.
-- Each must be answerable from the sections listed. Never suggest asking
-  about data the report does not carry — a suggestion the system will
-  refuse is worse than none.
+- Each suggestion must be answerable from the SECTION CONTENTS shown.
+  Never suggest asking about data they do not carry — a suggestion the
+  system will then refuse is worse than none.
+- Ask about figures and rows actually present. "Which holding cost the
+  most?" is good when the holdings are listed; "how did this compare to
+  2019?" is not, whatever any answer implied.
+- Never suggest comparing to anything OUTSIDE this report — industry
+  averages, typical fees, other clients, market data, what a peer pays.
+  The report holds one client's own figures and nothing else, so those
+  questions can only be declined.
 - READ THE ANSWER FOR LIMITS. If it says something is not available, not
   in the report, or only covers one period, do NOT suggest asking for it
   again in another form. Being told "I can only see this quarter" and
@@ -329,24 +427,42 @@ Return ONLY JSON: {"questions": ["...", "..."]}"""
 
 
 def dynamic_followups(question: str, answer: str, report: Dict[str, Any],
-                      n: int = 2) -> List[str]:
-    """Questions that arise from THIS answer.
+                      n: int = 2,
+                      sources: Optional[List[Dict[str, str]]] = None
+                      ) -> List[str]:
+    """Questions that arise from the SOURCE SECTIONS this answer came from.
+
+    Built from the sections rather than the prose on purpose. The prose is
+    one rendering of the facts and can be partial, hedged, or a decline;
+    the sections are what the report can actually evidence. Asking the
+    model to riff on its own wording compounds whatever that wording got
+    wrong, and produces suggestions the system may then have to refuse.
 
     The static tables underneath are keyed by intent, so every fees
-    question produced the same two follow-ups no matter what the answer
-    said. That is a menu, not a conversation — and it wastes the one thing
-    the system knows that a menu cannot: what was just discussed.
-
-    Returns [] on any failure. The caller falls back to the tables, so a
-    slow or unavailable model costs relevance, never the chips themselves.
+    question produced the same two follow-ups regardless. Returns [] on any
+    failure, and the caller falls back to them — a slow or unavailable
+    model costs relevance, never the chips themselves.
     """
     api_key = os.getenv("ANTHROPIC_API_KEY", "")
     if not api_key or not (answer or "").strip():
         return []
 
-    sections = sorted({b.get("title") or b.get("type", "")
-                       for b in report.get("blocks", [])
-                       if b.get("type") not in ("disclosures", "explainer")})
+    # The cited sections with their actual contents — figures, rows,
+    # labels. Falling back to every section's TITLE when nothing was cited
+    # keeps a suggestion possible without inventing a scope.
+    ids = {x["block_id"] for x in (sources or [])}
+    blocks = [b for b in report.get("blocks", [])
+              if b.get("block_id") in ids] if ids else []
+    if blocks:
+        sections = " | ".join(
+            f"[{b.get('title') or b.get('type')}] "
+            f"{json.dumps(b.get('data', {}), default=str)[:700]}"
+            for b in blocks)
+    else:
+        sections = ", ".join(sorted(
+            {b.get("title") or b.get("type", "")
+             for b in report.get("blocks", [])
+             if b.get("type") not in ("disclosures", "explainer")}))
     try:
         import anthropic
         client = anthropic.Anthropic(api_key=api_key)
@@ -355,8 +471,8 @@ def dynamic_followups(question: str, answer: str, report: Dict[str, Any],
             max_tokens=180, system=_FOLLOWUP_SYSTEM,
             messages=[{"role": "user", "content":
                        f"THEY ASKED: {question[:300]}\n\n"
-                       f"THEY WERE TOLD: {answer[:900]}\n\n"
-                       f"THEIR REPORT CONTAINS: {', '.join(sections)}\n\n"
+                       f"THE SECTIONS THAT ANSWERED IT CONTAIN:\n"
+                       f"{sections[:2000]}\n\n"
                        f"Suggest {n}."}])
         raw = re.sub(r"^```(json)?|```$", "", resp.content[0].text.strip(),
                      flags=re.M).strip()
@@ -399,7 +515,9 @@ def suggest_followups(report: Dict[str, Any], intent: str = "",
                       limit: int = N_CONTENT + N_CAPABILITY,
                       snap: Optional[ClientSnapshot] = None,
                       block_type: str = "",
-                      question: str = "", answer: str = "") -> List[Dict[str, str]]:
+                      question: str = "", answer: str = "",
+                      sources: Optional[List[Dict[str, str]]] = None
+                      ) -> List[Dict[str, str]]:
     """Four chips: two about the content, two about what can be drawn.
 
     Each is {q, label, kind}: `q` is sent as the question, `label` is what
@@ -441,8 +559,9 @@ def suggest_followups(report: Dict[str, Any], intent: str = "",
     # are keyed by intent alone, so they hand the same two questions to
     # every fees query no matter what was said — a menu, not a
     # conversation.
-    if answer:
-        for q in dynamic_followups(question, answer, report, N_CONTENT):
+    if answer or sources:
+        for q in dynamic_followups(question, answer, report, N_CONTENT,
+                                   sources=sources):
             add(q, content)
 
     add(_FOLLOWUP_BY_INTENT.get(intent), content)
@@ -578,6 +697,7 @@ def answer_question(
     block: Optional[Dict] = None,
     selected_text: str = "",
     conversation_id: Optional[str] = None,
+    report_json: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """The full D2 turn. Returns the answer plus everything the UI and the
     learning loop need to reference it later."""
@@ -684,7 +804,18 @@ def answer_question(
                         block_ids=[b for b in
                                    [(block or {}).get("block_id")] if b]))
 
+    # Where this answer came from, resolved by tracing its figures back to
+    # the blocks that carry them. Mandatory: an answer about someone's
+    # money should always be traceable to the part of the document behind
+    # it, and a citation the client can click is the shortest form of that.
+    try:
+        sources = source_blocks(report_json or {}, snap, answer,
+                                block, intent)
+    except Exception:
+        sources = []
+
     return {"answer": answer, "intent": intent, "strategy": strategy,
+            "sources": sources,
             "author": author, "conversation_id": conv_id,
             "message_id": a_id, "arms": table,
             "widget": widget, "widget_declined": declined,

@@ -173,6 +173,12 @@ __DOC_CSS__
  .m-a code{background:#eef2f7;padding:1px 4px;border-radius:3px;font-size:11.5px}
  .m-a strong{font-weight:600}
  .m-a h1,.m-a h2,.m-a h3{font-size:13px;margin:8px 0 4px;font-weight:600}
+ .src{margin-top:8px;font-size:11px;color:#94a3b8}
+ .src a{color:#2563eb;text-decoration:none;border-bottom:1px dotted #93c5fd}
+ .src a:hover{color:#1d4ed8;border-bottom-style:solid}
+ section.flash{animation:flash 1.4s ease}
+ @keyframes flash{0%,100%{background:transparent}
+   25%{background:#fef9c3}70%{background:#fef9c3}}
  .chips.inline{padding:0;margin-top:9px;padding-top:8px;
    border-top:1px solid #e2e8f0}
  .chips.inline button{font-size:11.5px;padding:3px 9px;
@@ -338,6 +344,22 @@ sections.forEach(function(sec){
 });
 document.getElementById("ctxoff").onclick = function(){ setCtx(null); };
 
+// Delegated: source links are created inside answer bubbles long after
+// this runs, so binding to the nav's links alone would leave every
+// citation dead.
+document.addEventListener("click", function(e){
+  var a = e.target.closest && e.target.closest("a[data-goto]");
+  if (!a) return;
+  e.preventDefault();
+  var sec = document.querySelector(
+    'section[data-block-id="' + a.getAttribute("data-goto") + '"]');
+  if (sec){
+    sec.scrollIntoView({behavior: "smooth", block: "center"});
+    sec.classList.add("flash");
+    setTimeout(function(){ sec.classList.remove("flash"); }, 1400);
+  }
+});
+
 document.querySelectorAll(".side a[data-goto]").forEach(function(a){
   a.onclick = function(e){ e.preventDefault();
     var sec = document.querySelector(
@@ -443,6 +465,23 @@ function addAnswer(res){
     w.appendChild(box); d.appendChild(w);
     if (window.apeEnhanceWidgets) window.apeEnhanceWidgets(d);
   }
+  // Where the answer came from. Clicking scrolls the document to that
+  // section and flashes it, so a client can check any figure against the
+  // report rather than taking the chat's word for it.
+  if (res.sources && res.sources.length){
+    var src = document.createElement("div");
+    src.className = "src";
+    src.appendChild(document.createTextNode("From: "));
+    res.sources.forEach(function(s, i){
+      if (i) src.appendChild(document.createTextNode(" · "));
+      var a = document.createElement("a");
+      a.href = "#"; a.setAttribute("data-goto", s.block_id);
+      a.textContent = s.title;
+      src.appendChild(a);
+    });
+    d.appendChild(src);
+  }
+
   // Follow-ups belong to THIS answer, so they sit under it rather than in
   // a fixed row at the bottom of the pane. A client reading a reply sees
   // what to ask next without their eye leaving the reply.

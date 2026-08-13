@@ -1368,7 +1368,8 @@ async def report_chat(report_id: str, request: Request):
         result = answer_question(
             db, snap, report_id, question, block,
             selected_text=str(body.get("selected_text", "")),
-            conversation_id=body.get("conversation_id"))
+            conversation_id=body.get("conversation_id"),
+            report_json=report)
 
         # Chips for the NEXT turn, drawn from the blocks this report actually
         # contains and what was just asked — so they stay relevant to this
@@ -1379,7 +1380,8 @@ async def report_chat(report_id: str, request: Request):
         result["followups"] = suggest_followups(
             report, result.get("intent", ""), asked, snap=snap,
             block_type=(block or {}).get("block_type", ""),
-            question=question, answer=result.get("answer", ""))
+            question=question, answer=result.get("answer", ""),
+            sources=result.get("sources") or [])
 
         # The question itself is a signal: engagement on the report, and its
         # wording may carry format preferences for the profile.
