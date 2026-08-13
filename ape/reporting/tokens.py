@@ -13,12 +13,23 @@ nothing. Swapping to real JWT later changes only this module.
     payload = report_id|client_id|scope|expiry
     token   = base64url(payload) + "." + base64url(hmac(payload))
 
+THE SECRET IS THE WHOLE SECURITY MODEL
+-------------------------------------
+Report ids are guessable, so an unsigned or weakly-signed link exposes
+every client. `_secret()` therefore refuses to fall back: no secret means
+no links, rather than links anyone can forge. See the note there.
+
 WHAT THE TOKEN DOES NOT DO
 --------------------------
 It cannot be revoked. Anyone the client forwards the email to has access for
 the remaining lifetime. Mitigations, in order of effort: a shorter TTL, a
 `jti` checked against a denylist, or exchanging the token for a session
 cookie on first open. None are implemented; the TTL is the only control.
+
+The token also travels in the QUERY STRING, so it lands in server access
+logs, browser history and any Referer header the viewer emits. Moving it
+to a POST body or swapping it for a cookie on first open would fix that;
+neither is done.
 """
 
 from __future__ import annotations
@@ -43,13 +54,42 @@ class TokenError(ValueError):
     """Invalid, tampered with, or expired."""
 
 
+MIN_SECRET_LEN = 32
+
+
 def _secret() -> bytes:
+    """The signing key, or a refusal to sign at all.
+
+    This used to fall back to a hardcoded string when the variable was
+    unset. That string is in a public repository, and the token is the
+    ONLY thing protecting a report — report ids are guessable by design.
+    So the fallback let anyone who had read the source mint a valid link
+    for any client, and the failure was silent: links worked, nothing
+    logged, nothing looked wrong.
+
+    Now it fails closed. A deployment without a secret cannot issue or
+    accept links at all, which is loud, immediate, and fixable — the
+    alternative is a system that appears to work while authorising
+    strangers.
+
+    A short secret is refused for the same reason: HMAC is only as strong
+    as its key, and "test" is brute-forceable in seconds.
+    """
     s = os.getenv("APE_REPORT_TOKEN_SECRET") or os.getenv("JWT_SECRET")
-    if not s:
-        # Deliberately not a random per-process default: that would silently
-        # invalidate every previously issued link on restart, which looks
-        # like a bug in the email rather than a missing config value.
-        s = "local-dev-insecure-change-me"
+    if not s or not s.strip():
+        raise TokenError(
+            "APE_REPORT_TOKEN_SECRET is not set. Report links cannot be "
+            "signed or verified without it. Generate one with:\n"
+            "    python -c \"import secrets; print(secrets.token_urlsafe(48))\""
+        )
+    s = s.strip()
+    if len(s) < MIN_SECRET_LEN:
+        raise TokenError(
+            f"APE_REPORT_TOKEN_SECRET is only {len(s)} characters; "
+            f"{MIN_SECRET_LEN} is the minimum. A guessable signing key is "
+            f"the same as no key — every client's report becomes reachable "
+            f"by anyone who guesses it."
+        )
     return s.encode("utf-8")
 
 

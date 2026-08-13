@@ -1129,12 +1129,23 @@ def client_report_view(report_id: str, token: str = ""):
     try:
         verify(token, report_id=report_id)
     except TokenError as exc:
+        # A client may be told why THEIR link failed. They may not be told
+        # that the server has no signing secret — that names the exact
+        # misconfiguration to whoever is probing, and it is not their
+        # problem to solve. Config faults are logged and shown as a
+        # generic failure.
+        detail = str(exc)
+        if "APE_REPORT_TOKEN_SECRET" in detail:
+            print(f"[SECURITY] report link refused — {detail}", flush=True)
+            shown = "This link cannot be verified right now"
+        else:
+            shown = _esc_html(detail)
         return HTMLResponse(
             f'<!doctype html><meta charset="utf-8"><title>Link problem</title>'
             f'<div style="font-family:Segoe UI,system-ui,Arial;max-width:460px;'
             f'margin:14vh auto;text-align:center;color:#0f172a">'
             f'<h2 style="font-size:19px">This link cannot be opened</h2>'
-            f'<p style="color:#64748b;font-size:14px;line-height:1.6">{_esc_html(str(exc))}.'
+            f'<p style="color:#64748b;font-size:14px;line-height:1.6">{shown}.'
             f'<br>Report links are personal and expire. Please ask your adviser '
             f'to send a fresh one.</p></div>', status_code=403)
 
@@ -1167,7 +1178,11 @@ def _viewer_auth(report_id: str, token: str) -> None:
     try:
         _verify(token, report_id=report_id)
     except TokenError as exc:
-        raise HTTPException(403, str(exc))
+        detail = str(exc)
+        if "APE_REPORT_TOKEN_SECRET" in detail:
+            print(f"[SECURITY] report request refused — {detail}", flush=True)
+            raise HTTPException(403, "link cannot be verified")
+        raise HTTPException(403, detail)
 
 
 def _report_json(report_id: str) -> dict:
