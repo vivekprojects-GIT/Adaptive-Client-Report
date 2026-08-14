@@ -68,7 +68,7 @@ _NUMBER = re.compile(
 )
 
 # Written with a multiplier => deliberately rounded => relative tolerance.
-_MULT_SUFFIX = re.compile(r"(m|M|k|K|bn|billion|million|thousand)")
+_MULT_SUFFIX = re.compile(r"(m|M|k|K|bn|billion|million|thousand)\b")
 
 _MULTIPLIER = {
     "m": 1e6, "M": 1e6, "million": 1e6,

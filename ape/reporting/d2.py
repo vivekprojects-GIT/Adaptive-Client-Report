@@ -600,9 +600,9 @@ def dynamic_followups(question: str, answer: str, report: Dict[str, Any],
         if limited:
             # "last quarter", "previous period", "over time" — the shapes a
             # question takes when it asks for the thing just refused.
-            if re.search(r"(last|previous|prior|earlier|other)\s+"
-                         r"(quarter|period|year|month)|over time|"
-                         r"histor(y|ical)", q, re.I):
+            if re.search(r"\b(last|previous|prior|earlier|other)\s+"
+                         r"(quarter|period|year|month)|\bover time\b|"
+                         r"\bhistor(y|ical)", q, re.I):
                 continue
         # A "question" that is a paragraph, or that asks for a chart, is
         # not what was requested and does not go in front of a client.
