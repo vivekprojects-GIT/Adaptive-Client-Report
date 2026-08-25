@@ -41,13 +41,70 @@ from .echarts_opts import build_option
 
 _CURRENCY = "£"
 
+# The locale the CURRENT render is running in.
+#
+# A ContextVar rather than a module global because FastAPI serves requests
+# on a thread pool: two reports rendering at once, one Dutch and one
+# English, would otherwise read each other's setting and interleave the
+# separators. A ContextVar is isolated per thread and per task.
+#
+# Threading a locale argument through every _money() call instead would
+# touch several dozen call sites for a value that never changes within a
+# single render — this keeps the change where the decision is made.
+import contextvars as _ctxvars
+
+_RENDER_LOCALE = _ctxvars.ContextVar("ape_render_locale", default="")
+
+
+def _locale_now() -> str:
+    return _RENDER_LOCALE.get() or ""
+
 
 def _money(v: float) -> str:
+    loc = _locale_now()
+    if loc and loc != "en":
+        from ape.reporting.locales import format_number
+        return f"{_CURRENCY}{format_number(float(v), loc, 2)}"
     return f"{_CURRENCY}{v:,.2f}"
 
 
 def _pct(v: float) -> str:
+    loc = _locale_now()
+    if loc and loc != "en":
+        from ape.reporting.locales import format_number
+        if not v:
+            return format_number(0.0, loc, 2) + "%"
+        sign = "+" if v > 0 else "-"
+        return sign + format_number(abs(float(v)), loc, 2) + "%"
     return f"{v:+.2f}%" if v else "0.00%"
+
+
+def _signed(v: float) -> str:
+    """A signed number in the active locale, without the % sign.
+
+    The KPI deltas are "pp" (percentage points), not percentages, so they
+    cannot reuse _pct — but they still need the locale's decimal mark or a
+    Dutch card reads "+8.58pp" beside a Dutch figure written "8,58".
+    """
+    loc = _locale_now()
+    if loc and loc != "en":
+        from ape.reporting.locales import format_number
+        return ("+" if v > 0 else "-" if v < 0 else "") +                format_number(abs(float(v)), loc, 2)
+    return f"{v:+.2f}"
+
+
+def _T(text: str) -> str:
+    """Translate a string the RENDERER hardcodes, using the active locale.
+
+    These are the words that never reach the block data — table totals,
+    axis series names, "as at" — so `labels.localise` cannot see them. They
+    are the difference between a Dutch report and a nearly-Dutch one.
+    """
+    loc = _locale_now()
+    if not loc or loc == "en":
+        return text
+    from ape.reporting.labels import t as _t
+    return _t(text, loc)
 
 
 # ---------------------------------------------------------------------------
@@ -803,8 +860,14 @@ def _fmt(value: Any, fmt: str) -> str:
     if fmt == "currency":
         return _money(float(value))
     if fmt == "percent":
+        loc = _locale_now()
+        if loc and loc != "en":
+            from ape.reporting.locales import format_number
+            return format_number(float(value), loc, 2) + "%"
         return f"{float(value):.2f}%"
-    return _esc(value)
+    # A text KPI carries a VALUE that may itself be a translatable term —
+    # the risk level ("Aggressive") is the one that shows.
+    return _esc(_T(str(value)) if isinstance(value, str) else value)
 
 
 def _sparkline(spark: Optional[Dict[str, Any]]) -> str:
@@ -881,14 +944,14 @@ def _render_block(b: Dict[str, Any], number: Optional[int] = None) -> str:
                 c = float(dl["change"])
                 tone = "up" if c > 0 else ("dn" if c < 0 else "flat")
                 arrow = "▲" if c > 0 else ("▼" if c < 0 else "–")
-                extra += (f'<u class="{tone}">{arrow} {c:+.2f}pp '
-                          f'<i>since {_esc(dl["since"])}</i></u>')
+                extra += (f'<u class="{tone}">{arrow} {_signed(c)}pp '
+                          f'<i>{_esc(_T("since"))} {_esc(dl["since"])}</i></u>')
             note = i.get("note")
             if note is not None:
                 v = float(note["value"])
                 tone = "up" if v > 0 else ("dn" if v < 0 else "flat")
-                extra += (f'<u class="{tone}">{v:+.2f}{_esc(note["unit"])} '
-                          f'<i>vs {_esc(note["against"])}</i></u>')
+                extra += (f'<u class="{tone}">{_signed(v)}{_esc(note["unit"])} '
+                          f'<i>{_esc(_T("vs"))} {_esc(_T(str(note["against"])))}</i></u>')
             spark = _sparkline(i.get("spark"))
             cards.append(
                 f'<div class="kpi"><span>{_esc(i["label"])}</span>'
@@ -930,7 +993,7 @@ def _render_block(b: Dict[str, Any], number: Optional[int] = None) -> str:
             trs = "".join(f"<tr><td>{_esc(r['label'])}</td>"
                           f"<td class='n'>{_money(r['amount'])}</td></tr>" for r in rows)
             if d.get("total") is not None:
-                trs += (f"<tr class='tot'><td>Total</td>"
+                trs += (f"<tr class='tot'><td>{_esc(_T('Total'))}</td>"
                         f"<td class='n'>{_money(d['total'])}</td></tr>")
             body = f"<table><tbody>{trs}</tbody></table>"
         elif t == "holdings_table":
@@ -959,7 +1022,7 @@ def _render_block(b: Dict[str, Any], number: Optional[int] = None) -> str:
                 )
             trs = "".join(cells)
             body = ("<table><thead><tr><th></th><th class='n'>Value</th>"
-                    f"<th class='n'>Benchmark</th></tr></thead><tbody>{trs}</tbody></table>")
+                    f"<th class='n'>{_esc(_T('Benchmark'))}</th></tr></thead><tbody>{trs}</tbody></table>")
 
     elif t == "performance_line":
         parts = "".join(
@@ -1007,15 +1070,15 @@ def _render_block(b: Dict[str, Any], number: Optional[int] = None) -> str:
         cls = "neg" if t == "top_detractors" else "pos"
         trs = "".join(
             f"<tr><td>{_esc(r['name'])} <em>{_esc(r['symbol'])}</em></td>"
-            f"<td class='n'>{float(r['contribution_pct']):+.2f}%</td>"
+            f"<td class='n'>{_pct(float(r['contribution_pct']))}</td>"
             f"<td class='bar'><i class='{cls}' "
             f"style=\"width:{abs(float(r['contribution_pct']))/span*100:.0f}%\"></i></td>"
             "</tr>" for r in rows)
         if d.get("others_pct"):
-            trs += (f"<tr><td>Others</td><td class='n'>{d['others_pct']:+.2f}%</td>"
+            trs += (f"<tr><td>{_esc(_T('Others'))}</td><td class='n'>{_pct(d['others_pct'])}</td>"
                     "<td class='bar'></td></tr>")
-        trs += (f"<tr class='tot'><td>Total</td>"
-                f"<td class='n'>{d.get('total_pct', 0.0):+.2f}%</td>"
+        trs += (f"<tr class='tot'><td>{_esc(_T('Total'))}</td>"
+                f"<td class='n'>{_pct(d.get('total_pct', 0.0))}</td>"
                 "<td class='bar'></td></tr>")
         body = ("<table><thead><tr><th>Holding</th><th class='n'>Contribution</th>"
                 f"<th class='bar'>Impact</th></tr></thead><tbody>{trs}</tbody></table>")
@@ -1083,13 +1146,13 @@ def _render_block(b: Dict[str, Any], number: Optional[int] = None) -> str:
         trs = "".join(
             f"<tr{' class=tot' if r.get('emphasis') else ''}>"
             f"<td>{_esc(r['label'])}</td>"
-            f"<td class='n'>{float(r['value']):+.2f}%</td>"
-            f"<td class='n'>{float(r['benchmark_value']):+.2f}%</td>"
+            f"<td class='n'>{_pct(float(r['value']))}</td>"
+            f"<td class='n'>{_pct(float(r['benchmark_value']))}</td>"
             f"<td class='n {'up' if float(r.get('excess_pct', 0)) >= 0 else 'dn'}'>"
-            f"{float(r.get('excess_pct', 0)):+.2f}%</td></tr>"
+            f"{_pct(float(r.get('excess_pct', 0)))}</td></tr>"
             for r in d.get("rows", []))
-        body = ("<table><thead><tr><th>Period</th><th class='n'>Portfolio</th>"
-                "<th class='n'>Benchmark</th><th class='n'>Difference</th>"
+        body = ("<table><thead><tr><th>{_esc(_T('Period'))}</th><th class='n'>{_esc(_T('Portfolio'))}</th>"
+                "<th class='n'>{_esc(_T('Benchmark'))}</th><th class='n'>{_esc(_T('Difference'))}</th>"
                 f"</tr></thead><tbody>{trs}</tbody></table>")
 
     elif t == "key_takeaways":
@@ -1222,9 +1285,20 @@ def render_body(report: Dict[str, Any], internal: bool = True) -> str:
     # stored report keeps English fact keys, which is what the grounding
     # allowlist matches against when the client asks a question about it.
     _locale = report.get("language") or ""
-    if _locale and _locale != "en":
-        from ape.reporting.labels import localise
-        report = localise(report, _locale)
+    # Set for the whole render so _money/_pct format in the same convention
+    # the prose was written in. Reset in a finally below — a leaked value
+    # would silently format the NEXT report in this thread as Dutch.
+    _tok = _RENDER_LOCALE.set(_locale)
+    try:
+        if _locale and _locale != "en":
+            from ape.reporting.labels import localise
+            report = localise(report, _locale)
+        return _render_body_inner(report, internal)
+    finally:
+        _RENDER_LOCALE.reset(_tok)
+
+
+def _render_body_inner(report: Dict[str, Any], internal: bool = True) -> str:
 
     rendered, n = [], 0
     for b in report["blocks"]:
@@ -1237,8 +1311,11 @@ def render_body(report: Dict[str, Any], internal: bool = True) -> str:
 
     badge = (f'<span class="badge">{_esc(report.get("template_label") or "")}</span>'
              if internal and report.get("template_label") else "")
-    meta_bits = [_esc(str(report.get("report_type", "")).replace("_", " ").title()),
-                 _esc(report.get("period", ""))]
+    # The report type is a key ("quarterly_portfolio_review"); its
+    # human-readable form is a label, so it translates. The period is an
+    # identifier and does not.
+    _rt_label = str(report.get("report_type", "")).replace("_", " ").title()
+    meta_bits = [_esc(_T(_rt_label)), _esc(report.get("period", ""))]
     if internal:
         meta_bits.append(_esc(report.get("report_id", "")))
     meta = " &middot; ".join(x for x in meta_bits if x)

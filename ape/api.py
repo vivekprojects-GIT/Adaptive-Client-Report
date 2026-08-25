@@ -630,6 +630,12 @@ async def preview_template(request: Request):
         "required_blocks": blocks,
     }
     report = build_report(snap, template, report_type)
+    # Stamped HERE, before prose is written and before validation runs.
+    # Both of those read it: the writer to choose the language, the
+    # validator to choose the number convention. Setting it later meant the
+    # gate checked a Dutch callout with English rules and dropped it, and
+    # the only trace was "1 rejected".
+    report["language"] = getattr(snap, "language", "") or ""
     enforced = enforce_mandatory(report, snap)
     verdict = validate_report(report, snap.numeric_facts(), snap.label_terms())
     if verdict.rejected:
@@ -1063,6 +1069,9 @@ async def generate_one_report(request: Request):
         rows = []
 
     report = build_report(snap, template, report_type)
+    # Same reason as the preview path: prose and validation both read this,
+    # so it must exist before either runs.
+    report["language"] = getattr(snap, "language", "") or ""
 
     # Structural coverage gate: mandatory categories (costs, disclosures)
     # are appended if the template omitted them. Personalisation may not
@@ -1101,10 +1110,6 @@ async def generate_one_report(request: Request):
             {"block_id": f.block_id, "kind": f.kind, "detail": f.detail}
             for f in verdict.findings
         ]
-
-    # The language is part of the document, not of the request that made
-    # it: reopening this report next year must render the same way.
-    report["language"] = getattr(snap, "language", "") or ""
 
     out = Path(__file__).resolve().parents[1] / "data" / "generated"
     out.mkdir(parents=True, exist_ok=True)

@@ -88,13 +88,24 @@ def render_viewer(report: Dict[str, Any], token: str, snapshot=None) -> str:
     rid = _esc(report["report_id"])
 
     # Section nav from the numbered, titled blocks.
+    #
+    # Built from the ORIGINAL report, which still holds English titles —
+    # render_body translates a copy, so its work is invisible here. The nav
+    # has to translate for itself or a Dutch report gets an English index
+    # down the side of Dutch headings.
+    _nav_locale = report.get("language") or ""
+    if _nav_locale and _nav_locale != "en":
+        from ape.reporting.labels import t as _tt
+    else:
+        _tt = lambda text, _loc: text          # noqa: E731
+
     nav_items = []
     for b in report["blocks"]:
         if b.get("title") and b["type"] not in ("narrative", "callout",
                                                 "disclosures", "explainer"):
             nav_items.append(
                 f'<a href="#" data-goto="{_esc(b["block_id"])}">'
-                f'{_esc(b["title"])}</a>')
+                f'{_esc(_tt(b["title"], _nav_locale))}</a>')
     nav = "\n".join(nav_items)
 
     period = _esc(report.get("period", ""))

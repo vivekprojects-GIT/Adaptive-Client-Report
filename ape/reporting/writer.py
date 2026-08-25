@@ -135,9 +135,31 @@ Absolute rules:
 5. Return ONLY the JSON asked for. No markdown fences, no commentary."""
 
 
-def _call(client, model: str, prompt: str, max_tokens: int = 700) -> str:
+def _language_rule(locale) -> str:
+    """Rule 6, added only when the client does not read English.
+
+    Appended to the SYSTEM prompt rather than the user turn so it sits with
+    the other absolute rules — the number-format half of it has to carry
+    the same weight as rule 1, or the model translates the words and leaves
+    the figures in English separators, which then fails the locale-aware
+    grounding check.
+    """
+    name = locale.prompt_name
+    return (
+        "\n6. Write in " + name + ". Use " + name +
+        " number formatting: '" + locale.thousands + "' as the thousands "
+        "separator and '" + locale.decimal + "' as the decimal separator. "
+        "Do not change any figure's VALUE — only how it is written."
+    )
+
+
+def _call(client, model: str, prompt: str, max_tokens: int = 700,
+          locale=None) -> str:
+    system = _SYSTEM
+    if locale is not None and locale.code != "en":
+        system = _SYSTEM + _language_rule(locale)
     resp = client.messages.create(
-        model=model, max_tokens=max_tokens, system=_SYSTEM,
+        model=model, max_tokens=max_tokens, system=system,
         messages=[{"role": "user", "content": prompt}])
     return resp.content[0].text.strip()
 
@@ -197,6 +219,7 @@ def write_block(
     snap: ClientSnapshot,
     brief: str,
     fallback_block: Dict[str, Any],
+    locale=None,
 ) -> Tuple[Dict[str, Any], str]:
     """Return (block, author) where author is 'llm', 'llm_retry' or
     'fallback'. The returned block is ALWAYS grounded — either the model's
@@ -209,7 +232,8 @@ def write_block(
     for attempt in range(MAX_ATTEMPTS):
         try:
             raw = _call(anthropic_client, model,
-                        _PROMPTS[block_type](snap, brief, feedback))
+                        _PROMPTS[block_type](snap, brief, feedback),
+                        locale=locale)
         except Exception as exc:
             # Falling back is right — the client still gets a grounded block.
             # Doing it SILENTLY was not: a rate-limited batch and a model
@@ -228,7 +252,8 @@ def write_block(
         candidate = dict(fallback_block)
         candidate["data"] = {**fallback_block.get("data", {}), **data}
 
-        findings = [f for f in validate_block(candidate, facts, labels=labels)
+        findings = [f for f in validate_block(candidate, facts, labels=labels,
+                                              locale=(locale.code if locale else None))
                     if f.kind == "ungrounded_number"]
         if not findings:
             candidate["_author"] = "llm" if attempt == 0 else "llm_retry"
@@ -273,12 +298,18 @@ def write_prose_blocks(
     model = os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5")
     brief = style_brief(strategy, dimensions)
 
+    # The client's language, taken from the snapshot the facts came from —
+    # so the prose and the figures inside it are written and then validated
+    # under the same convention.
+    from ape.reporting.locales import get as _get_locale
+    _loc = _get_locale(getattr(snap, "language", None))
+
     authors: Dict[str, str] = {}
     for i, block in enumerate(report["blocks"]):
         if block["type"] not in WRITABLE:
             continue
         written, author = write_block(client, model, block["type"], snap,
-                                      brief, block)
+                                      brief, block, locale=_loc)
         report["blocks"][i] = written
         # A fallback carries WHY, so an advisor reviewing a draft can tell a
         # rate-limited batch from a model that invented a figure.

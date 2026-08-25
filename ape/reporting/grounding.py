@@ -310,8 +310,16 @@ def validate_block(
     facts: Dict[str, float],
     prose_fields: Sequence[str] = ("text", "note"),
     labels: Sequence[str] = (),
+    locale: Optional[str] = None,
 ) -> List[Finding]:
-    """Check one block. Empty list means it is grounded."""
+    """Check one block. Empty list means it is grounded.
+
+    `locale` must match the language the block was WRITTEN in. A Dutch
+    block checked with English rules reads "1.234.567,89" as 1.234 and is
+    rejected wholesale — the generator would fall back to the code-built
+    English block on every attempt, and the report would quietly come out
+    in the wrong language with no error raised.
+    """
     bid = block.get("block_id", "?")
     findings: List[Finding] = []
 
@@ -338,7 +346,7 @@ def validate_block(
     # Prose: scan free text for stated figures.
     for field_name, text in _prose_strings(data, prose_fields):
         exempt = _label_spans(text, labels)
-        for val, dp, raw, start in extract_numbers(text):
+        for val, dp, raw, start in extract_numbers(text, locale):
             if _is_prose_number(val, dp, raw) or _inside(start, exempt):
                 continue
             rounded = bool(_MULT_SUFFIX.search(raw))
@@ -463,12 +471,23 @@ def _structured_numbers(block_type: str, data: Dict[str, Any]) -> List[Tuple[str
 
 
 def validate_report(report: Dict[str, Any], facts: Dict[str, float],
-                    labels: Sequence[str] = ()) -> Verdict:
-    """Validate a whole report. Rejected blocks must not be rendered."""
+                    labels: Sequence[str] = (),
+                    locale: Optional[str] = None) -> Verdict:
+    """Validate a whole report. Rejected blocks must not be rendered.
+
+    `locale` defaults to the report's own language, so a translated report
+    is checked under the convention it was written in. Without this a Dutch
+    callout is read with English separators, fails, and gets dropped — the
+    client receives a report quietly missing its narrative, and the log
+    says only "1 rejected".
+    """
+    if locale is None:
+        locale = report.get("language") or None
     allowed = derived_facts(facts)
     v = Verdict(ok=True)
     for block in report.get("blocks", []):
-        findings = validate_block(block, allowed, labels=labels)
+        findings = validate_block(block, allowed, labels=labels,
+                                  locale=locale)
         v.checked_numbers += len(_structured_numbers(
             block.get("type", ""), block.get("data") or {}))
         if findings:
