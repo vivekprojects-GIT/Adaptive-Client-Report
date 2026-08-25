@@ -183,6 +183,12 @@ class TemplateUpsert(BaseModel):
     description:     str = ""
     brief:           str = ""
     required_blocks: List[str] = []
+    # Both empty by default, meaning "follow the client". Pin them only when
+    # the LAYOUT itself is language- or jurisdiction-specific — a template
+    # that hardcodes a language would otherwise send a Dutch document to an
+    # English-reading client who happened to match on report type.
+    language:        str = ""
+    country:         str = ""
     # optional_blocks and style_profile are gone. The generator never read
     # the first, and the second existed solely as the D1 bandit's prior —
     # cosine-matched against the client's learned profile to seed an arm

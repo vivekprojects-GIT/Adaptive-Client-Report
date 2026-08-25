@@ -62,6 +62,52 @@ LOCALES: Dict[str, Locale] = {
 DEFAULT_LOCALE = "en"
 
 
+# Country -> the language a report for that country defaults to.
+#
+# A DEFAULT, never a rule. Belgium reads Dutch or French depending on the
+# client, Switzerland three ways, and plenty of Dutch clients want their
+# reporting in English. So the advisor picks a country and the language
+# fills itself in, and they can still change it — auto-selection that
+# cannot be overridden would be worse than no auto-selection at all.
+COUNTRIES: Dict[str, Dict[str, str]] = {
+    "GB": {"label": "United Kingdom", "language": "en", "currency": "£"},
+    "US": {"label": "United States",  "language": "en", "currency": "$"},
+    "IE": {"label": "Ireland",        "language": "en", "currency": "€"},
+    "NL": {"label": "Netherlands",    "language": "nl", "currency": "€"},
+    "BE": {"label": "Belgium",        "language": "nl", "currency": "€"},
+    "DE": {"label": "Germany",        "language": "de", "currency": "€"},
+    "AT": {"label": "Austria",        "language": "de", "currency": "€"},
+    "CH": {"label": "Switzerland",    "language": "de", "currency": "CHF"},
+    "FR": {"label": "France",         "language": "fr", "currency": "€"},
+    "LU": {"label": "Luxembourg",     "language": "fr", "currency": "€"},
+    "ES": {"label": "Spain",          "language": "es", "currency": "€"},
+    "IT": {"label": "Italy",          "language": "it", "currency": "€"},
+}
+
+DEFAULT_COUNTRY = "GB"
+
+
+def language_for_country(country: Optional[str]) -> str:
+    """The language to preselect when an advisor picks a country."""
+    if not country:
+        return DEFAULT_LOCALE
+    row = COUNTRIES.get(str(country).strip().upper())
+    return row["language"] if row else DEFAULT_LOCALE
+
+
+def currency_for_country(country: Optional[str]) -> str:
+    row = COUNTRIES.get(str(country or "").strip().upper())
+    return row["currency"] if row else "£"
+
+
+def countries() -> list:
+    """For the advisor dropdown, alphabetical by label."""
+    return sorted(
+        ({"code": c, "label": v["label"], "language": v["language"],
+          "currency": v["currency"]} for c, v in COUNTRIES.items()),
+        key=lambda r: r["label"])
+
+
 def get(code: Optional[str]) -> Locale:
     """Resolve a code to a Locale, falling back to English.
 

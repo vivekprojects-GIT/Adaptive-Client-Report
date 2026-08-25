@@ -23,6 +23,7 @@ export const api = {
   health:               ()                                 => request("GET",    "/health"),
 
   // Adviser notifications
+  listLocales:          ()                                 => request("GET",    "/config/locales"),
   listAlerts:           ()                                 => request("GET",    "/alerts"),
   acknowledgeAlert:     (id)                               => request("POST",   `/alerts/${encodeURIComponent(id)}/ack`),
 

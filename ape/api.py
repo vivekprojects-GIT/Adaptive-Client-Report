@@ -100,6 +100,34 @@ from .store.mongo_schema import (
 )
 
 
+def _resolve_language(body: dict, snap) -> str:
+    """Which language this report is written in. Most specific wins.
+
+        explicit language on the request   advisor picked from the dropdown
+        -> language implied by the country advisor picked a country only
+        -> the client's stored language    their standing preference
+        -> ENGLISH
+
+    English is the floor, always. A report nobody asked to be translated
+    stays in English rather than being guessed into a language the reader
+    may not have — guessing wrong here hands someone a document they
+    cannot read, which is worse than an unlocalised one.
+
+    Resolved once, here, so prose, number formatting and the grounding
+    check all see the same answer. Splitting this decision is how a report
+    ends up written in one convention and validated in another.
+    """
+    from .reporting.locales import get as _get_locale, language_for_country
+    lang = str(body.get("language") or "").strip()
+    if not lang:
+        country = str(body.get("country") or "").strip()
+        if country:
+            lang = language_for_country(country)
+    if not lang:
+        lang = getattr(snap, "language", "") or ""
+    return _get_locale(lang).code if lang else ""
+
+
 def templates_for(templates, report_type):
     """ACTIVE templates authored for this report type.
 
@@ -388,6 +416,19 @@ _SIGNAL_MEANING = {
 }
 
 
+@app.get("/config/locales")
+def list_locales():
+    """Countries and languages for the advisor's dropdowns.
+
+    Countries carry their default language so the UI can preselect one
+    without a second round trip — but the language list is returned whole,
+    because the advisor must be able to override. A Dutch client who wants
+    English reporting is common, not an edge case.
+    """
+    from .reporting.locales import countries, supported
+    return {"countries": countries(), "languages": supported()}
+
+
 @app.get("/alerts")
 def list_alerts(limit: int = 50, unread_only: bool = False):
     """Adviser notifications — newest first, with an unread count.
@@ -536,6 +577,8 @@ def upsert_template(req: TemplateUpsert):
         description=req.description,
         brief=req.brief,
         required_blocks=req.required_blocks,
+        language=req.language,
+        country=req.country,
         changed_by=req.changed_by,
     )
     return {"status": "ok", "template_id": req.template_id}
@@ -949,6 +992,8 @@ async def generate_one_report(request: Request):
     if snap is None:
         raise HTTPException(404, f"no stored snapshot for client '{client_id}'")
 
+    snap.language = _resolve_language(body, snap)
+
     rt = next((r for r in cfg.list_report_types()
                if r.get("report_type") == report_type), None)
     if rt is None:
@@ -1120,6 +1165,8 @@ async def generate_reports(request: Request):
         raise HTTPException(400, "CSV is empty")
 
     cfg = _guard_cfg()
+    snap.language = _resolve_language(body, snap)
+
     rt = next((r for r in cfg.list_report_types()
                if r.get("report_type") == report_type), None)
     if rt is None:

@@ -38,6 +38,12 @@ export default function AdvisorPage() {
   const [importInfo, setImport] = useState(null);
   const [preview, setPreview]   = useState(null);
   const [period, setPeriod]     = useState("");        // "" = latest on file
+  // English is the standing default, never inferred. Picking a country
+  // preselects that country's language, but the advisor can still change
+  // it — a Dutch client who wants English reporting is common.
+  const [country,  setCountry]  = useState("GB");
+  const [language, setLanguage] = useState("en");
+  const [locales,  setLocales]  = useState({ countries: [], languages: [] });
   const [insight, setInsight]   = useState(null);
   const [note, setNote]         = useState("");
   // The template the advisor picked for this report type. "" means the
@@ -61,6 +67,14 @@ export default function AdvisorPage() {
   }
 
   useEffect(() => { refreshAll().catch((e) => notify("Load failed: " + e.message, "error")); }, []);
+  // Failing to load these must not block generation: the payload still
+  // carries the current country/language, and the backend defaults to
+  // English on its own.
+  useEffect(() => {
+    api.listLocales()
+       .then(setLocales)
+       .catch(() => setLocales({ countries: [], languages: [] }));
+  }, []);
 
   useEffect(() => {
     if (!selected) { setInsight(null); return; }
@@ -161,7 +175,8 @@ export default function AdvisorPage() {
       const r = await api.generateOneReport({
         client_id: client.client_id, report_type: reportType,
         ...(period ? { period } : {}),
-        ...(templateId ? { template_id: templateId } : { composer: "llm" }) });
+        ...(templateId ? { template_id: templateId } : { composer: "llm" }),
+        country, language });
       setStatus({ snapshot: "done", generate: "done",
                   validate: r.validation === "passed" ? "passed" : "failed",
                   validation_summary: r.validation_summary,
@@ -189,7 +204,8 @@ export default function AdvisorPage() {
         const r = await api.generateOneReport({
           client_id: c.client_id, report_type: reportType,
           ...(period ? { period } : {}),
-          ...(templateId ? { template_id: templateId } : { composer: "llm" }) });
+          ...(templateId ? { template_id: templateId } : { composer: "llm" }),
+        country, language });
         arms[r.strategy] = (arms[r.strategy] || 0) + 1;
       }
       await refreshAll();
@@ -284,6 +300,32 @@ export default function AdvisorPage() {
               .sort().reverse().map((per) => (
                 <option key={per} value={per}>{per}</option>
               ))}
+          </select>
+
+          {/* Country preselects a language; the advisor can still override.
+              Auto-selection that could not be overridden would be worse
+              than none — Belgium alone reads two languages. */}
+          <label className="adv-bar-lbl">Country</label>
+          <select value={country} onChange={(e) => {
+                    const c = e.target.value;
+                    setCountry(c);
+                    const row = (locales.countries || [])
+                                  .find((x) => x.code === c);
+                    if (row) setLanguage(row.language);
+                  }}>
+            {(locales.countries || []).map((c) => (
+              <option key={c.code} value={c.code}>{c.label}</option>
+            ))}
+          </select>
+
+          <label className="adv-bar-lbl">Language</label>
+          <select value={language}
+                  onChange={(e) => setLanguage(e.target.value)}>
+            {(locales.languages || []).map((l) => (
+              <option key={l.code} value={l.code}>
+                {l.label}{l.code !== "en" ? "  (" + l.endonym + ")" : ""}
+              </option>
+            ))}
           </select>
 
           <button className="adv-btn ghost" disabled={busy || !clients.length}

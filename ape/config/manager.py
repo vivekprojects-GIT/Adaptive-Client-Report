@@ -151,6 +151,8 @@ class ConfigManager:
         description: str = "",
         brief: str = "",
         required_blocks: Optional[List[str]] = None,
+        language: str = "",
+        country: str = "",
         changed_by: str = "system",
     ) -> None:
         """One approved report shape.
@@ -173,6 +175,13 @@ class ConfigManager:
                 "description":     description,
                 "brief":           brief,
                 "required_blocks": required_blocks or [],
+                # Empty means "follow the client". A template pinned to a
+                # language is for the case where the LAYOUT is
+                # language-specific (a jurisdiction's required wording);
+                # most templates should stay empty and let the client's
+                # own language decide.
+                "language":        language or "",
+                "country":         country or "",
             },
             status=_preserved_status(before),
         )
