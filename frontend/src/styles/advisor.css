@@ -39,6 +39,11 @@
 .adv-pill { display: inline-block; font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 4px; }
 .adv-pill.ok, .adv-pill.passed { background: #ecfdf5; color: #047857; }
 .adv-pill.bad     { background: #fef2f2; color: #b91c1c; }
+/* The gate caught an ungrounded draft and the code-built block was used.
+   Amber, not red: the report is fine — this is the safety net reporting
+   that it fired, and an advisor should notice it without reading it as a
+   broken document. */
+.adv-pill.warn    { background: #fffbeb; color: #b45309; }
 .adv-pill.run     { background: #eff6ff; color: #1d4ed8; }
 .adv-pill.wait, .adv-pill.muted { background: #f1f5f9; color: #64748b; }
 
@@ -101,6 +106,7 @@
 .adv-dot { width: 9px; height: 9px; border-radius: 50%; background: #cbd5e1; flex: none; }
 .adv-dot.ok, .adv-dot.passed { background: #047857; }
 .adv-dot.bad { background: #b91c1c; } .adv-dot.run { background: #1d4ed8; }
+.adv-dot.warn { background: #b45309; }
 .adv-step-name { flex: 1; }
 .adv-actions { display: flex; gap: 8px; }
 .adv-link { display: block; margin-top: 10px; font-size: 12px; color: #1d4ed8; text-decoration: none; }

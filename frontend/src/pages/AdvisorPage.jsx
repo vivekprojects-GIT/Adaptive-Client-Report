@@ -178,7 +178,16 @@ export default function AdvisorPage() {
         ...(templateId ? { template_id: templateId } : { composer: "llm" }),
         country, language });
       setStatus({ snapshot: "done", generate: "done",
-                  validate: r.validation === "passed" ? "passed" : "failed",
+                  // Three outcomes, not two. "rejected_blocks" means the
+                  // gate CAUGHT an ungrounded draft and the code-built
+                  // block was used instead — the report is still fully
+                  // grounded, so calling that "Failed" reads as a broken
+                  // report when it is the safety net doing its job.
+                  // A genuine failure is generation erroring, which lands
+                  // in the catch below.
+                  validate: r.validation === "passed" ? "passed"
+                          : r.validation === "rejected_blocks" ? "caught"
+                          : "failed",
                   validation_summary: r.validation_summary,
                   validation_findings: r.validation_findings || [],
                   authors: r.authors || {},
@@ -523,8 +532,10 @@ export default function AdvisorPage() {
                 {PIPELINE.map(([label, key]) => {
                   const v = status[key];
                   const cls = v === "done" || v === "passed" ? "ok"
+                            : v === "caught" ? "warn"
                             : v === "failed" ? "bad" : v === "running" ? "run" : "wait";
                   const txt = v === "done" ? "Completed" : v === "passed" ? "Passed"
+                            : v === "caught" ? "Caught an unsourced figure"
                             : v === "failed" ? "Failed" : v === "running" ? "Running…" : "Pending";
                   return (
                     <div key={key} className="adv-step-row">
