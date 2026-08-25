@@ -96,3 +96,52 @@ def test_full_precision_figures_are_held_to_the_penny(written, actual):
     """
     value, dp, raw, _ = extract_numbers(written)[0]
     assert not _matches(value, dp, [actual], bool(_MULT_SUFFIX.search(raw)))
+
+
+# ---------------------------------------------------------- label exemption
+
+def test_number_position_is_the_digits_not_the_match():
+    """extract_numbers must report where the DIGITS start.
+
+    The pattern allows an optional currency symbol followed by \s*, so a
+    match routinely begins at the SPACE before the number. Reporting that
+    position put every space-preceded figure one character outside any
+    label span, and the exemption for proper names containing digits
+    silently never fired.
+    """
+    text = "against the 60/40 Balanced Composite"
+    starts = {raw: pos for _v, _dp, raw, pos in extract_numbers(text)}
+    assert text[starts["60"]] == "6", "start must land on the digit, not the space"
+    assert text[starts["40"]] == "4"
+
+
+def test_benchmark_name_digits_are_exempt():
+    """"60/40 Balanced Composite" is a NAME, not two claims.
+
+    Three of four demo clients have a benchmark named this way, so this
+    was a routine intermittent failure that looked random because it
+    depended on how the model happened to phrase itself.
+    """
+    from ape.reporting.grounding import _inside, _label_spans
+    labels = ["60/40 Balanced Composite", "60/40"]
+    for text in ("against the 60/40 Balanced Composite benchmark",
+                 "against the 60/40 benchmark",
+                 "your 60/40 portfolio"):
+        spans = _label_spans(text, labels)
+        for _v, _dp, raw, pos in extract_numbers(text):
+            assert _inside(pos, spans), f"{raw!r} not exempt in {text!r}"
+
+
+def test_a_real_claim_near_a_label_is_still_checked():
+    """The exemption must not become a hole.
+
+    A figure OUTSIDE the label span is still a claim, even in a sentence
+    that also names the benchmark.
+    """
+    from ape.reporting.grounding import _inside, _label_spans
+    text = "the 60/40 Balanced Composite returned 99.99%"
+    spans = _label_spans(text, ["60/40 Balanced Composite", "60/40"])
+    exempt = {raw: _inside(pos, spans)
+              for _v, _dp, raw, pos in extract_numbers(text)}
+    assert exempt["60"] and exempt["40"]
+    assert not exempt["99.99%"], "a real claim must stay checked"

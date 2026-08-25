@@ -159,7 +159,15 @@ def extract_numbers(text: str,
             dp = 0
         if m.group("sign"):
             val = -val
-        out.append((val, dp, m.group(0).strip(), m.start()))
+        # The position of the DIGITS, not of the whole match.
+        #
+        # The pattern allows an optional currency symbol followed by \s*, so
+        # a match routinely begins at the SPACE before the number. That start
+        # then sat one character outside any label span, and the exemption
+        # for proper names containing digits silently never fired — "the
+        # 60/40 Balanced Composite" had its 60 rejected as an unsourced
+        # figure while its 40 passed, purely because "/" is not whitespace.
+        out.append((val, dp, m.group(0).strip(), m.start("num")))
     return out
 
 

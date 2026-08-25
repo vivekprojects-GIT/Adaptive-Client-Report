@@ -174,6 +174,27 @@ class ClientSnapshot:
         candidates += [a["asset_class"] for a in self.allocations]
         for h in (self.holdings or []):
             candidates += [str(h.get("name", "")), str(h.get("symbol", ""))]
+
+        # The SHORT form of a name, as people actually write it.
+        #
+        # The exemption works by finding the label in the text, so it only
+        # fires on an exact match — and nobody writes "60/40 Balanced
+        # Composite" twice in a paragraph. They write "the 60/40", and then
+        # the 60 and the 40 are read as unsourced figures and a correct
+        # sentence is rejected. Three of four demo clients have a benchmark
+        # named this way, so this was a routine, intermittent failure that
+        # looked random because it depended on how the model phrased itself.
+        #
+        # Only the digit-bearing head of a name is added ("60/40", "S&P 500"),
+        # never a bare number on its own — "60" alone must still be checked.
+        import re as _re
+        for name in list(candidates):
+            if not name:
+                continue
+            m = _re.match(r"^([\d]+\s*[/\-]\s*[\d]+)\b", str(name).strip())
+            if m:
+                candidates.append(m.group(1))
+
         return sorted({c for c in candidates if c and any(ch.isdigit() for ch in c)},
                       key=len, reverse=True)
 
