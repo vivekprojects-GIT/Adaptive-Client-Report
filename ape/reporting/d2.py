@@ -815,6 +815,15 @@ def _choose_widget(question: str, intent: str, block_type: str,
     if widget is None:
         return None, (cw.unavailable_reason(snap, binding) or
                       "that chart could not be drawn from this report")
+
+    # The chart's own caption follows the client's language. Without this a
+    # Dutch answer sits above a chart headed "How your portfolio is
+    # invested" — the one English string left on an otherwise Dutch screen,
+    # and the one a reader looks straight at.
+    lang = getattr(snap, "language", "") or ""
+    if lang and lang != "en" and widget.get("title"):
+        from ape.reporting.labels import t as _t
+        widget["title"] = _t(widget["title"], lang)
     return widget, ""
 
 

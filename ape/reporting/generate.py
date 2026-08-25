@@ -1151,8 +1151,10 @@ def _render_block(b: Dict[str, Any], number: Optional[int] = None) -> str:
             f"<td class='n {'up' if float(r.get('excess_pct', 0)) >= 0 else 'dn'}'>"
             f"{_pct(float(r.get('excess_pct', 0)))}</td></tr>"
             for r in d.get("rows", []))
-        body = ("<table><thead><tr><th>{_esc(_T('Period'))}</th><th class='n'>{_esc(_T('Portfolio'))}</th>"
-                "<th class='n'>{_esc(_T('Benchmark'))}</th><th class='n'>{_esc(_T('Difference'))}</th>"
+        body = (f"<table><thead><tr><th>{_esc(_T('Period'))}</th>"
+                f"<th class='n'>{_esc(_T('Portfolio'))}</th>"
+                f"<th class='n'>{_esc(_T('Benchmark'))}</th>"
+                f"<th class='n'>{_esc(_T('Difference'))}</th>"
                 f"</tr></thead><tbody>{trs}</tbody></table>")
 
     elif t == "key_takeaways":

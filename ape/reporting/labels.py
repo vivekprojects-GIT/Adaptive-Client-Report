@@ -186,6 +186,41 @@ LABELS: Dict[str, Dict[str, str]] = {
     "Fees":             {"nl": "Kosten", "de": "Gebühren", "fr": "Frais",
                          "es": "Comisiones", "it": "Commissioni"},
 
+    # ── chat chart titles ────────────────────────────────────────────────
+    "How your portfolio is invested":
+                        {"nl": "Hoe uw portefeuille is belegd",
+                         "de": "Wie Ihr Portfolio investiert ist",
+                         "fr": "Comment votre portefeuille est investi",
+                         "es": "Cómo está invertida su cartera",
+                         "it": "Come è investito il suo portafoglio"},
+    "Where you sit against your target":
+                        {"nl": "Uw positie ten opzichte van uw doel",
+                         "de": "Ihre Position gegenüber dem Ziel",
+                         "fr": "Votre position par rapport à votre objectif",
+                         "es": "Su posición frente a su objetivo",
+                         "it": "La sua posizione rispetto all'obiettivo"},
+    "What drove your return":
+                        {"nl": "Wat uw rendement bepaalde",
+                         "de": "Was Ihre Rendite bestimmt hat",
+                         "fr": "Ce qui a déterminé votre performance",
+                         "es": "Qué impulsó su rentabilidad",
+                         "it": "Cosa ha determinato il suo rendimento"},
+    "Your largest holdings":
+                        {"nl": "Uw grootste posities", "de": "Ihre größten Positionen",
+                         "fr": "Vos principales positions", "es": "Sus mayores posiciones",
+                         "it": "Le sue posizioni principali"},
+    "Your return over time":
+                        {"nl": "Uw rendement in de tijd",
+                         "de": "Ihre Rendite im Zeitverlauf",
+                         "fr": "Votre performance dans le temps",
+                         "es": "Su rentabilidad en el tiempo",
+                         "it": "Il suo rendimento nel tempo"},
+    "You against your benchmark":
+                        {"nl": "U versus uw benchmark",
+                         "de": "Sie gegenüber Ihrer Benchmark",
+                         "fr": "Vous par rapport à votre indice",
+                         "es": "Usted frente a su índice",
+                         "it": "Lei rispetto al suo benchmark"},
     # ── small chrome words the renderer writes inline ────────────────────
     "since":            {"nl": "sinds", "de": "seit", "fr": "depuis",
                          "es": "desde", "it": "da"},

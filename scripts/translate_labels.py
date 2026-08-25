@@ -51,14 +51,63 @@ DEFAULT_ENDPOINT = "http://localhost:5000/translate"
 SKIP_PREFIXES = ("alloc.", "R_", "hold.")
 
 
+# ---------------------------------------------------------------- backends
+#
+# Two ways to reach a translator, same contract. `argos` is the engine that
+# LibreTranslate runs internally, imported directly — no Docker, no server,
+# no network once the language model is on disk. `http` talks to a
+# LibreTranslate instance, which is the right choice if one already exists
+# or if a team wants a single shared endpoint.
+
+def _argos_translate(text: str, target: str) -> Optional[str]:
+    try:
+        import argostranslate.translate as _tr
+        out = _tr.translate(text, "en", target)
+        # argos echoes the input back when it has no model for the pair,
+        # which would otherwise be recorded as a confident translation.
+        return None if not out or out.strip() == text.strip() else out
+    except Exception:
+        return None
+
+
+def argos_ready(target: str) -> bool:
+    """Is a model for en->target actually installed?"""
+    try:
+        import argostranslate.translate as _tr
+        langs = {l.code for l in _tr.get_installed_languages()}
+        return "en" in langs and target in langs
+    except Exception:
+        return False
+
+
+def argos_install(target: str) -> bool:
+    """Download the en->target model. ~100MB, once, then offline forever."""
+    try:
+        import argostranslate.package as _pkg
+        _pkg.update_package_index()
+        cand = [p for p in _pkg.get_available_packages()
+                if p.from_code == "en" and p.to_code == target]
+        if not cand:
+            return False
+        _pkg.install_from_path(cand[0].download())
+        return True
+    except Exception as exc:                      # noqa: BLE001
+        print(f"    could not install en->{target}: {exc}", file=sys.stderr)
+        return False
+
+
 def translate(endpoint: str, text: str, target: str,
-              timeout: float = 20.0, retries: int = 2) -> Optional[str]:
+              timeout: float = 20.0, retries: int = 2,
+              backend: str = "http") -> Optional[str]:
     """One LibreTranslate call. Returns None on failure rather than raising.
 
     A failed call must not abort the whole run — losing forty good drafts
     because the fortieth timed out would make the script useless on a slow
     local instance. The failure is recorded in the review file instead.
     """
+    if backend == "argos":
+        return _argos_translate(text, target)
+
     import requests
 
     payload = {"q": text, "source": "en", "target": target, "format": "text"}
@@ -96,8 +145,8 @@ def check_endpoint(endpoint: str) -> bool:
     return True
 
 
-def build(endpoint: str, targets: List[str],
-          only_missing: bool) -> Dict[str, Dict[str, dict]]:
+def build(endpoint: str, targets: List[str], only_missing: bool,
+          backend: str = "http") -> Dict[str, Dict[str, dict]]:
     """{english: {locale: {'current':…, 'machine':…, 'agree': bool}}}"""
     out: Dict[str, Dict[str, dict]] = {}
     keys = [k for k in LABELS if not k.startswith(SKIP_PREFIXES)]
@@ -111,7 +160,8 @@ def build(endpoint: str, targets: List[str],
             current = LABELS[english].get(loc, "")
             if only_missing and current:
                 continue
-            machine = translate(endpoint, english, loc)
+            machine = translate(endpoint, english, loc,
+                                backend=backend)
             row[loc] = {
                 "current": current,
                 "machine": machine or "",
@@ -131,7 +181,7 @@ def write_review(data: Dict[str, Dict[str, dict]], path: Path,
     lines = [
         "# Label translation review",
         "",
-        "Machine drafts from LibreTranslate, against what is currently in",
+        "Machine drafts, against what is currently in",
         "`ape/reporting/labels.py`. **Nothing is applied automatically.**",
         "",
         "Read the DISAGREE section first — that is where a hand-written",
@@ -200,6 +250,9 @@ def write_snippet(data: Dict[str, Dict[str, dict]], path: Path) -> None:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--backend", choices=("argos", "http"), default="argos",
+                    help="argos = local library, no server (default); "
+                         "http = a running LibreTranslate instance")
     ap.add_argument("--endpoint", default=DEFAULT_ENDPOINT)
     ap.add_argument("--locales", default="",
                     help="comma-separated; default is every non-English locale")
@@ -215,12 +268,32 @@ def main() -> int:
         print(f"unknown locale(s): {unknown}", file=sys.stderr)
         return 2
 
-    if not check_endpoint(args.endpoint):
-        return 1
+    if args.backend == "http":
+        if not check_endpoint(args.endpoint):
+            return 1
+    else:
+        try:
+            import argostranslate  # noqa: F401
+        except ImportError:
+            print("argostranslate is not installed. Install it with"
+                  " 'pip install argostranslate', or use"
+                  " --backend http against a LibreTranslate server.",
+                  file=sys.stderr)
+            return 1
+        # Models are ~100MB each and download once. Doing it up front keeps
+        # the per-label loop from stalling halfway through a long run.
+        for loc in targets:
+            if not argos_ready(loc):
+                print(f"  downloading en->{loc} model (~100MB, one time)...")
+                if not argos_install(loc):
+                    print(f"  no en->{loc} model available; it will be "
+                          f"recorded as failed", file=sys.stderr)
+        print("using the local argos engine (no server, no network)")
 
     print(f"\ntranslating {len(LABELS)} labels into {targets}"
           f"{' (missing only)' if args.only_missing else ''}\n")
-    data = build(args.endpoint, targets, args.only_missing)
+    data = build(args.endpoint, targets, args.only_missing,
+                 backend=args.backend)
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)

@@ -107,21 +107,42 @@ BINDINGS: Dict[str, Dict[str, Any]] = {
 
 # A client naming a chart type by name. Checked before the model is asked,
 # because "as a pie chart" is not a judgement call.
+# Chart names as clients actually write them, in every language the system
+# reports in. Several European languages COMPOUND the word — a Dutch client
+# writes "donutdiagram", a German "Tortendiagramm" — so these deliberately
+# do not require a word boundary after the chart name.
 _KIND_WORDS = [
-    (r"\bpie\b", "pie"), (r"\bdonut|doughnut\b", "donut"),
-    (r"\btreemap\b", "treemap"), (r"\bfunnel\b", "funnel"),
-    (r"\bwaterfall\b", "waterfall"), (r"\bradar|spider\b", "radar"),
-    (r"\bline (chart|graph)|\btrend line\b", "line"),
-    (r"\barea (chart|graph)\b", "area"),
-    (r"\bbar (chart|graph)|\bcolumn (chart|graph)\b", "bar"),
-    (r"\bhorizontal bar\b", "hbar"),
+    (r"\bpie\b|taart|torten|grafico a torta", "pie"),
+    (r"\bdonut|doughnut", "donut"),
+    (r"\btreemap\b|boomkaart|baumkarte", "treemap"),
+    (r"\bfunnel\b|trechter|trichter", "funnel"),
+    (r"\bwaterfall\b|waterval|wasserfall|cascade", "waterfall"),
+    (r"\bradar|spider\b|spinnen", "radar"),
+    (r"\bline (chart|graph)|\btrend line\b|lijndiagram|liniendiagramm"
+     r"|courbe|grafico a linee|gráfico de líneas", "line"),
+    (r"\barea (chart|graph)\b|vlakdiagram|flächendiagramm", "area"),
+    (r"\bbar (chart|graph)|\bcolumn (chart|graph)\b|staafdiagram"
+     r"|balkendiagramm|säulendiagramm|histogramme|grafico a barre"
+     r"|gráfico de barras", "bar"),
+    (r"\bhorizontal bar\b|horizontale staaf", "hbar"),
 ]
 
 # Wanting to SEE something, as opposed to asking what it is.
+# Multilingual for the same reason the kind words are. A Dutch client asking
+# "laat mijn verdeling zien als een donutdiagram" was getting prose and no
+# chart — which silently removed the draw-it-on-request capability for every
+# non-English client, while the feature looked fine in testing because the
+# tests were in English.
+#
+# `diagram` and its cognates are left unbounded on the right so the compounds
+# match (donutdiagram, staafdiagram, Tortendiagramm).
 _VISUAL_ASK = re.compile(
-    r"\b(chart|graph|plot|visuali[sz]|diagram|picture|pie|donut|doughnut|"
+    r"(\b(chart|graph|plot|visuali[sz]|picture|pie|donut|doughnut|"
     r"treemap|waterfall|radar|show me|draw|display|see (it|this|that)|"
-    r"as a (chart|graph|pie|bar)|breakdown|break it down)\b", re.I)
+    r"as a (chart|graph|pie|bar)|breakdown|break it down)\b"
+    r"|diagram|diagramm|grafiek|grafico|gráfico|graphique"
+    r"|laat .{0,24}zien|\btoon\b|\bzeig|\bmontre|\bmuestra|\bmostra"
+    r"|visualis)", re.I)
 
 
 def wants_visual(question: str) -> bool:
