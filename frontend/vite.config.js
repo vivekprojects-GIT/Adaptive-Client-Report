@@ -18,6 +18,14 @@ export default defineConfig({
       // Adviser notifications — /alerts and /alerts/{id}/ack
       "/alerts":    "http://localhost:7860",
 
+      // The advisor screen's own data. These were missing, so the dev
+      // frontend rendered "No clients yet" against a backend that had
+      // thirteen — a config gap that looks exactly like a data bug.
+      "/clients":   "http://localhost:7860",
+      "/reports":   "http://localhost:7860",
+      "/registry":  "http://localhost:7860",
+      "/ape":       "http://localhost:7860",
+
       // Prefix endpoints — sub-paths are proxied to FastAPI
       "/sessions":  "http://localhost:7860",
       "/users":     "http://localhost:7860",

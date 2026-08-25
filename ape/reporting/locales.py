@@ -70,18 +70,77 @@ DEFAULT_LOCALE = "en"
 # fills itself in, and they can still change it — auto-selection that
 # cannot be overridden would be worse than no auto-selection at all.
 COUNTRIES: Dict[str, Dict[str, str]] = {
-    "GB": {"label": "United Kingdom", "language": "en", "currency": "£"},
-    "US": {"label": "United States",  "language": "en", "currency": "$"},
-    "IE": {"label": "Ireland",        "language": "en", "currency": "€"},
-    "NL": {"label": "Netherlands",    "language": "nl", "currency": "€"},
-    "BE": {"label": "Belgium",        "language": "nl", "currency": "€"},
-    "DE": {"label": "Germany",        "language": "de", "currency": "€"},
-    "AT": {"label": "Austria",        "language": "de", "currency": "€"},
-    "CH": {"label": "Switzerland",    "language": "de", "currency": "CHF"},
-    "FR": {"label": "France",         "language": "fr", "currency": "€"},
-    "LU": {"label": "Luxembourg",     "language": "fr", "currency": "€"},
-    "ES": {"label": "Spain",          "language": "es", "currency": "€"},
-    "IT": {"label": "Italy",          "language": "it", "currency": "€"},
+    # ── English-speaking ─────────────────────────────────────────────────
+    "GB": {"label": "United Kingdom",   "language": "en", "currency": "£"},
+    "IE": {"label": "Ireland",          "language": "en", "currency": "€"},
+    "US": {"label": "United States",    "language": "en", "currency": "$"},
+    "CA": {"label": "Canada",           "language": "en", "currency": "$"},
+    "AU": {"label": "Australia",        "language": "en", "currency": "$"},
+    "NZ": {"label": "New Zealand",      "language": "en", "currency": "$"},
+    "SG": {"label": "Singapore",        "language": "en", "currency": "$"},
+    "HK": {"label": "Hong Kong SAR",    "language": "en", "currency": "$"},
+    "ZA": {"label": "South Africa",     "language": "en", "currency": "R"},
+    "AE": {"label": "United Arab Emirates", "language": "en", "currency": "AED"},
+    "IN": {"label": "India",            "language": "en", "currency": "₹"},
+    "MT": {"label": "Malta",            "language": "en", "currency": "€"},
+    "CY": {"label": "Cyprus",           "language": "en", "currency": "€"},
+    "JE": {"label": "Jersey",           "language": "en", "currency": "£"},
+    "GG": {"label": "Guernsey",         "language": "en", "currency": "£"},
+    "IM": {"label": "Isle of Man",      "language": "en", "currency": "£"},
+
+    # ── Dutch ────────────────────────────────────────────────────────────
+    "NL": {"label": "Netherlands",      "language": "nl", "currency": "€"},
+    # Belgium reads Dutch OR French depending on the client, so the default
+    # here is a coin toss that the advisor is expected to override. That is
+    # exactly why the language dropdown is not read-only.
+    "BE": {"label": "Belgium",          "language": "nl", "currency": "€"},
+    "SR": {"label": "Suriname",         "language": "nl", "currency": "$"},
+
+    # ── German ───────────────────────────────────────────────────────────
+    "DE": {"label": "Germany",          "language": "de", "currency": "€"},
+    "AT": {"label": "Austria",          "language": "de", "currency": "€"},
+    "CH": {"label": "Switzerland",      "language": "de", "currency": "CHF"},
+    "LI": {"label": "Liechtenstein",    "language": "de", "currency": "CHF"},
+
+    # ── French ───────────────────────────────────────────────────────────
+    "FR": {"label": "France",           "language": "fr", "currency": "€"},
+    "LU": {"label": "Luxembourg",       "language": "fr", "currency": "€"},
+    "MC": {"label": "Monaco",           "language": "fr", "currency": "€"},
+
+    # ── Spanish ──────────────────────────────────────────────────────────
+    "ES": {"label": "Spain",            "language": "es", "currency": "€"},
+    "MX": {"label": "Mexico",           "language": "es", "currency": "$"},
+    "AR": {"label": "Argentina",        "language": "es", "currency": "$"},
+    "CL": {"label": "Chile",            "language": "es", "currency": "$"},
+    "CO": {"label": "Colombia",         "language": "es", "currency": "$"},
+    "PE": {"label": "Peru",             "language": "es", "currency": "S/"},
+    "UY": {"label": "Uruguay",          "language": "es", "currency": "$"},
+
+    # ── Italian ──────────────────────────────────────────────────────────
+    "IT": {"label": "Italy",            "language": "it", "currency": "€"},
+    "SM": {"label": "San Marino",       "language": "it", "currency": "€"},
+
+    # ── Markets whose primary language is NOT yet supported ──────────────
+    # Listed deliberately rather than omitted. An advisor with a client in
+    # Tokyo needs to be able to pick Japan; defaulting them to English is
+    # honest and correct, whereas leaving the country out of the list looks
+    # like the platform cannot serve them at all. Add the language to
+    # LOCALES and these switch over with no other change.
+    "PT": {"label": "Portugal",         "language": "en", "currency": "€"},
+    "BR": {"label": "Brazil",           "language": "en", "currency": "R$"},
+    "SE": {"label": "Sweden",           "language": "en", "currency": "kr"},
+    "NO": {"label": "Norway",           "language": "en", "currency": "kr"},
+    "DK": {"label": "Denmark",          "language": "en", "currency": "kr"},
+    "FI": {"label": "Finland",          "language": "en", "currency": "€"},
+    "PL": {"label": "Poland",           "language": "en", "currency": "zł"},
+    "CZ": {"label": "Czechia",          "language": "en", "currency": "Kč"},
+    "GR": {"label": "Greece",           "language": "en", "currency": "€"},
+    "JP": {"label": "Japan",            "language": "en", "currency": "¥"},
+    "CN": {"label": "China",            "language": "en", "currency": "¥"},
+    "KR": {"label": "South Korea",      "language": "en", "currency": "₩"},
+    "SA": {"label": "Saudi Arabia",     "language": "en", "currency": "SAR"},
+    "IL": {"label": "Israel",           "language": "en", "currency": "₪"},
+    "TR": {"label": "Türkiye",          "language": "en", "currency": "₺"},
 }
 
 DEFAULT_COUNTRY = "GB"
