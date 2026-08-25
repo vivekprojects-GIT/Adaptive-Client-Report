@@ -491,6 +491,13 @@ def t(text: Optional[str], locale: Optional[str]) -> Optional[str]:
 # a `text` field, but it is already in the right language and simply falls
 # through the dictionary unchanged — there is no entry for a sentence the
 # model composed, so nothing matches and nothing is rewritten.
+# The drafted languages are folded in here rather than written above, so the
+# reviewed five and the unreviewed fifteen stay separable. setdefault means a
+# language promoted into LABELS after review beats its draft automatically.
+from .labels_extra import merge_into as _merge_drafts   # noqa: E402
+_merge_drafts(LABELS)
+
+
 _TEXT_FIELDS = ("title", "label", "name", "asset_class", "term",
                 "subtitle", "text", "source")
 _LIST_FIELDS = ("segments", "items", "rows", "bars", "points",

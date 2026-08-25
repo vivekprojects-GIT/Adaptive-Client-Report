@@ -47,6 +47,15 @@ class Locale:
     # a bare code because "write in nl" is a weaker instruction than
     # "write in Dutch (Nederlands)".
     prompt_name: str
+    # Arabic and Hebrew read right to left. This is not cosmetic: a page of
+    # Arabic laid out left-to-right has its columns, its table headers and
+    # its KPI captions in the wrong order, and reads as broken rather than
+    # as merely ugly. The renderer sets dir on <html> from this flag.
+    #
+    # Digits stay left-to-right inside RTL text — the browser's bidi
+    # algorithm handles that, and it is why a figure keeps its meaning
+    # without any work here.
+    rtl: bool = False
 
 
 LOCALES: Dict[str, Locale] = {
@@ -57,6 +66,33 @@ LOCALES: Dict[str, Locale] = {
                  "French (Français)"),
     "es": Locale("es", "Spanish", "Español", ".", ",", "Spanish (Español)"),
     "it": Locale("it", "Italian", "Italiano", ".", ",", "Italian (Italiano)"),
+
+    # ── Added to cover every country in COUNTRIES ────────────────────────
+    # Translations for these live in labels_extra.py and are UNREVIEWED
+    # drafts. They are listed here as equals because the rendering pipeline
+    # treats them as equals; the assurance difference is recorded in that
+    # module and surfaced by scripts/review_sheet.py, not hidden by leaving
+    # the language out.
+    "pt": Locale("pt", "Portuguese", "Português", ".", ",", "Portuguese (Português)"),
+    "sv": Locale("sv", "Swedish", "Svenska", " ", ",", "Swedish (Svenska)"),
+    "da": Locale("da", "Danish", "Dansk", ".", ",", "Danish (Dansk)"),
+    "nb": Locale("nb", "Norwegian", "Norsk", " ", ",", "Norwegian Bokmal (Norsk)"),
+    "fi": Locale("fi", "Finnish", "Suomi", " ", ",", "Finnish (Suomi)"),
+    "pl": Locale("pl", "Polish", "Polski", " ", ",", "Polish (Polski)"),
+    "cs": Locale("cs", "Czech", "Čeština", " ", ",", "Czech (Čeština)"),
+    "el": Locale("el", "Greek", "Ελληνικά", ".", ",", "Greek (Ελληνικά)"),
+    "tr": Locale("tr", "Turkish", "Türkçe", ".", ",", "Turkish (Türkçe)"),
+    "ja": Locale("ja", "Japanese", "日本語", ",", ".", "Japanese (日本語)"),
+    "zh": Locale("zh", "Chinese (Simplified)", "简体中文", ",", ".",
+                 "Simplified Chinese (简体中文)"),
+    # Hong Kong and Taiwan do not read Simplified. Treating them as one
+    # language because the code prefix matches would be the same class of
+    # error as treating Dutch and German as one because both are Germanic.
+    "zh-hant": Locale("zh-hant", "Chinese (Traditional)", "繁體中文", ",", ".",
+                      "Traditional Chinese (繁體中文)"),
+    "ko": Locale("ko", "Korean", "한국어", ",", ".", "Korean (한국어)"),
+    "ar": Locale("ar", "Arabic", "العربية", ",", ".", "Arabic (العربية)", rtl=True),
+    "he": Locale("he", "Hebrew", "עברית", ",", ".", "Hebrew (עברית)", rtl=True),
 }
 
 DEFAULT_LOCALE = "en"
@@ -70,7 +106,11 @@ DEFAULT_LOCALE = "en"
 # fills itself in, and they can still change it — auto-selection that
 # cannot be overridden would be worse than no auto-selection at all.
 COUNTRIES: Dict[str, Dict[str, str]] = {
-    # ── English-speaking ─────────────────────────────────────────────────
+    # ── English-reporting markets ────────────────────────────────────────
+    # India, Singapore, Malta and South Africa are multilingual, but English
+    # is the working language of their wealth reporting. Defaulting them to
+    # English is a judgement, not a gap — and the advisor can still override
+    # it from the dropdown like any other client.
     "GB": {"label": "United Kingdom",   "language": "en", "currency": "£"},
     "IE": {"label": "Ireland",          "language": "en", "currency": "€"},
     "US": {"label": "United States",    "language": "en", "currency": "$"},
@@ -78,12 +118,12 @@ COUNTRIES: Dict[str, Dict[str, str]] = {
     "AU": {"label": "Australia",        "language": "en", "currency": "$"},
     "NZ": {"label": "New Zealand",      "language": "en", "currency": "$"},
     "SG": {"label": "Singapore",        "language": "en", "currency": "$"},
-    "HK": {"label": "Hong Kong SAR",    "language": "en", "currency": "$"},
+    "HK": {"label": "Hong Kong SAR",    "language": "zh-hant", "currency": "$"},
     "ZA": {"label": "South Africa",     "language": "en", "currency": "R"},
-    "AE": {"label": "United Arab Emirates", "language": "en", "currency": "AED"},
+    "AE": {"label": "United Arab Emirates", "language": "ar", "currency": "AED"},
     "IN": {"label": "India",            "language": "en", "currency": "₹"},
     "MT": {"label": "Malta",            "language": "en", "currency": "€"},
-    "CY": {"label": "Cyprus",           "language": "en", "currency": "€"},
+    "CY": {"label": "Cyprus",           "language": "el", "currency": "€"},
     "JE": {"label": "Jersey",           "language": "en", "currency": "£"},
     "GG": {"label": "Guernsey",         "language": "en", "currency": "£"},
     "IM": {"label": "Isle of Man",      "language": "en", "currency": "£"},
@@ -120,27 +160,28 @@ COUNTRIES: Dict[str, Dict[str, str]] = {
     "IT": {"label": "Italy",            "language": "it", "currency": "€"},
     "SM": {"label": "San Marino",       "language": "it", "currency": "€"},
 
-    # ── Markets whose primary language is NOT yet supported ──────────────
-    # Listed deliberately rather than omitted. An advisor with a client in
-    # Tokyo needs to be able to pick Japan; defaulting them to English is
-    # honest and correct, whereas leaving the country out of the list looks
-    # like the platform cannot serve them at all. Add the language to
-    # LOCALES and these switch over with no other change.
-    "PT": {"label": "Portugal",         "language": "en", "currency": "€"},
-    "BR": {"label": "Brazil",           "language": "en", "currency": "R$"},
-    "SE": {"label": "Sweden",           "language": "en", "currency": "kr"},
-    "NO": {"label": "Norway",           "language": "en", "currency": "kr"},
-    "DK": {"label": "Denmark",          "language": "en", "currency": "kr"},
-    "FI": {"label": "Finland",          "language": "en", "currency": "€"},
-    "PL": {"label": "Poland",           "language": "en", "currency": "zł"},
-    "CZ": {"label": "Czechia",          "language": "en", "currency": "Kč"},
-    "GR": {"label": "Greece",           "language": "en", "currency": "€"},
-    "JP": {"label": "Japan",            "language": "en", "currency": "¥"},
-    "CN": {"label": "China",            "language": "en", "currency": "¥"},
-    "KR": {"label": "South Korea",      "language": "en", "currency": "₩"},
-    "SA": {"label": "Saudi Arabia",     "language": "en", "currency": "SAR"},
-    "IL": {"label": "Israel",           "language": "en", "currency": "₪"},
-    "TR": {"label": "Türkiye",          "language": "en", "currency": "₺"},
+    # ── The rest, each on its own language ───────────────────────────────
+    # These used to default to English because no translations existed.
+    # They now default to what the client actually reads.
+    "PT": {"label": "Portugal",         "language": "pt", "currency": "€"},
+    # Brazilian and European Portuguese differ in vocabulary and in the
+    # second person. One draft covers both, which is a compromise the
+    # reviewer should see rather than discover.
+    "BR": {"label": "Brazil",           "language": "pt", "currency": "R$"},
+    "SE": {"label": "Sweden",           "language": "sv", "currency": "kr"},
+    "NO": {"label": "Norway",           "language": "nb", "currency": "kr"},
+    "DK": {"label": "Denmark",          "language": "da", "currency": "kr"},
+    "FI": {"label": "Finland",          "language": "fi", "currency": "€"},
+    "PL": {"label": "Poland",           "language": "pl", "currency": "zł"},
+    "CZ": {"label": "Czechia",          "language": "cs", "currency": "Kč"},
+    "GR": {"label": "Greece",           "language": "el", "currency": "€"},
+    "JP": {"label": "Japan",            "language": "ja", "currency": "¥"},
+    "CN": {"label": "China",            "language": "zh", "currency": "¥"},
+    "KR": {"label": "South Korea",      "language": "ko", "currency": "₩"},
+    "TR": {"label": "Türkiye",          "language": "tr", "currency": "₺"},
+    # Right-to-left. See Locale.rtl.
+    "SA": {"label": "Saudi Arabia",     "language": "ar", "currency": "SAR"},
+    "IL": {"label": "Israel",           "language": "he", "currency": "₪"},
 }
 
 DEFAULT_COUNTRY = "GB"
@@ -177,7 +218,19 @@ def get(code: Optional[str]) -> Locale:
     """
     if not code:
         return LOCALES[DEFAULT_LOCALE]
-    return LOCALES.get(str(code).strip().lower()[:2], LOCALES[DEFAULT_LOCALE])
+    c = str(code).strip().lower()
+    # Full code first. Truncating to two characters up front — which is what
+    # this did — silently resolved "zh-hant" to "zh" and served Simplified
+    # Chinese to Hong Kong. The prefix fallback is still wanted, so that
+    # "en-GB" or "de-CH" land on their base language instead of English.
+    if c in LOCALES:
+        return LOCALES[c]
+    return LOCALES.get(c[:2], LOCALES[DEFAULT_LOCALE])
+
+
+def is_rtl(code: Optional[str]) -> bool:
+    """Whether this language reads right to left."""
+    return get(code).rtl
 
 
 def supported() -> list:

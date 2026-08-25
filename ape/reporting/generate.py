@@ -1394,7 +1394,17 @@ def render_html(report: Dict[str, Any], internal: bool = True,
     # anything earlier would translate the keys the validator matches
     # against and blocks would silently stop resolving.
     assets = WIDGET_ASSETS if interactive else ""
-    return (f'<!doctype html><html><head><meta charset="utf-8">\n'
+    # lang and dir belong on <html>, not on a wrapper div: they drive the
+    # browser's bidi algorithm, hyphenation and default text alignment for
+    # the whole document, and a screen reader picks its voice from lang.
+    # Without dir, an Arabic report renders with every column, heading and
+    # caption in the wrong order — the words are right and the page is
+    # unreadable, which is a worse failure than leaving it in English.
+    from ape.reporting.locales import get as _get_locale
+    _loc = _get_locale(report.get("language"))
+    _dir = ' dir="rtl"' if _loc.rtl else ''
+    return (f'<!doctype html><html lang="{_esc(_loc.code)}"{_dir}>'
+            f'<head><meta charset="utf-8">\n'
             f'<meta name="viewport" content="width=device-width,initial-scale=1">\n'
             f'<title>{_esc(report["client_name"])} — {_esc(report["period"])}</title>\n'
             f'<style>\n{DOC_CSS}\n</style>{assets}</head><body>'
