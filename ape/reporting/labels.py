@@ -186,6 +186,106 @@ LABELS: Dict[str, Dict[str, str]] = {
     "Fees":             {"nl": "Kosten", "de": "Gebühren", "fr": "Frais",
                          "es": "Comisiones", "it": "Commissioni"},
 
+    # ── explainer terms, disclosures and source lines ────────────────────
+    "A reference mix used to judge performance. Beating it means your portfolio did better than the market did at that level of risk.":
+        {"nl": "Een referentiemix waarmee het rendement wordt beoordeeld. Deze verslaan "
+               "betekent dat uw portefeuille het beter deed dan de markt bij dat risiconiveau.",
+         "de": "Eine Vergleichsmischung zur Beurteilung der Wertentwicklung. Sie zu schlagen "
+               "bedeutet, dass Ihr Portfolio besser abschnitt als der Markt bei diesem Risiko.",
+         "fr": "Un panier de référence servant à juger la performance. Le battre signifie que "
+               "votre portefeuille a fait mieux que le marché à ce niveau de risque.",
+         "es": "Una combinación de referencia para juzgar la rentabilidad. Superarla significa "
+               "que su cartera lo hizo mejor que el mercado a ese nivel de riesgo.",
+         "it": "Un paniere di riferimento per valutare il rendimento. Batterlo significa che il "
+               "suo portafoglio ha fatto meglio del mercato a quel livello di rischio."},
+    "How much each part of the portfolio added to, or took from, the total return. Contributions add up to the return you actually received.":
+        {"nl": "Hoeveel elk onderdeel van de portefeuille heeft bijgedragen aan of afgehaald van "
+               "het totale rendement. De bijdragen tellen op tot het rendement dat u werkelijk kreeg.",
+         "de": "Wie viel jeder Teil des Portfolios zur Gesamtrendite beigetragen oder ihr entzogen "
+               "hat. Die Beiträge ergeben zusammen die tatsächlich erzielte Rendite.",
+         "fr": "Ce que chaque partie du portefeuille a ajouté à la performance totale ou lui a "
+               "retiré. Les contributions s'additionnent pour donner la performance réellement obtenue.",
+         "es": "Cuánto aportó o restó cada parte de la cartera a la rentabilidad total. Las "
+               "contribuciones suman la rentabilidad que realmente obtuvo.",
+         "it": "Quanto ogni parte del portafoglio ha aggiunto o sottratto al rendimento totale. "
+               "I contributi sommati danno il rendimento effettivamente ottenuto."},
+    "The long-term mix agreed for your risk profile. Holdings drift away from it as markets move, and are brought back at rebalancing.":
+        {"nl": "De langetermijnverdeling die is afgesproken voor uw risicoprofiel. Posities wijken "
+               "hiervan af als markten bewegen en worden bij herbalancering teruggebracht.",
+         "de": "Die langfristige Aufteilung für Ihr Risikoprofil. Positionen weichen davon ab, wenn "
+               "sich Märkte bewegen, und werden beim Rebalancing zurückgeführt.",
+         "fr": "La répartition à long terme convenue pour votre profil de risque. Les positions s'en "
+               "écartent avec les marchés et y sont ramenées lors du rééquilibrage.",
+         "es": "La combinación a largo plazo acordada para su perfil de riesgo. Las posiciones se "
+               "desvían con los mercados y se devuelven en el reequilibrio.",
+         "it": "La composizione di lungo periodo concordata per il suo profilo di rischio. Le "
+               "posizioni se ne allontanano con i mercati e vi tornano al ribilanciamento."},
+    "Every return shown is after fees have been deducted, so it reflects what you actually earned.":
+        {"nl": "Elk getoond rendement is na aftrek van kosten en weerspiegelt dus wat u werkelijk verdiende.",
+         "de": "Jede gezeigte Rendite versteht sich nach Abzug der Gebühren und spiegelt damit Ihren tatsächlichen Ertrag.",
+         "fr": "Chaque performance affichée est nette de frais et reflète donc ce que vous avez réellement gagné.",
+         "es": "Cada rentabilidad mostrada es neta de comisiones, por lo que refleja lo que realmente ganó.",
+         "it": "Ogni rendimento mostrato è al netto delle commissioni e riflette quindi quanto ha realmente guadagnato."},
+
+    # Full sentences, but still a CLOSED set written by code, so the same
+    # dictionary rule applies: fixed wording, rendered identically every
+    # time. A real deployment replaces the disclosure text per jurisdiction
+    # rather than translating ours — the words a regulator requires are not
+    # a translation of the words another regulator requires.
+    "Valuations":       {"nl": "Waarderingen", "de": "Bewertungen",
+                         "fr": "Valorisations", "es": "Valoraciones",
+                         "it": "Valutazioni"},
+    "as at":            {"nl": "per", "de": "zum", "fr": "au",
+                         "es": "a fecha de", "it": "al"},
+    "Portfolio vs benchmark":
+                        {"nl": "Portefeuille versus benchmark",
+                         "de": "Portfolio gegenüber Benchmark",
+                         "fr": "Portefeuille contre indice",
+                         "es": "Cartera frente al índice",
+                         "it": "Portafoglio contro benchmark"},
+    "last column is drift from target":
+                        {"nl": "laatste kolom is de afwijking van het doel",
+                         "de": "letzte Spalte ist die Abweichung vom Ziel",
+                         "fr": "la dernière colonne est l'écart par rapport à l'objectif",
+                         "es": "la última columna es la desviación del objetivo",
+                         "it": "l'ultima colonna è lo scostamento dall'obiettivo"},
+    "Strategic target": {"nl": "Strategisch doel", "de": "Strategisches Ziel",
+                         "fr": "Objectif stratégique", "es": "Objetivo estratégico",
+                         "it": "Obiettivo strategico"},
+    "Net of fees":      {"nl": "Na aftrek van kosten", "de": "Nach Gebühren",
+                         "fr": "Net de frais", "es": "Neto de comisiones",
+                         "it": "Al netto delle commissioni"},
+    "Contribution":     {"nl": "Bijdrage", "de": "Beitrag", "fr": "Contribution",
+                         "es": "Contribución", "it": "Contributo"},
+    "Past performance is not indicative of future results. Figures are net of fees unless stated otherwise.":
+                        {"nl": "Resultaten uit het verleden bieden geen garantie voor de toekomst. "
+                               "Bedragen zijn na aftrek van kosten, tenzij anders vermeld.",
+                         "de": "Die frühere Wertentwicklung ist kein Indikator für künftige Ergebnisse. "
+                               "Beträge verstehen sich nach Gebühren, sofern nicht anders angegeben.",
+                         "fr": "Les performances passées ne préjugent pas des performances futures. "
+                               "Les montants sont nets de frais, sauf indication contraire.",
+                         "es": "Las rentabilidades pasadas no garantizan resultados futuros. "
+                               "Los importes son netos de comisiones, salvo indicación en contrario.",
+                         "it": "I rendimenti passati non sono indicativi dei risultati futuri. "
+                               "Gli importi sono al netto delle commissioni, salvo diversa indicazione."},
+    "Give me a quick summary of this report.":
+        {"nl": "Geef mij een korte samenvatting van dit rapport.",
+         "de": "Gib mir eine kurze Zusammenfassung dieses Berichts.",
+         "fr": "Donne-moi un bref résumé de ce rapport.",
+         "es": "Dame un breve resumen de este informe.",
+         "it": "Dammi un breve riassunto di questo rapporto."},
+    "Explain the fees I paid this period.":
+        {"nl": "Leg de kosten uit die ik deze periode heb betaald.",
+         "de": "Erkläre die Gebühren, die ich in dieser Periode gezahlt habe.",
+         "fr": "Explique les frais que j'ai payés sur cette période.",
+         "es": "Explica las comisiones que pagué en este periodo.",
+         "it": "Spiega le commissioni che ho pagato in questo periodo."},
+    "How did I do against the benchmark?":
+        {"nl": "Hoe deed ik het ten opzichte van de benchmark?",
+         "de": "Wie habe ich im Vergleich zur Benchmark abgeschnitten?",
+         "fr": "Comment me suis-je situé par rapport à l'indice ?",
+         "es": "¿Cómo lo hice frente al índice de referencia?",
+         "it": "Come sono andato rispetto al benchmark?"},
     # ── chart chips: the label shown, and the question a click sends ─────
     # Both translate. A chip whose LABEL is Dutch but whose QUESTION is
     # English sends an English question when clicked, and the thread drifts
@@ -343,6 +443,30 @@ LABELS: Dict[str, Dict[str, str]] = {
 # matters more than it looks.
 
 
+_AS_AT = None
+
+
+def _translate_composed(text: str, locale: str) -> Optional[str]:
+    """Strings the code BUILDS around a value, e.g. "as at 2026-06-30".
+
+    A dictionary cannot hold these because the date differs every quarter,
+    so the fixed half is translated and the value is left exactly as it
+    was — dates are data, not language.
+    """
+    global _AS_AT
+    if _AS_AT is None:
+        import re as _re
+        _AS_AT = _re.compile(r"^(Valuations )?as at (.+?)(\. Source:.*)?$")
+    m = _AS_AT.match(text)
+    if not m:
+        return None
+    lead = "Valuations " if m.group(1) else ""
+    out = (t("Valuations", locale) + " " if lead else "") +           t("as at", locale) + " " + m.group(2)
+    if m.group(3):
+        out += m.group(3)
+    return out
+
+
 def t(text: Optional[str], locale: Optional[str]) -> Optional[str]:
     """Translate one label. Unknown text and English pass through unchanged.
 
@@ -353,16 +477,24 @@ def t(text: Optional[str], locale: Optional[str]) -> Optional[str]:
     if not text or not locale or locale == "en":
         return text
     entry = LABELS.get(text)
-    if not entry:
-        return text
-    return entry.get(locale, text)
+    if entry:
+        return entry.get(locale, text)
+    composed = _translate_composed(text, locale)
+    return composed if composed is not None else text
 
 
 # Display fields only. Everything absent from this list — source_refs,
 # block_id, block_type, format, unit, tone — is structural and must survive
 # untouched. Adding a key here is a deliberate act, which is the point.
-_TEXT_FIELDS = ("title", "label", "name", "asset_class")
-_LIST_FIELDS = ("segments", "items", "rows", "bars", "points", "series")
+# `text` and `source` are included for the DISCLOSURE and EXPLAINER blocks,
+# whose wording is code-written and fixed. Model-written narrative also has
+# a `text` field, but it is already in the right language and simply falls
+# through the dictionary unchanged — there is no entry for a sentence the
+# model composed, so nothing matches and nothing is rewritten.
+_TEXT_FIELDS = ("title", "label", "name", "asset_class", "term",
+                "subtitle", "text", "source")
+_LIST_FIELDS = ("segments", "items", "rows", "bars", "points",
+                "series", "terms")
 
 
 def localise(report: Dict[str, Any], locale: Optional[str]) -> Dict[str, Any]:
@@ -383,8 +515,9 @@ def localise(report: Dict[str, Any], locale: Optional[str]) -> Dict[str, Any]:
     for block in out.get("blocks", []):
         if not isinstance(block, dict):
             continue
-        if block.get("title"):
-            block["title"] = t(block["title"], locale)
+        for f in ("title", "subtitle"):
+            if isinstance(block.get(f), str):
+                block[f] = t(block[f], locale)
         data = block.get("content_json") or block.get("data")
         if isinstance(data, dict):
             _localise_data(data, locale)

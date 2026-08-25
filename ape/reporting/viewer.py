@@ -45,7 +45,7 @@ OPENING_CONTENT = [
 ]
 
 
-def _opening_chips(snapshot=None) -> str:
+def _opening_chips(snapshot=None, locale: str = "") -> str:
     """The chips a client sees before they have asked anything.
 
     Half say what the document covers; half say what can be DRAWN from it.
@@ -57,12 +57,20 @@ def _opening_chips(snapshot=None) -> str:
     Falls back to content-only when the snapshot is missing or too thin to
     draw anything, rather than showing a control that cannot deliver.
     """
-    chips = [(q, lab, "content") for q, lab in OPENING_CONTENT[:N_CONTENT]]
+    # These are the FIRST words a client reads in the chat pane, so an
+    # English chip on a Dutch report is the first thing they notice.
+    def _tr(text):
+        if not locale or locale == "en":
+            return text
+        from ape.reporting.labels import t as _t
+        return _t(text, locale)
+
+    chips = [(_tr(q), lab, "content") for q, lab in OPENING_CONTENT[:N_CONTENT]]
     if snapshot is not None:
         try:
             from ape.reporting import chat_widgets as cw
             for binding in cw.chip_bindings(snapshot)[:N_CAPABILITY]:
-                c = cw.chip(binding)
+                c = cw.chip(binding, locale)
                 # "Fee breakdown", not "See it as a chart". A generic label
                 # makes every chip look identical and says nothing about
                 # which one answers the question the client actually has.
@@ -74,7 +82,7 @@ def _opening_chips(snapshot=None) -> str:
         for q, lab in OPENING_CONTENT[N_CONTENT:]:
             if len(chips) >= N_CONTENT + N_CAPABILITY:
                 break
-            chips.append((q, lab, "content"))
+            chips.append((_tr(q), lab, "content"))
     return "\n".join(
         f'    <button data-q="{_esc(q)}"'
         f'{" class=chip-draw" if kind == "capability" else ""}'
@@ -119,7 +127,7 @@ def render_viewer(report: Dict[str, Any], token: str, snapshot=None) -> str:
         .replace("__PERIOD__", period) \
         .replace("__RTYPE__", rtype) \
         .replace("__RID__", rid) \
-        .replace("__CHIPS__", _opening_chips(snapshot)) \
+        .replace("__CHIPS__", _opening_chips(snapshot, _nav_locale)) \
         .replace("__TOKEN__", _esc(token))
 
 

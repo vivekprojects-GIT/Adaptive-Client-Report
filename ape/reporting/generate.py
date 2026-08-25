@@ -575,11 +575,16 @@ def _explainer(s: ClientSnapshot, n: int):
         "type": "explainer",
         "title": "What these terms mean",
         "data": {"items": [
+            # The benchmark's NAME is deliberately not interpolated here.
+            # A sentence built around a value cannot be matched in the
+            # translation dictionary, and this definition would have been
+            # the one English paragraph left on a Dutch page. The name is
+            # already stated in the narrative and on the comparison block,
+            # so nothing is lost by keeping this sentence fixed.
             {"term": "Benchmark",
-             "text": (f"A reference mix ({s.benchmark_name or 'market index'}) "
-                      "used to judge performance. Beating it means your "
-                      "portfolio did better than the market did at that level "
-                      "of risk.")},
+             "text": ("A reference mix used to judge performance. Beating it "
+                      "means your portfolio did better than the market did "
+                      "at that level of risk.")},
             {"term": "Contribution",
              "text": ("How much each part of the portfolio added to, or took "
                       "from, the total return. Contributions add up to the "
@@ -1121,16 +1126,18 @@ def _render_block(b: Dict[str, Any], number: Optional[int] = None) -> str:
                 f'</div><b>{float(r["value"]):.1f}%</b>'
                 f'<u class="{tone}">{drift:+.1f}</u></div>')
         body = ('<div class="vslist">' + "".join(parts) +
-                '</div><div class="lgd"><i></i>Actual <i class="bm"></i>Target '
-                '&middot; last column is drift from target</div>')
+                f'</div><div class="lgd"><i></i>{_esc(_T("Actual"))} '
+                f'<i class="bm"></i>{_esc(_T("Target"))} '
+                f'&middot; {_esc(_T("last column is drift from target"))}</div>')
         # Actual and target as two grouped series, so the gap between them
         # is a shape rather than a subtraction the reader has to perform.
         opt = build_option({
             "kind": "stacked", "unit": "%", "dp": 1,
             "x_categories": [r["label"] for r in rows],
             "series": [
-                {"label": "Actual", "values": [float(r["value"]) for r in rows]},
-                {"label": "Target",
+                {"label": _T("Actual"),
+                 "values": [float(r["value"]) for r in rows]},
+                {"label": _T("Target"),
                  "values": [float(r["benchmark_value"]) for r in rows]}]})
         if opt:
             # Grouped, not stacked: stacking actual on top of target would
