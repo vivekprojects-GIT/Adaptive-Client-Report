@@ -107,6 +107,15 @@ def _pctplain(v: float) -> str:
     return f"{v:.2f}%"
 
 
+def _pctplain1(v: float) -> str:
+    """One decimal place, locale-aware. Weights are shown to 1dp."""
+    loc = _locale_now()
+    if loc and loc != "en":
+        from ape.reporting.locales import format_number
+        return format_number(float(v), loc, 1) + "%"
+    return f"{v:.1f}%"
+
+
 def _T(text: str) -> str:
     """Translate a string the RENDERER hardcodes, using the active locale.
 
@@ -1029,7 +1038,7 @@ def _render_block(b: Dict[str, Any], number: Optional[int] = None) -> str:
             span = max([float(r["weight_pct"]) for r in rows] or [1]) or 1
             trs = "".join(
                 f"<tr><td>{_esc(r['name'])}</td>"
-                f"<td class='n'>{r['weight_pct']:.1f}%</td>"
+                f"<td class='n'>{_pctplain1(float(r['weight_pct']))}</td>"
                 f"<td class='bar'><i style=\"width:"
                 f"{float(r['weight_pct'])/span*100:.0f}%\"></i></td>"
                 f"<td class='n'>{_money(r['value'])}</td></tr>" for r in rows)
@@ -1041,10 +1050,10 @@ def _render_block(b: Dict[str, Any], number: Optional[int] = None) -> str:
             cells = []
             for r in rows:
                 bench = r.get("benchmark_value")
-                bench_cell = "" if bench is None else f"{float(bench):.2f}%"
+                bench_cell = "" if bench is None else _pctplain(float(bench))
                 cells.append(
                     f"<tr><td>{_esc(r['label'])}</td>"
-                    f"<td class='n'>{float(r['value']):.2f}%</td>"
+                    f"<td class='n'>{_pctplain(float(r['value']))}</td>"
                     f"<td class='n'>{bench_cell}</td></tr>"
                 )
             trs = "".join(cells)
@@ -1055,7 +1064,8 @@ def _render_block(b: Dict[str, Any], number: Optional[int] = None) -> str:
     elif t == "performance_line":
         parts = "".join(
             f'<div class="series"><span>{_esc(s["label"])}</span>'
-            + "".join(f'<b>{p["value"]:.2f}%</b>' for p in s.get("points", []))
+            + "".join(f'<b>{_pctplain(float(p["value"]))}</b>'
+                      for p in s.get("points", []))
             + "</div>" for s in d.get("series", []))
         # This block was a row of bare percentages — the one place in the
         # document where a reader had to reconstruct a trend in their head.

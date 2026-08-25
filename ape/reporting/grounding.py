@@ -249,6 +249,26 @@ def derived_facts(facts: Dict[str, float]) -> Dict[str, float]:
     if q is not None and drag is not None:
         put("derived.gross_return", q + drag)
 
+    # The CASH VALUE of each allocation: weight% x portfolio value.
+    #
+    # Asked for a table or a bulleted breakdown, a model reliably adds a
+    # "value" column beside the percentage — it is the obvious next column,
+    # and the two figures it needs are both on the page. Without these the
+    # whole answer was rejected and the client got a decline to a perfectly
+    # reasonable question.
+    #
+    # This does NOT wave the arithmetic through. Observed model output for
+    # a 62.8% slice of £4,207,125.24 was £2,644,619.38 and, on a second
+    # run, £2,644,081.69 — the true product is £2,642,074.65, so both were
+    # wrong and both stay rejected. Adding the correct product to the
+    # allowlist lets a right answer through and leaves a wrong one blocked,
+    # which is exactly the distinction the gate is for.
+    pv = facts.get("portfolio_value")
+    if pv is not None:
+        for key, weight in facts.items():
+            if key.startswith("alloc.") and weight is not None:
+                put(f"derived.value_{key}", pv * float(weight) / 100.0)
+
     c, w = facts.get("flows.contributions"), facts.get("flows.withdrawals")
     if c is not None and w is not None:
         put("derived.net_flow", c - w)
