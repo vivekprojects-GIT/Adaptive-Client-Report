@@ -74,6 +74,21 @@ def language_instruction(loc) -> str:
     )
 
 
+def _followup_language(locale: Optional[str]) -> str:
+    """Follow-up chips go in the client's language too.
+
+    A chip is a question the client is invited to click and send. Offering
+    it in English under a Dutch answer both looks wrong and, if clicked,
+    asks the next question in the wrong language — so the whole thread
+    drifts back to English one chip at a time.
+    """
+    if not locale or locale == "en":
+        return ""
+    from ape.reporting.locales import get as _get
+    return (" Write the questions in " + _get(locale).prompt_name +
+            ", as the client would phrase them.")
+
+
 def conversation_id_for(client_id: str, report_id: str) -> str:
     """One conversation per client per report — derived, not random.
 
@@ -557,8 +572,8 @@ Return ONLY JSON: {"questions": ["...", "..."]}"""
 
 def dynamic_followups(question: str, answer: str, report: Dict[str, Any],
                       n: int = 2,
-                      sources: Optional[List[Dict[str, str]]] = None
-                      ) -> List[str]:
+                      sources: Optional[List[Dict[str, str]]] = None,
+                      locale: Optional[str] = None) -> List[str]:
     """Questions that arise from the SOURCE SECTIONS this answer came from.
 
     Built from the sections rather than the prose on purpose. The prose is
@@ -645,7 +660,8 @@ def suggest_followups(report: Dict[str, Any], intent: str = "",
                       snap: Optional[ClientSnapshot] = None,
                       block_type: str = "",
                       question: str = "", answer: str = "",
-                      sources: Optional[List[Dict[str, str]]] = None
+                      sources: Optional[List[Dict[str, str]]] = None,
+                      locale: Optional[str] = None
                       ) -> List[Dict[str, str]]:
     """Four chips: two about the content, two about what can be drawn.
 
@@ -690,6 +706,7 @@ def suggest_followups(report: Dict[str, Any], intent: str = "",
     # conversation.
     if answer or sources:
         for q in dynamic_followups(question, answer, report, N_CONTENT,
+                                    locale=locale,
                                    sources=sources):
             add(q, content)
 
@@ -727,7 +744,7 @@ def suggest_followups(report: Dict[str, Any], intent: str = "",
         for binding in order:
             if len(capability) >= N_CAPABILITY:
                 break
-            c = cw.chip(binding)
+            c = cw.chip(binding, locale)
             # Named specifically — "Fee breakdown (donut)", not "see it as
             # a chart". Every generic label looks identical, which tells a
             # client nothing about which chip answers their question.

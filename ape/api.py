@@ -1558,6 +1558,12 @@ async def report_chat(report_id: str, request: Request):
     with session_scope() as db:
         try:
             snap = _sql_snapshot(db, report["client_id"], report.get("period"))
+            # The REPORT decides the language, not the client row. They
+            # are asking about THIS document: a client whose standing
+            # preference later changed must still get answers in the
+            # language the report in front of them is written in, or the
+            # reply arrives in a different language from the page.
+            snap.language = report.get("language") or getattr(snap, "language", "") or ""
         except LookupError:
             raise HTTPException(404, "client facts not on file")
 
@@ -1592,7 +1598,8 @@ async def report_chat(report_id: str, request: Request):
             report, result.get("intent", ""), asked, snap=snap,
             block_type=(block or {}).get("block_type", ""),
             question=question, answer=result.get("answer", ""),
-            sources=result.get("sources") or [])
+            sources=result.get("sources") or [],
+            locale=getattr(snap, "language", "") or "")
 
         # The question itself is a signal: engagement on the report, and its
         # wording may carry format preferences for the profile.
@@ -1687,6 +1694,10 @@ async def report_chat_stream(report_id: str, request: Request):
             try:
                 snap = _sql_snapshot(db, report["client_id"],
                                      report.get("period"))
+                # Same rule as the buffered path: the document in front of
+                # them decides the language, not their stored preference.
+                snap.language = (report.get("language")
+                                 or getattr(snap, "language", "") or "")
             except LookupError:
                 yield _sse("error", {"detail": "client facts not on file"})
                 return
@@ -1726,7 +1737,8 @@ async def report_chat_stream(report_id: str, request: Request):
                 report, result.get("intent", ""), asked, snap=snap,
                 block_type=(block or {}).get("block_type", ""),
                 question=question, answer=result.get("answer", ""),
-                sources=result.get("sources") or [])
+                sources=result.get("sources") or [],
+                locale=getattr(snap, "language", "") or "")
 
             _rt = str(report.get("report_type", "") or "")
             record_event(db, report["client_id"], "question_asked",

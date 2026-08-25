@@ -186,6 +186,81 @@ LABELS: Dict[str, Dict[str, str]] = {
     "Fees":             {"nl": "Kosten", "de": "Gebühren", "fr": "Frais",
                          "es": "Comisiones", "it": "Commissioni"},
 
+    # ── chart chips: the label shown, and the question a click sends ─────
+    # Both translate. A chip whose LABEL is Dutch but whose QUESTION is
+    # English sends an English question when clicked, and the thread drifts
+    # back to English one click at a time.
+    "Allocation donut": {"nl": "Verdeling (donut)", "de": "Aufteilung (Donut)",
+                         "fr": "Répartition (donut)", "es": "Distribución (donut)",
+                         "it": "Allocazione (donut)"},
+    "Actual vs target": {"nl": "Werkelijk versus doel", "de": "Ist gegen Ziel",
+                         "fr": "Réel contre objectif", "es": "Real frente a objetivo",
+                         "it": "Effettivo contro obiettivo"},
+    "Return drivers":   {"nl": "Wat het rendement bepaalde", "de": "Renditetreiber",
+                         "fr": "Moteurs de performance", "es": "Motores de rentabilidad",
+                         "it": "Motori del rendimento"},
+    "Holdings treemap": {"nl": "Posities (boomkaart)", "de": "Positionen (Baumkarte)",
+                         "fr": "Positions (treemap)", "es": "Posiciones (treemap)",
+                         "it": "Posizioni (treemap)"},
+    "You vs benchmark": {"nl": "U versus benchmark", "de": "Sie gegen Benchmark",
+                         "fr": "Vous contre l'indice", "es": "Usted frente al índice",
+                         "it": "Lei contro il benchmark"},
+    "Fee breakdown":    {"nl": "Kostenverdeling", "de": "Gebührenaufteilung",
+                         "fr": "Détail des frais", "es": "Desglose de comisiones",
+                         "it": "Dettaglio delle commissioni"},
+    "Money in and out": {"nl": "Geld in en uit", "de": "Zu- und Abflüsse",
+                         "fr": "Entrées et sorties", "es": "Entradas y salidas",
+                         "it": "Entrate e uscite"},
+
+    "Show me my asset allocation as a donut chart.":
+        {"nl": "Laat mijn vermogensverdeling zien als een donutdiagram.",
+         "de": "Zeig mir meine Vermögensaufteilung als Tortendiagramm.",
+         "fr": "Montre-moi ma répartition d'actifs en donut.",
+         "es": "Muestra mi distribución de activos en un gráfico de donut.",
+         "it": "Mostra la mia allocazione come grafico a donut."},
+    "Show me my allocation against target as a bar chart.":
+        {"nl": "Laat mijn verdeling versus doel zien als een staafdiagram.",
+         "de": "Zeig mir meine Aufteilung gegenüber dem Ziel als Balkendiagramm.",
+         "fr": "Montre-moi ma répartition par rapport à l'objectif en histogramme.",
+         "es": "Muestra mi distribución frente al objetivo en un gráfico de barras.",
+         "it": "Mostra la mia allocazione rispetto all'obiettivo come grafico a barre."},
+    "Show me what drove my return as a waterfall chart.":
+        {"nl": "Laat zien wat mijn rendement bepaalde als een watervaldiagram.",
+         "de": "Zeig mir als Wasserfalldiagramm, was meine Rendite bestimmt hat.",
+         "fr": "Montre-moi ce qui a déterminé ma performance en cascade.",
+         "es": "Muestra qué impulsó mi rentabilidad en un gráfico de cascada.",
+         "it": "Mostra cosa ha determinato il mio rendimento come grafico a cascata."},
+    "Show me my largest holdings as a treemap.":
+        {"nl": "Laat mijn grootste posities zien als een boomkaart.",
+         "de": "Zeig mir meine größten Positionen als Baumkarte.",
+         "fr": "Montre-moi mes principales positions en treemap.",
+         "es": "Muestra mis mayores posiciones en un treemap.",
+         "it": "Mostra le mie posizioni principali come treemap."},
+    "Plot my return over time as a line chart.":
+        {"nl": "Toon mijn rendement in de tijd als een lijndiagram.",
+         "de": "Zeig meine Rendite im Zeitverlauf als Liniendiagramm.",
+         "fr": "Trace ma performance dans le temps en courbe.",
+         "es": "Traza mi rentabilidad en el tiempo en un gráfico de líneas.",
+         "it": "Traccia il mio rendimento nel tempo come grafico a linee."},
+    "Chart my return against the benchmark as a bar chart.":
+        {"nl": "Toon mijn rendement versus de benchmark als een staafdiagram.",
+         "de": "Zeig meine Rendite gegenüber der Benchmark als Balkendiagramm.",
+         "fr": "Trace ma performance contre l'indice en histogramme.",
+         "es": "Traza mi rentabilidad frente al índice en un gráfico de barras.",
+         "it": "Traccia il mio rendimento contro il benchmark come grafico a barre."},
+    "Show me what I paid as a donut chart.":
+        {"nl": "Laat zien wat ik betaald heb als een donutdiagram.",
+         "de": "Zeig mir als Tortendiagramm, was ich gezahlt habe.",
+         "fr": "Montre-moi ce que j'ai payé en donut.",
+         "es": "Muestra lo que he pagado en un gráfico de donut.",
+         "it": "Mostra quanto ho pagato come grafico a donut."},
+    "Show me my cash flow in and out as a donut chart.":
+        {"nl": "Laat mijn geldstromen in en uit zien als een donutdiagram.",
+         "de": "Zeig mir Zu- und Abflüsse als Tortendiagramm.",
+         "fr": "Montre-moi mes flux entrants et sortants en donut.",
+         "es": "Muestra mis entradas y salidas en un gráfico de donut.",
+         "it": "Mostra i miei flussi in entrata e uscita come grafico a donut."},
+
     # ── chat chart titles ────────────────────────────────────────────────
     "How your portfolio is invested":
                         {"nl": "Hoe uw portefeuille is belegd",

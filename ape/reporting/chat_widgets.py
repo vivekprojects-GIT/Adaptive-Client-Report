@@ -387,14 +387,26 @@ CHIP_LABELS = {
 }
 
 
-def chip(binding: str) -> Optional[Dict[str, str]]:
-    """The question to send and the label to show, for one subject."""
+def chip(binding: str, locale: Optional[str] = None) -> Optional[Dict[str, str]]:
+    """The question to send and the label to show, for one subject.
+
+    Both translate. A chip whose label is Dutch but whose question is
+    English sends an English question the moment it is clicked, and the
+    conversation drifts back to English one click at a time.
+
+    The KIND is resolved from the ENGLISH question before translating —
+    the chart-type keywords are matched against the canonical wording, so
+    resolution never depends on how well a translation preserved them.
+    """
     q = CHIPS.get(binding)
     if not q:
         return None
     kind = resolve_kind(binding, named_kind(q))
-    return {"q": q,
-            "label": CHIP_LABELS.get(binding, binding.replace("_", " ")),
+    label = CHIP_LABELS.get(binding, binding.replace("_", " "))
+    if locale and locale != "en":
+        from ape.reporting.labels import t as _t
+        q, label = _t(q, locale), _t(label, locale)
+    return {"q": q, "label": label,
             "kind": "capability", "chart": kind, "binding": binding}
 
 
@@ -481,6 +493,27 @@ def build(snap: ClientSnapshot, binding: str,
     data, refs = bound
     k = resolve_kind(binding, kind)
     data = dict(data, kind=k)
+
+    # Translate the SERIES AND CATEGORY LABELS before drawing, so the chart
+    # inside a Dutch answer reads "Amerikaanse aandelen" and not "US Equity".
+    # Done on a copy and only on the display text — `refs` still carries the
+    # English fact keys the grounding gate matches against, exactly as the
+    # report's own blocks do.
+    lang = getattr(snap, "language", "") or ""
+    if lang and lang != "en":
+        from ape.reporting.labels import t as _t
+        data = dict(data)
+        for field in ("items", "segments", "series", "bars", "points"):
+            rows = data.get(field)
+            if isinstance(rows, list):
+                data[field] = [
+                    (dict(r, label=_t(r["label"], lang))
+                     if isinstance(r, dict) and isinstance(r.get("label"), str)
+                     else r)
+                    for r in rows]
+        if isinstance(data.get("labels"), list):
+            data["labels"] = [_t(x, lang) if isinstance(x, str) else x
+                              for x in data["labels"]]
 
     from ape.reporting.charts import render_chart
     from ape.reporting.echarts_opts import build_option
