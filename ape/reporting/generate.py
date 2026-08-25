@@ -1216,6 +1216,16 @@ def render_body(report: Dict[str, Any], internal: bool = True) -> str:
     hides all of it: templates are the advisor's machinery, and a client
     should see a report, not the mechanism that shaped it.
     """
+    # Translate the code-written labels here, in the ONE renderer both the
+    # HTML export and the client viewer share — so neither can drift, and
+    # neither can double-translate. On a copy, and only at render: the
+    # stored report keeps English fact keys, which is what the grounding
+    # allowlist matches against when the client asks a question about it.
+    _locale = report.get("language") or ""
+    if _locale and _locale != "en":
+        from ape.reporting.labels import localise
+        report = localise(report, _locale)
+
     rendered, n = [], 0
     for b in report["blocks"]:
         if b.get("title") and b["type"] not in UNNUMBERED:
@@ -1260,6 +1270,10 @@ def render_html(report: Dict[str, Any], internal: bool = True,
     ship the version that is whole, not the one with dead script tags in
     its head.
     """
+    # Labels are translated HERE, at the last possible moment, and on a
+    # copy. The grounding allowlist is keyed on the English fact names, so
+    # anything earlier would translate the keys the validator matches
+    # against and blocks would silently stop resolving.
     assets = WIDGET_ASSETS if interactive else ""
     return (f'<!doctype html><html><head><meta charset="utf-8">\n'
             f'<meta name="viewport" content="width=device-width,initial-scale=1">\n'

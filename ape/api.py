@@ -1102,6 +1102,10 @@ async def generate_one_report(request: Request):
             for f in verdict.findings
         ]
 
+    # The language is part of the document, not of the request that made
+    # it: reopening this report next year must render the same way.
+    report["language"] = getattr(snap, "language", "") or ""
+
     out = Path(__file__).resolve().parents[1] / "data" / "generated"
     out.mkdir(parents=True, exist_ok=True)
     rid = report["report_id"]
