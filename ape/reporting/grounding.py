@@ -277,6 +277,37 @@ def derived_facts(facts: Dict[str, float]) -> Dict[str, float]:
             if key.startswith("alloc.") and weight is not None:
                 put(f"derived.value_{key}", pv * float(weight) / 100.0)
 
+    # SUBSET SUMS of allocation weights, and their cash values.
+    #
+    # "Your equities total 88%" is a true, checkable statement about a
+    # portfolio holding 36% US and 52% international — but neither 88 nor
+    # its cash value existed anywhere in the allowlist, so the sentence was
+    # rejected and the whole block replaced. Grouping asset classes is one
+    # of the most natural things to say about an allocation, and the gate
+    # was refusing all of it.
+    #
+    # Bounded to groups of 2 and 3. A handful of asset classes makes that a
+    # few dozen extra values; going further is combinatorial and buys
+    # little, since nobody writes "US plus international plus bonds plus
+    # cash plus property came to 94%".
+    #
+    # The cost is real and worth stating: every value added to the allowlist
+    # is one more number a WRONG figure could coincidentally match. These
+    # are added because they are things a report legitimately says, not
+    # because rejections are inconvenient — the fix for a wrong figure is
+    # still to reject it.
+    import itertools as _it
+    alloc_items = [(k, v) for k, v in facts.items()
+                   if k.startswith("alloc.") and v is not None]
+    if len(alloc_items) > 1:
+        for n in (2, 3):
+            for combo in _it.combinations(alloc_items, n):
+                names = "+".join(k[6:] for k, _ in combo)
+                total = sum(v for _, v in combo)
+                put(f"derived.group_{names}", total)
+                if pv is not None:
+                    put(f"derived.group_value_{names}", pv * total / 100.0)
+
     c, w = facts.get("flows.contributions"), facts.get("flows.withdrawals")
     if c is not None and w is not None:
         put("derived.net_flow", c - w)
