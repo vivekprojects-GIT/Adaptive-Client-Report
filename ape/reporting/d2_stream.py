@@ -58,7 +58,8 @@ from ape.reporting.csv_source import ClientSnapshot
 from ape.reporting.d2 import (DECLINE, STRATEGY_STYLE, _ANSWER_SYSTEM,
                               _check_answer, _choose_widget, _facts_for_scope,
                               classify_intent, conversation_id_for,
-                              select_strategy, source_blocks,
+                              language_instruction, select_strategy,
+                              source_blocks,
                               strip_capability_disclaimer)
 
 
@@ -94,6 +95,11 @@ def stream_answer(
     arms = INTENT_STRATEGIES.get(intent) or INTENT_STRATEGIES.get(
         "other_report_question", ["standard_llm"])
     strategy, table = select_strategy(session, intent, list(arms))
+
+    # The client's language decides how the answer is written AND how its
+    # figures are parsed back. Resolved once, used by both.
+    from ape.reporting.locales import get as _get_locale
+    loc = _get_locale(getattr(snap, "language", None))
 
     facts_text, allowlist = _facts_for_scope(snap, block)
     if selected_text:
@@ -132,6 +138,8 @@ def stream_answer(
             visual = ""
         prompt = (f"FACTS:\n{facts_text}\n\nQUESTION: {question}\n\n"
                   f"Answer format: {style}{visual}")
+        if loc.code != "en":
+            prompt += language_instruction(loc)
 
         buf, released, tripped = "", "", False
         try:
@@ -151,7 +159,7 @@ def stream_answer(
                     # proper name, the sign in front of it — can sit in an
                     # earlier chunk.
                     if _check_answer(released + chunk, allowlist,
-                                     snap.label_terms()):
+                                     snap.label_terms(), loc.code):
                         tripped = True
                         break
                     released += chunk
@@ -165,7 +173,8 @@ def stream_answer(
                     # what stops it being written in the first place.
                     candidate = strip_capability_disclaimer(
                         (released + buf).strip())
-                    if _check_answer(candidate, allowlist, snap.label_terms()):
+                    if _check_answer(candidate, allowlist, snap.label_terms(),
+                                     loc.code):
                         tripped = True
                     else:
                         if buf:
@@ -197,7 +206,8 @@ def stream_answer(
                                "figures, or say the report does not contain "
                                "the answer."}])
                 cand = strip_capability_disclaimer(resp.content[0].text.strip())
-                if not _check_answer(cand, allowlist, snap.label_terms()):
+                if not _check_answer(cand, allowlist, snap.label_terms(),
+                                     loc.code):
                     retry = cand
             except Exception:
                 retry = ""
@@ -234,8 +244,18 @@ def stream_answer(
                         client_id=snap.client_id, report_id=report_id,
                         role="assistant", content=answer,
                         content_intent=intent, answer_strategy=strategy,
-                        block_ids=bids)
+                        author=author, block_ids=bids)
     session.add(assistant)
+
+    # Same decline trigger as the buffered path — the client's experience
+    # is identical, so the adviser signal must be too.
+    if author == "declined_ungrounded":
+        session.flush()
+        try:
+            from ape.reporting.alerts import check_repeated_decline
+            check_repeated_decline(session, snap.client_id, report_id, conv_id)
+        except Exception:
+            pass
 
     try:
         sources = source_blocks(report_json or {}, snap, answer, block, intent)

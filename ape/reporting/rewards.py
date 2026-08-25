@@ -110,6 +110,29 @@ def record_event(session: Session, client_id: str, event_type: str,
     if dims:
         out["profile"] = update_preferences(session, client_id, dims,
                                             report_type=report_type)
+
+    # An explicit thumbs-down is the strongest "this client needs a person"
+    # signal there is — it needs no inference at all. Routed here rather
+    # than inside the engagement branch above because it is a different
+    # KIND of consequence: the others update our model of the client, this
+    # one interrupts a human being.
+    if event_type in ("answer_unhelpful", "report_unhelpful"):
+        from ape.reporting.alerts import (TRIGGER_EXPLICIT_NEGATIVE,
+                                          maybe_alert)
+        said = ("told us an answer was unhelpful"
+                if event_type == "answer_unhelpful"
+                else "told us the report itself was unhelpful")
+        try:
+            alert = maybe_alert(
+                session, client_id, report_id, TRIGGER_EXPLICIT_NEGATIVE,
+                detail=f"The client {said}.")
+            if alert:
+                out["alert"] = alert
+        except Exception as exc:                       # noqa: BLE001
+            # Never let alerting break the signal write. Losing an event
+            # because a notification failed would corrupt the learning
+            # data to save a convenience feature.
+            out["alert_error"] = str(exc)[:200]
     return out
 
 

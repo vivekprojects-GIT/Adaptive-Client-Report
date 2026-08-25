@@ -22,6 +22,10 @@ export const api = {
   // Core flow
   health:               ()                                 => request("GET",    "/health"),
 
+  // Adviser notifications
+  listAlerts:           ()                                 => request("GET",    "/alerts"),
+  acknowledgeAlert:     (id)                               => request("POST",   `/alerts/${encodeURIComponent(id)}/ack`),
+
   // Config — read
   listReportTypes:      ()                                 => request("GET",    "/config/report-types"),
   listClients:          (q)                                => request("GET",    "/clients" + (q ? "?q=" + encodeURIComponent(q) : "")),

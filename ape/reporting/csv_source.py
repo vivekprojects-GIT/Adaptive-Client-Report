@@ -88,6 +88,11 @@ class ClientSnapshot:
     holdings: List[Dict[str, Any]] = field(default_factory=list)
     history: List[Dict[str, Any]] = field(default_factory=list)
     targets: Dict[str, float] = field(default_factory=dict)
+    # Which language this client reads. Drives BOTH the words and the
+    # number separators, so it travels with the facts rather than being
+    # looked up separately at each use — a snapshot that formats its own
+    # figures one way and validates them another is the failure mode.
+    language: str = ""
     benchmark_name: str = ""
     volatility_pct: Optional[float] = None
 

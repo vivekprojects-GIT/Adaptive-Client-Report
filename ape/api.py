@@ -388,6 +388,62 @@ _SIGNAL_MEANING = {
 }
 
 
+@app.get("/alerts")
+def list_alerts(limit: int = 50, unread_only: bool = False):
+    """Adviser notifications — newest first, with an unread count.
+
+    Behind the same advisor gate as every other admin surface: these name
+    clients who are struggling, which is not public information.
+    """
+    from .db.session import init_db, session_scope
+    from .db.models import AdviserAlert, Client
+    from sqlalchemy import select as _s, func as _f
+    init_db()
+    out, unread = [], 0
+    with session_scope() as db:
+        unread = db.scalar(
+            _s(_f.count()).select_from(AdviserAlert)
+            .where(AdviserAlert.acknowledged_at.is_(None))) or 0
+        q = _s(AdviserAlert).order_by(AdviserAlert.created_at.desc())
+        if unread_only:
+            q = q.where(AdviserAlert.acknowledged_at.is_(None))
+        for a in db.scalars(q.limit(max(1, min(limit, 200)))):
+            client = db.get(Client, a.client_id)
+            out.append({
+                "alert_id": a.alert_id,
+                "client_id": a.client_id,
+                "client_name": (client.name if client else a.client_id),
+                "report_id": a.report_id,
+                "trigger": a.trigger,
+                "detail": a.detail,
+                "delivery_status": a.delivery_status,
+                "acknowledged": a.acknowledged_at is not None,
+                "created_at": a.created_at.isoformat() if a.created_at else "",
+            })
+    return {"alerts": out, "unread": unread}
+
+
+@app.post("/alerts/{alert_id}/ack")
+def acknowledge_alert(alert_id: str):
+    """Mark one alert as dealt with.
+
+    Acknowledgement is explicit, not inferred from opening the panel — an
+    adviser scanning a list has not necessarily actioned anything in it,
+    and auto-clearing would quietly lose the one that mattered.
+    """
+    from datetime import datetime as _dt
+    from .db.session import init_db, session_scope
+    from .db.models import AdviserAlert
+    init_db()
+    with session_scope() as db:
+        row = db.get(AdviserAlert, alert_id)
+        if row is None:
+            raise HTTPException(404, "no such alert")
+        if row.acknowledged_at is None:
+            row.acknowledged_at = _dt.utcnow()
+    return {"status": "ok", "alert_id": alert_id}
+
+
 @app.get("/registry/signals")
 def registry_signals(limit: int = 400):
     """The raw signals, nested client -> report type -> event.

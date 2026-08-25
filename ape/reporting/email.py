@@ -78,9 +78,68 @@ def _build_message(to_email: str, client_name: str, report_url: str,
     return msg
 
 
+TRIGGER_LABELS = {
+    "explicit_negative": "said an answer or the report was unhelpful",
+    "repeated_decline": "asked questions the report could not answer",
+}
+
+
+def _build_alert(adviser_email: str, adviser_name: str, client_name: str,
+                 report_id: str, trigger: str, detail: str,
+                 from_email: str) -> EmailMessage:
+    """The adviser-facing alert.
+
+    Deliberately carries NO client figures. This mail may sit in an inbox,
+    be forwarded internally, or be read on a phone in public — the report
+    itself is already behind two gates, and reproducing its numbers here
+    would route around both. It says who, and why, and nothing else.
+    """
+    reason = TRIGGER_LABELS.get(trigger, trigger)
+    msg = EmailMessage()
+    msg["To"] = adviser_email
+    msg["From"] = from_email
+    msg["Subject"] = f"{client_name} may need a hand with their report"
+
+    msg.set_content(
+        f"Hi {adviser_name},\n\n"
+        f"{client_name} {reason} while reading their report.\n\n"
+        f"{detail}\n\n"
+        f"Report: {report_id}\n\n"
+        "This is an automatic notice based on how they used the report.\n"
+        "No client figures are included in this email.\n"
+    )
+    msg.add_alternative(f"""\
+<html><body style="font-family:-apple-system,Segoe UI,Arial,sans-serif;
+  background:#f1f5f9;margin:0;padding:28px">
+  <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:10px;
+    padding:30px 34px">
+    <p style="margin:0 0 6px;font-size:11px;letter-spacing:.12em;
+      text-transform:uppercase;color:#b45309;font-weight:700">Client needs help</p>
+    <h2 style="margin:0 0 16px;font-size:19px;color:#0f172a">
+      {client_name} may need a hand</h2>
+    <p style="color:#334155;font-size:14px;line-height:1.55;margin:0 0 14px">
+      Hi {adviser_name}, {client_name} {reason} while reading their report.
+    </p>
+    <p style="color:#334155;font-size:14px;line-height:1.55;margin:0 0 20px;
+      padding:12px 15px;background:#fef3c7;border-radius:7px">{detail}</p>
+    <p style="color:#64748b;font-size:12.5px;margin:0">Report: {report_id}</p>
+    <p style="color:#94a3b8;font-size:11.5px;margin:20px 0 0;
+      border-top:1px solid #e2e8f0;padding-top:14px">
+      Automatic notice based on how this client used their report.
+      No client figures are included in this email.
+    </p>
+  </div>
+</body></html>""", subtype="html")
+    return msg
+
+
 class EmailProvider(Protocol):
     def send_report_ready(self, to_email: str, client_name: str,
                           report_url: str, period: str) -> Dict[str, Any]: ...
+
+    def send_adviser_alert(self, adviser_email: str, adviser_name: str,
+                           client_name: str, report_id: str,
+                           trigger: str, detail: str) -> Dict[str, Any]: ...
 
 
 class FileEmailProvider:
@@ -99,6 +158,19 @@ class FileEmailProvider:
         return {"status": "written", "provider": "file", "path": str(path),
                 "to": to_email, "url": report_url}
 
+    def send_adviser_alert(self, adviser_email, adviser_name, client_name,
+                           report_id, trigger, detail):
+        EMAIL_DIR.mkdir(parents=True, exist_ok=True)
+        msg = _build_alert(adviser_email, adviser_name, client_name,
+                           report_id, trigger, detail,
+                           os.getenv("EMAIL_FROM", "reports@example.local"))
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        safe = adviser_email.replace("@", "_at_").replace(".", "_")
+        path = EMAIL_DIR / f"{stamp}_ALERT_{safe}.eml"
+        path.write_bytes(msg.as_bytes())
+        return {"status": "written", "provider": "file", "path": str(path),
+                "to": adviser_email, "trigger": trigger}
+
 
 class StubEmailProvider:
     name = "stub"
@@ -106,6 +178,11 @@ class StubEmailProvider:
     def send_report_ready(self, to_email, client_name, report_url, period):
         return {"status": "sent (stub)", "provider": "stub",
                 "to": to_email, "url": report_url}
+
+    def send_adviser_alert(self, adviser_email, adviser_name, client_name,
+                           report_id, trigger, detail):
+        return {"status": "sent (stub)", "provider": "stub",
+                "to": adviser_email, "trigger": trigger}
 
 
 class GmailEmailProvider:
@@ -155,6 +232,17 @@ class GmailEmailProvider:
         res = service.users().messages().send(userId="me", body={"raw": raw}).execute()
         return {"status": "sent", "provider": "gmail", "message_id": res.get("id"),
                 "to": to_email, "url": report_url}
+
+    def send_adviser_alert(self, adviser_email, adviser_name, client_name,
+                           report_id, trigger, detail):
+        service = self._service()
+        msg = _build_alert(adviser_email, adviser_name, client_name,
+                           report_id, trigger, detail,
+                           os.getenv("EMAIL_FROM", "me"))
+        raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
+        res = service.users().messages().send(userId="me", body={"raw": raw}).execute()
+        return {"status": "sent", "provider": "gmail", "message_id": res.get("id"),
+                "to": adviser_email, "trigger": trigger}
 
 
 _PROVIDERS = {"file": FileEmailProvider, "gmail": GmailEmailProvider,

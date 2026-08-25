@@ -76,6 +76,15 @@ class Client(Base):
     # it is all the check needs, and a full date of birth is more personal
     # data than the check justifies holding.
     birth_year:  Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    # Where an adviser alert gets sent. Nullable for the same reason as
+    # birth_year above — the client feed does not carry it yet, and
+    # alerts.DEFAULT_ADVISER_EMAIL stands in until a firm's adviser
+    # roster is connected.
+    adviser_email: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    # Which language this client's report is written in, and which number
+    # convention it uses. Nullable = English, so an unset feed behaves
+    # exactly as it did before locales existed.
+    language: Mapped[Optional[str]] = mapped_column(String(8), nullable=True)
     created_at:  Mapped[datetime] = mapped_column(DateTime, default=_now)
 
     snapshots: Mapped[list["ReportSnapshot"]] = relationship(back_populates="client")
@@ -298,6 +307,13 @@ class Message(Base):
     # report template — a thumbs-down on an answer says nothing about whether
     # the report should have been a table.
     answer_strategy: Mapped[str] = mapped_column(String(48), default="")
+    # HOW this answer was produced: llm, llm_retry, llm_stream,
+    # llm_stream_retry, declined_ungrounded, no_key. Returned to the caller
+    # all along but never stored, which meant the transcript could not
+    # distinguish a real answer from a refusal after the fact — and "how
+    # often does the report fail to answer this client" is exactly the
+    # question the adviser alerts need to ask.
+    author: Mapped[str] = mapped_column(String(32), default="", index=True)
     block_ids: Mapped[list] = mapped_column(JSON, default=list)
     # What the answer was made OF, kept so a restored conversation is the
     # same conversation. Sources are the sections it cited; widget is the
@@ -333,6 +349,38 @@ class Event(Base):
     applies_to: Mapped[str] = mapped_column(String(8), default="")   # D1 | D2 | ""
     metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
+class AdviserAlert(Base):
+    """A client looked like they needed a human, and their adviser was told.
+
+    Separate from `events` on purpose. An event is something the client did;
+    an alert is something WE decided and acted on. Mixing them would make
+    "why did this adviser get an email" impossible to answer later, and that
+    question is exactly what someone asks when the channel is noisy.
+
+    The row is written whether or not the email left the building —
+    `delivery_status` carries the outcome. Losing the record of a client who
+    needed help because SMTP was down is the worst possible failure here.
+    """
+
+    __tablename__ = "adviser_alerts"
+    __table_args__ = (Index("ix_alerts_client_time", "client_id", "created_at"),)
+
+    alert_id:  Mapped[str] = mapped_column(String(64), primary_key=True)
+    client_id: Mapped[str] = mapped_column(String(32), index=True)
+    report_id: Mapped[str] = mapped_column(String(80), index=True, default="")
+    conversation_id: Mapped[str] = mapped_column(String(64), default="")
+    trigger:   Mapped[str] = mapped_column(String(48), index=True)
+    detail:    Mapped[str] = mapped_column(Text, default="")
+    adviser_email: Mapped[str] = mapped_column(String(200), default="")
+    delivery_status: Mapped[str] = mapped_column(String(200), default="pending")
+    # Read state is the adviser's, not the client's. Kept here rather than
+    # inferred from "has the adviser opened the dashboard" because an
+    # adviser scanning a list has not necessarily dealt with anything in it.
+    acknowledged_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now, index=True)
 
 
 # ---------------------------------------------------------------------------

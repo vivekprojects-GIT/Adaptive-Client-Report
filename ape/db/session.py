@@ -78,12 +78,25 @@ _ADDED_COLUMNS = {
     # An answer's evidence and its chart, so a restored conversation shows
     # what the client actually saw rather than a stripped transcript.
     "messages": {"sources": "JSON DEFAULT '[]'",
-                 "widget": "JSON DEFAULT '{}'"},
+                 "widget": "JSON DEFAULT '{}'",
+                 # How the answer was produced. Existing rows keep '' —
+                 # unknown, which is the truth for anything written before
+                 # this column existed; the alert counters treat '' as
+                 # "not a decline" rather than guessing.
+                 "author": "VARCHAR(32) DEFAULT ''"},
     # Second factor for report links. Backfilled to the shared demo year
     # (see _seed_demo_birth_years below) so every client verifies the same
     # way; a real deployment replaces these from the firm's CRM, one year
     # per client, at which point the check becomes an actual factor.
-    "clients": {"birth_year": "INTEGER"},
+    "clients": {"birth_year": "INTEGER",
+                # Where adviser alerts go. Left NULL rather than backfilled:
+                # a made-up adviser address would send real mail somewhere
+                # wrong, so the fallback lives in code where it is visible.
+                "adviser_email": "VARCHAR(200)",
+                # NULL means English. Never backfilled with a guess: writing
+                # a language onto a client we have not been told about would
+                # send someone a report they cannot read.
+                "language": "VARCHAR(8)"},
 }
 
 

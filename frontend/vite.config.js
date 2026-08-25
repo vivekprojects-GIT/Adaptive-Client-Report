@@ -15,6 +15,9 @@ export default defineConfig({
       "/feedback":  "http://localhost:7860",
       "/health":    "http://localhost:7860",
 
+      // Adviser notifications — /alerts and /alerts/{id}/ack
+      "/alerts":    "http://localhost:7860",
+
       // Prefix endpoints — sub-paths are proxied to FastAPI
       "/sessions":  "http://localhost:7860",
       "/users":     "http://localhost:7860",

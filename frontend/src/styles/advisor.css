@@ -255,3 +255,64 @@
 .sig-cls.other      { background: #f1f5f9; color: #94a3b8; }
 .sig-at { margin-left: auto; font-size: 10px; color: #cbd5e1;
   font-variant-numeric: tabular-nums; flex: none; }
+
+/* ---------------------------------------------------------------------------
+   Adviser notifications — the bell at the right of the advisor bar.
+
+   `margin-left: auto` pins it to the far right of a flex-wrap bar without
+   needing a spacer element, and it stays right even when the controls to
+   its left wrap onto a second line.
+   --------------------------------------------------------------------------- */
+.nb-wrap { position: relative; margin-left: auto; }
+
+.nb-btn {
+  position: relative; display: inline-flex; align-items: center;
+  justify-content: center; width: 34px; height: 34px; padding: 0;
+  background: #fff; border: 1px solid #cbd5e1; border-radius: 8px;
+  color: #475569; cursor: pointer;
+}
+.nb-btn:hover { background: #f8fafc; color: #0f172a; }
+
+/* The badge is the only saturated colour on this bar, which is the point:
+   it should be the first thing the eye lands on when it is present, and
+   invisible when it is not. */
+.nb-badge {
+  position: absolute; top: -5px; right: -5px; min-width: 17px; height: 17px;
+  padding: 0 4px; border-radius: 9px; background: #dc2626; color: #fff;
+  font-size: 10.5px; font-weight: 700; line-height: 17px; text-align: center;
+  border: 2px solid #fff; box-sizing: content-box;
+}
+
+.nb-panel {
+  position: absolute; top: 40px; right: 0; width: 340px; max-height: 440px;
+  overflow-y: auto; background: #fff; border: 1px solid #e2e8f0;
+  border-radius: 10px; box-shadow: 0 12px 30px rgba(15, 23, 42, .16);
+  z-index: 50;
+}
+.nb-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 14px; border-bottom: 1px solid #e2e8f0; font-size: 13.5px;
+}
+.nb-count {
+  font-size: 11px; font-weight: 700; color: #dc2626;
+  background: #fef2f2; padding: 2px 7px; border-radius: 10px;
+}
+.nb-empty, .nb-err {
+  padding: 18px 14px; font-size: 12.5px; color: #64748b; line-height: 1.55;
+}
+.nb-err { color: #b45309; background: #fffbeb; }
+
+.nb-item { padding: 12px 14px; border-bottom: 1px solid #f1f5f9; }
+.nb-item:last-child { border-bottom: 0; }
+.nb-item.done { opacity: .5; }
+.nb-item-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.nb-client { font-weight: 650; font-size: 13.5px; color: #0f172a; }
+.nb-when { font-size: 11px; color: #94a3b8; white-space: nowrap; }
+.nb-trigger { font-size: 11px; font-weight: 700; color: #b45309; margin: 3px 0 4px; }
+.nb-detail { font-size: 12.5px; color: #475569; line-height: 1.5; }
+.nb-ack {
+  margin-top: 8px; border: 1px solid #cbd5e1; background: #fff;
+  border-radius: 6px; padding: 4px 10px; font-size: 11.5px; cursor: pointer;
+  font-family: inherit; color: #334155;
+}
+.nb-ack:hover { background: #f1f5f9; }

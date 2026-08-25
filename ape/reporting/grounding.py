@@ -51,21 +51,44 @@ YEAR_RANGE = (1900, 2100)
 TOLERANCE_BY_DP = {0: 0.51, 1: 0.051, 2: 0.0051}
 REL_TOLERANCE = 0.005          # 0.5% — covers rounded millions ("1.24M")
 
-_NUMBER = re.compile(
-    r"""
-    # A leading minus is PART OF THE NUMBER: "-1.33%" is negative 1.33, and
-    # reading it as positive 1.33 makes every loss-making report ungrounded.
-    # The lookbehind keeps the hyphen in "2025-09-30" or "Q1-Q2" from being
-    # read as a sign.
-    (?P<sign>(?<![\dA-Za-z])[-−])?
-    (?P<cur>[£$€])?\s*
-    (?P<num>\d{1,3}(?:,\d{3})+(?:\.\d+)?   # 1,240,000.00
-          | \d+\.\d+                        # 4.8
-          | \d+)                            # 2150
-    \s*(?P<suffix>%|bps|m\b|M\b|k\b|K\b|bn\b|billion\b|million\b|thousand\b)?
-    """,
-    re.VERBOSE,
-)
+def _number_re(thousands: str, decimal: str) -> "re.Pattern":
+    """Build the figure-matching regex for one locale's separators.
+
+    Compiled PER LOCALE rather than as one permissive pattern, because a
+    pattern loose enough to match both conventions is ambiguous exactly
+    where it matters most: "1.234" is one-point-two-three-four in English
+    and one thousand two hundred and thirty four in Dutch. A gate that
+    guesses between those is a gate that silently accepts wrong figures.
+    """
+    t, d = re.escape(thousands), re.escape(decimal)
+    parts = [
+        # A leading minus is PART OF THE NUMBER: "-1.33%" is negative 1.33,
+        # and reading it as positive 1.33 makes every loss-making report
+        # ungrounded. The lookbehind keeps the hyphen in "2025-09-30" or
+        # "Q1-Q2" from being read as a sign.
+        r"(?P<sign>(?<![\dA-Za-z])[-−])?",
+        r"(?P<cur>[£$€])?\s*",
+        r"(?P<num>\d{1,3}(?:" + t + r"\d{3})+(?:" + d + r"\d+)?",   # 1,240,000.00
+        r"      | \d+" + d + r"\d+",                                 # 4.8
+        r"      | \d+)",                                             # 2150
+        r"\s*(?P<suffix>%|bps|m\b|M\b|k\b|K\b|bn\b|billion\b"
+        r"|million\b|thousand\b)?",
+    ]
+    return re.compile("\n".join(parts), re.VERBOSE)
+
+
+# English stays the module-level default so every existing caller keeps its
+# current behaviour byte for byte; locale-aware callers ask for a code.
+_NUMBER = _number_re(",", ".")
+_NUMBER_BY_LOCALE = {"en": _NUMBER}
+
+
+def _number_re_for(code=None) -> "re.Pattern":
+    from ape.reporting.locales import get as _get_locale
+    loc = _get_locale(code)
+    if loc.code not in _NUMBER_BY_LOCALE:
+        _NUMBER_BY_LOCALE[loc.code] = _number_re(loc.thousands, loc.decimal)
+    return _NUMBER_BY_LOCALE[loc.code]
 
 # Written with a multiplier => deliberately rounded => relative tolerance.
 _MULT_SUFFIX = re.compile(r"(m|M|k|K|bn|billion|million|thousand)\b")
@@ -103,22 +126,34 @@ class Verdict:
 # Extraction + normalisation
 # ---------------------------------------------------------------------------
 
-def extract_numbers(text: str) -> List[Tuple[float, int, str, int]]:
+def extract_numbers(text: str,
+                    locale: Optional[str] = None) -> List[Tuple[float, int, str, int]]:
     """Return (value, decimal_places, raw) for every figure in prose.
 
     A percentage keeps its face value: "4.8%" is the number 4.8, because that
     is how the snapshot stores it. Multipliers are expanded, so "1.24M"
     becomes 1240000.
+
+    `locale` selects which separator convention the text uses. Defaults to
+    English, so every existing caller is unaffected; a Dutch report passes
+    "nl" and "1.234.567,89" is read as 1234567.89 rather than as 1.234.
     """
+    from ape.reporting.locales import get as _get_locale, to_float
+    loc = _get_locale(locale)
+    pattern = _NUMBER if loc.code == "en" else _number_re_for(loc.code)
+
     out: List[Tuple[float, int, str, int]] = []
-    for m in _NUMBER.finditer(text or ""):
+    for m in pattern.finditer(text or ""):
         raw_num = m.group("num")
         suffix = (m.group("suffix") or "").strip()
-        try:
-            val = float(raw_num.replace(",", ""))
-        except ValueError:
+        val = to_float(raw_num, loc.code)
+        if val is None:
             continue
-        dp = len(raw_num.split(".")[1]) if "." in raw_num else 0
+        # Decimal places are counted against THIS locale's decimal mark —
+        # using "." on a Dutch figure would score "1.234" as 3 dp and hand
+        # it a tolerance three orders of magnitude too tight.
+        dp = (len(raw_num.split(loc.decimal)[1])
+              if loc.decimal in raw_num else 0)
         if suffix in _MULTIPLIER:
             val *= _MULTIPLIER[suffix]
             dp = 0

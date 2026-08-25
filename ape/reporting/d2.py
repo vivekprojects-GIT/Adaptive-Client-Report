@@ -56,6 +56,24 @@ from ape.reporting.csv_source import ClientSnapshot
 from ape.reporting.grounding import derived_facts, extract_numbers, _matches
 
 
+def language_instruction(loc) -> str:
+    """What the model is told when the client does not read English.
+
+    States the NUMBER convention as well as the language. A model told only
+    "write in Dutch" translates the prose and leaves the figures in English
+    separators — which then fails the locale-aware grounding check, and
+    reads to the client as a half-translated document. The value is
+    explicitly ring-fenced: only the rendering may change.
+    """
+    return (
+        "\n\nWrite your entire answer in " + loc.prompt_name + ". "
+        "Use " + loc.prompt_name + " number formatting: '" + loc.thousands +
+        "' as the thousands separator and '" + loc.decimal + "' as the "
+        "decimal separator. Do not change any figure's VALUE — only how "
+        "it is written."
+    )
+
+
 def conversation_id_for(client_id: str, report_id: str) -> str:
     """One conversation per client per report — derived, not random.
 
@@ -343,15 +361,21 @@ def strip_capability_disclaimer(text: str) -> str:
 
 
 def _check_answer(text: str, facts: Dict[str, float],
-                  labels: List[str]) -> List[str]:
+                  labels: List[str], locale: Optional[str] = None) -> List[str]:
     """Every number in the answer must be in the allowlist. Returns the
-    offending fragments; empty means grounded."""
+    offending fragments; empty means grounded.
+
+    `locale` tells the extractor which separator convention the answer is
+    written in. Getting this wrong is not a cosmetic bug: a Dutch answer
+    parsed as English reads "1.234.567,89" as 1.234, so correct figures are
+    rejected and the client is told their own report cannot answer them.
+    """
     from ape.reporting.grounding import (_MULT_SUFFIX, _inside,
                                          _is_prose_number, _label_spans)
     spans = _label_spans(text, labels)
     allowed = set(facts.values())
     bad = []
-    for val, dp, raw, start in extract_numbers(text):
+    for val, dp, raw, start in extract_numbers(text, locale):
         if _is_prose_number(val, dp, raw) or _inside(start, spans):
             continue
         # A figure written with a multiplier ("£14.3K") is deliberately
@@ -814,6 +838,11 @@ def answer_question(
         "other_report_question", ["standard_llm"])
     strategy, table = select_strategy(session, intent, list(arms))
 
+    # Language decides how the answer is written and how it is parsed
+    # back. One resolution, used by both.
+    from ape.reporting.locales import get as _get_locale
+    loc = _get_locale(getattr(snap, "language", None))
+
     facts_text, allowlist = _facts_for_scope(snap, block)
     if selected_text:
         facts_text += f'\nHIGHLIGHTED WORDS (what they are pointing at, not a limit): "{selected_text[:400]}"'
@@ -851,6 +880,9 @@ def answer_question(
             visual = ""
         prompt = (f"FACTS:\n{facts_text}\n\nQUESTION: {question}\n\n"
                   f"Answer format: {style}{visual}")
+        if loc.code != "en":
+            prompt += language_instruction(loc)
+
         feedback = ""
         for attempt in range(2):
             try:
@@ -861,7 +893,8 @@ def answer_question(
             except Exception:
                 break
             candidate = strip_capability_disclaimer(candidate)
-            bad = _check_answer(candidate, allowlist, snap.label_terms())
+            bad = _check_answer(candidate, allowlist,
+                                snap.label_terms(), loc.code)
             if not bad:
                 answer, author = candidate, ("llm" if attempt == 0
                                              else "llm_retry")
@@ -907,9 +940,21 @@ def answer_question(
                         client_id=snap.client_id, report_id=report_id,
                         role="assistant", content=answer,
                         content_intent=intent, answer_strategy=strategy,
+                        author=author,
                         block_ids=[b for b in
                                    [(block or {}).get("block_id")] if b])
     session.add(assistant)
+
+    # A client stuck on something the report cannot answer is the second
+    # alert trigger. Flushed first so this answer is counted — checking
+    # before the write would always be one behind.
+    if author == "declined_ungrounded":
+        session.flush()
+        try:
+            from ape.reporting.alerts import check_repeated_decline
+            check_repeated_decline(session, snap.client_id, report_id, conv_id)
+        except Exception:
+            pass          # never let alerting break the answer path
 
     # Where this answer came from, resolved by tracing its figures back to
     # the blocks that carry them. Mandatory: an answer about someone's

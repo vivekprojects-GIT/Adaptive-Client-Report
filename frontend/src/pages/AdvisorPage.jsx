@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api.js";
 import Toast from "../components/Toast.jsx";
+import NotificationBell from "../components/NotificationBell.jsx";
 import { BlockTree, PreferenceTree, SignalTree, TemplateTree }
   from "../components/RegistryTree.jsx";
 import "../styles/advisor.css";
@@ -297,6 +298,10 @@ export default function AdvisorPage() {
               : "The model designs a layout from the block registry, "
                 + "guided by what this client has asked for."}
           </span>
+
+          {/* Pinned right by `margin-left:auto` on .nb-wrap, so it stays
+              in the corner even when the controls above wrap. */}
+          <NotificationBell />
         </header>
 
         {importInfo && (
