@@ -93,6 +93,20 @@ def _signed(v: float) -> str:
     return f"{v:+.2f}"
 
 
+def _pctplain(v: float) -> str:
+    """A percentage with no forced sign, in the active locale.
+
+    Distinct from _pct, which always writes a sign because it renders
+    CHANGES. A plain figure like "4.74%" gains nothing from a leading "+"
+    and reads oddly with one.
+    """
+    loc = _locale_now()
+    if loc and loc != "en":
+        from ape.reporting.locales import format_number
+        return format_number(float(v), loc, 2) + "%"
+    return f"{v:.2f}%"
+
+
 def _T(text: str) -> str:
     """Translate a string the RENDERER hardcodes, using the active locale.
 
@@ -982,15 +996,22 @@ def _render_block(b: Dict[str, Any], number: Optional[int] = None) -> str:
     elif t == "comparison_chart":
         p, bm = float(d.get("portfolio", 0)), float(d.get("benchmark", 0))
         top = max(abs(p), abs(bm)) or 1
+        # The static fallback needs the same treatment as the ECharts option
+        # below it. It is what renders before the widget script runs, and
+        # what a PDF or a script-blocked reader sees permanently — so an
+        # untranslated label here is not a brief flash, it is the final text
+        # for some readers.
         body = (f'<div class="cmp">'
-                f'<div><span>Portfolio</span><i style="width:{abs(p)/top*100:.0f}%"></i>'
-                f'<b>{p:.2f}%</b></div>'
-                f'<div><span>Benchmark</span><i class="bm" style="width:{abs(bm)/top*100:.0f}%"></i>'
-                f'<b>{bm:.2f}%</b></div></div>')
+                f'<div><span>{_esc(_T("Portfolio"))}</span>'
+                f'<i style="width:{abs(p)/top*100:.0f}%"></i>'
+                f'<b>{_pctplain(p)}</b></div>'
+                f'<div><span>{_esc(_T("Benchmark"))}</span>'
+                f'<i class="bm" style="width:{abs(bm)/top*100:.0f}%"></i>'
+                f'<b>{_pctplain(bm)}</b></div></div>')
         body = _ecw(build_option({
             "kind": "bar", "unit": "%", "dp": 2,
-            "items": [{"label": "Portfolio", "value": p},
-                      {"label": "Benchmark", "value": bm}]}), body, "bar")
+            "items": [{"label": _T("Portfolio"), "value": p},
+                      {"label": _T("Benchmark"), "value": bm}]}), body, "bar")
 
     elif t in ("comparison_table", "holdings_table", "fees_table"):
         rows = d.get("rows", [])
@@ -1014,7 +1035,8 @@ def _render_block(b: Dict[str, Any], number: Optional[int] = None) -> str:
                 f"<td class='n'>{_money(r['value'])}</td></tr>" for r in rows)
             body = ("<table><thead><tr><th>Asset class</th><th class='n'>Weight</th>"
                     "<th class='bar'></th>"
-                    f"<th class='n'>Value</th></tr></thead><tbody>{trs}</tbody></table>")
+                    f"<th class='n'>{_esc(_T('Value'))}</th>"
+                    f"</tr></thead><tbody>{trs}</tbody></table>")
         else:
             cells = []
             for r in rows:
@@ -1026,7 +1048,8 @@ def _render_block(b: Dict[str, Any], number: Optional[int] = None) -> str:
                     f"<td class='n'>{bench_cell}</td></tr>"
                 )
             trs = "".join(cells)
-            body = ("<table><thead><tr><th></th><th class='n'>Value</th>"
+            body = (f"<table><thead><tr><th></th>"
+                    f"<th class='n'>{_esc(_T('Value'))}</th>"
                     f"<th class='n'>{_esc(_T('Benchmark'))}</th></tr></thead><tbody>{trs}</tbody></table>")
 
     elif t == "performance_line":
