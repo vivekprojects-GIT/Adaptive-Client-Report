@@ -43,6 +43,7 @@ the source of the values, not the machinery that uses them.
 from __future__ import annotations
 
 import json
+import sys
 import os
 import re
 from typing import Any, Dict, List, Optional, Tuple
@@ -212,6 +213,28 @@ _PROMPTS = {
 WRITABLE = tuple(_PROMPTS)
 
 
+def _log(msg: str) -> None:
+    """Diagnostic print that can never take down a generation.
+
+    These lines quote the model's rejected draft back, so on a non-English
+    report they carry Arabic, Japanese, Thai or Greek text. Python picks the
+    console encoding for stdout, and on Windows that is cp1252 — printing a
+    rejected ARABIC draft raised UnicodeEncodeError from inside the writer
+    and turned a perfectly ordinary fallback into a 500 with no report at
+    all. The gate had done its job; the LOG is what broke the request.
+
+    Latin-script languages never hit it, because their rejection text
+    encodes fine — which is exactly why it survived the English testing.
+    """
+    try:
+        print(msg, flush=True)
+    except UnicodeEncodeError:
+        enc = (getattr(sys.stdout, "encoding", None) or "ascii")
+        print(msg.encode(enc, "replace").decode(enc, "replace"), flush=True)
+    except Exception:
+        pass          # a diagnostic is never worth an exception
+
+
 def write_block(
     anthropic_client,
     model: str,
@@ -240,8 +263,8 @@ def write_block(
             # inventing figures produced identical output, so neither could
             # be told apart afterwards. Name the cause.
             reason = f"{type(exc).__name__}: {str(exc)[:110]}"
-            print(f"[writer] {block_type}: LLM call failed, using code-built "
-                  f"block ({reason})", flush=True)
+            _log(f"[writer] {block_type}: LLM call failed, using code-built "
+                 f"block ({reason})")
             break
         data = _parse_json(raw)
         if not data:
@@ -267,8 +290,8 @@ def write_block(
                     f"{quoted}. Every number must appear in the fact sheet "
                     f"exactly.\n")
         if attempt == MAX_ATTEMPTS - 1:
-            print(f"[writer] {block_type}: draft rejected twice, using "
-                  f"code-built block ({quoted[:100]})", flush=True)
+            _log(f"[writer] {block_type}: draft rejected twice, using "
+                 f"code-built block ({quoted[:100]})")
 
     out = dict(fallback_block)
     out["_author"] = "fallback"
