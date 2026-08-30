@@ -498,6 +498,12 @@ from .labels_extra import merge_into as _merge_drafts   # noqa: E402
 _merge_drafts(LABELS)
 
 
+# Axis category lists, held as bare strings rather than {"label": ...}.
+# These feed the x-axis of the INTERACTIVE chart, which is why an Arabic
+# report was rendering its attribution chart labelled "US Equity, Fixed
+# Income, Cash" while the static SVG beside it was correct.
+_STRING_LIST_FIELDS = ("x_categories", "categories", "labels")
+
 _TEXT_FIELDS = ("title", "label", "name", "asset_class", "term",
                 "subtitle", "text", "source")
 _LIST_FIELDS = ("segments", "items", "rows", "bars", "points",
@@ -532,15 +538,43 @@ def localise(report: Dict[str, Any], locale: Optional[str]) -> Dict[str, Any]:
 
 
 def _localise_data(data: Dict[str, Any], locale: str) -> None:
+    """Translate display text in a block's data, at any depth.
+
+    RECURSION IS THE POINT. This used to walk one level — the fields on
+    `data`, then the fields on each row of a list — and stop. But a line
+    chart keeps its x-axis categories at series[].points[].label, two levels
+    down, so those labels were never translated. They then became the axis
+    labels of the INTERACTIVE chart, and an Arabic report rendered its
+    attribution chart reading "US Equity, Fixed Income, Cash".
+
+    It was invisible in review because the STATIC SVG fallback beside it was
+    correct: the two are built from different code paths, and only one of
+    them was reading translated data.
+
+    Depth is bounded by _LIST_FIELDS — the walk only follows containers we
+    named, never arbitrary keys — so this cannot wander into source_refs or
+    any other structural field. A label is still not a key.
+    """
     for field in _TEXT_FIELDS:
         if isinstance(data.get(field), str):
             data[field] = t(data[field], locale)
+    # Lists of BARE STRINGS that are display text.
+    #
+    # Named one by one, never inferred. source_refs is also a list of bare
+    # strings — "attr.US Equity", "alloc.Cash" — and those are KEYS the
+    # grounding gate matches on. Translating them would not merely look
+    # wrong, it would break the link between a figure and its source. So the
+    # rule from the top of this module applies at its sharpest here: a label
+    # is not a key, and the only safe way to tell them apart is a whitelist.
+    for field in _STRING_LIST_FIELDS:
+        vals = data.get(field)
+        if isinstance(vals, list) and all(isinstance(v, str) for v in vals):
+            data[field] = [t(v, locale) for v in vals]
+
     for field in _LIST_FIELDS:
         rows = data.get(field)
         if not isinstance(rows, list):
             continue
         for row in rows:
             if isinstance(row, dict):
-                for f in _TEXT_FIELDS:
-                    if isinstance(row.get(f), str):
-                        row[f] = t(row[f], locale)
+                _localise_data(row, locale)

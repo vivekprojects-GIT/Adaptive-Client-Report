@@ -134,3 +134,59 @@ def test_asset_classes_are_all_covered():
                   "Alternatives", "Cash", "Real Assets"):
         assert asset in LABELS, f"{asset} has no translation"
         assert t(asset, "nl") != asset, f"{asset} not translated to Dutch"
+
+
+def test_axis_categories_are_translated_but_source_refs_are_not():
+    """The interactive chart's x-axis is a list of BARE STRINGS.
+
+    localise() only ever walked lists of dicts, so an Arabic report rendered
+    its attribution chart labelled "US Equity, Fixed Income, Cash" while the
+    static SVG beside it was correct — two code paths, one reading
+    translated data and one not.
+
+    source_refs is also a list of bare strings, and those are grounding
+    KEYS. This asserts both halves at once, because a fix that translated
+    every string list would break the link between a figure and its source.
+    """
+    from ape.reporting.labels import localise
+
+    report = {
+        "language": "ar",
+        "blocks": [{
+            "block_id": "chart_02",
+            "type": "chart",
+            "data": {
+                "kind": "bar",
+                "x_categories": ["US Equity", "Fixed Income", "Cash"],
+                "series": [{"label": "Contribution", "values": [1.94, 0.08, 0.07]}],
+            },
+            "source_refs": ["attr.US Equity", "attr.Fixed Income", "attr.Cash"],
+        }],
+    }
+    out = localise(report, "ar")
+    block = out["blocks"][0]
+
+    cats = block["data"]["x_categories"]
+    assert cats != ["US Equity", "Fixed Income", "Cash"], "axis was not translated"
+    assert all(any("\u0600" <= ch <= "\u06ff" for ch in c) for c in cats)
+
+    # Keys must survive untouched, or grounding stops resolving.
+    assert block["source_refs"] == ["attr.US Equity", "attr.Fixed Income", "attr.Cash"]
+    # Figures are never re-rendered by translation.
+    assert block["data"]["series"][0]["values"] == [1.94, 0.08, 0.07]
+    # And the caller's dict is not mutated.
+    assert report["blocks"][0]["data"]["x_categories"] == ["US Equity", "Fixed Income", "Cash"]
+
+
+def test_nested_list_labels_are_translated():
+    """series[].points[].label is two levels down and used as axis text."""
+    from ape.reporting.labels import localise
+
+    report = {"language": "de", "blocks": [{
+        "block_id": "c", "type": "chart",
+        "data": {"series": [{"label": "Portfolio",
+                             "points": [{"label": "Cash", "value": 1.0}]}]},
+    }]}
+    pts = localise(report, "de")["blocks"][0]["data"]["series"][0]["points"]
+    assert pts[0]["label"] != "Cash", "nested label was not translated"
+    assert pts[0]["value"] == 1.0

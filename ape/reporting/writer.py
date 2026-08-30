@@ -296,7 +296,83 @@ def write_block(
     out = dict(fallback_block)
     out["_author"] = "fallback"
     out["_fallback_reason"] = reason or "model returned no usable JSON"
+
+    # The code-built block is ENGLISH prose, and on a non-English report that
+    # lands an English paragraph in the middle of an Arabic or Japanese
+    # document. Observed exactly that: the model's Arabic draft invented
+    # 1.33% and 1.09%, the gate rejected it twice — correctly — and the
+    # client-facing report then carried one English paragraph.
+    #
+    # So translate the block we are about to ship, and RE-VALIDATE it.
+    # Translation is the one LLM task here that must not change a number,
+    # and the grounding gate is exactly the instrument that checks it did
+    # not. If the translation drifts a figure by so much as a digit it is
+    # rejected and the English original ships instead — visibly imperfect,
+    # which is the failure we can afford.
+    if locale is not None and getattr(locale, "code", "en") != "en":
+        translated = _translate_fallback(anthropic_client, model, out, locale,
+                                         facts, labels)
+        if translated is not None:
+            translated["_author"] = "fallback_translated"
+            translated["_fallback_reason"] = out["_fallback_reason"]
+            return translated, "fallback_translated"
+
     return out, "fallback"
+
+
+def _translate_fallback(anthropic_client, model, block, locale, facts, labels):
+    """Translate a code-built block into the report's language.
+
+    Returns None on any failure — a missing translation means the English
+    block ships, which is worse-looking but still correct. Nothing here is
+    allowed to make the report wrong, only to make it monolingual.
+    """
+    data = block.get("data") or {}
+    fields = [k for k in ("text", "note") if isinstance(data.get(k), str) and data[k].strip()]
+    if not anthropic_client or not fields:
+        return None
+
+    payload = {k: data[k] for k in fields}
+    try:
+        resp = anthropic_client.messages.create(
+            model=model,
+            max_tokens=1200,
+            system=(
+                "Translate the given wealth-report text into "
+                f"{locale.prompt_name}. Return ONLY a JSON object with the "
+                "same keys.\n"
+                "RULES:\n"
+                "- Reproduce every number, currency symbol and percent sign "
+                "EXACTLY as written. Do not reformat, round, convert or "
+                "re-punctuate any figure.\n"
+                "- Do not add, remove or reorder any fact.\n"
+                "- Translate only the words."
+            ),
+            messages=[{"role": "user", "content": json.dumps(payload, ensure_ascii=False)}],
+        )
+        raw = "".join(getattr(c, "text", "") for c in resp.content)
+    except Exception as exc:
+        _log(f"[writer] translation of code-built block failed "
+             f"({type(exc).__name__}: {str(exc)[:80]})")
+        return None
+
+    got = _parse_json(raw)
+    if not got or not all(isinstance(got.get(k), str) and got[k].strip() for k in fields):
+        return None
+
+    candidate = dict(block)
+    candidate["data"] = {**data, **{k: got[k] for k in fields}}
+
+    # The gate again, in the TARGET locale. A translation that moved a digit
+    # or swapped a separator fails here and never reaches the client.
+    bad = [f for f in validate_block(candidate, facts, labels=labels,
+                                     locale=locale.code)
+           if f.kind == "ungrounded_number"]
+    if bad:
+        _log(f"[writer] translated block rejected, keeping English "
+             f"({'; '.join(f.detail for f in bad[:2])[:90]})")
+        return None
+    return candidate
 
 
 def write_prose_blocks(
