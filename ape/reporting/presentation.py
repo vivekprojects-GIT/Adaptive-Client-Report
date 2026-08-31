@@ -73,7 +73,9 @@ import time
 from typing import Any, Dict, List, Optional, Tuple
 
 from .grounding import derived_facts, validate_block
-from .podcast import (MCP_URL, MCP_TIMEOUT_SECONDS, _explain, _log_fetch,
+from .podcast import (MCP_URL, MCP_TIMEOUT_SECONDS, _COLD_START_SECONDS,
+                      _COLD_RETRY_SECONDS,
+                      _explain, _log_fetch, wake_renderer,
                       fetch_audio, language_note)
 
 MAX_ATTEMPTS = 3
@@ -484,7 +486,7 @@ def synthesize(sections: List[Dict[str, Any]], title: str) -> Tuple[Optional[str
 
 
 def generate_for_report(anthropic_client, model: str, report: Dict[str, Any],
-                        snap, attempts: int = 4) -> Dict[str, Any]:
+                        snap, attempts: int = 6) -> Dict[str, Any]:
     """Write, check and render the presentation. Blocking; run in a thread.
 
     Returns the dict to store; on failure returns an "error" entry rather
@@ -512,10 +514,16 @@ def generate_for_report(anthropic_client, model: str, report: Dict[str, Any],
     deadline = time.time() + 20 * 60
     last = "not attempted"
     with _RENDER_LOCK:
+        # Same lesson as the podcast: measured cold-start 502s come back in
+        # under a second, and two of them are enough to wake the instance.
+        # Waking it here costs a few seconds; discovering it asleep inside
+        # the retry loop costs a minute of backoff per attempt.
+        wake_renderer()
         for i in range(attempts):
             if time.time() > deadline:
                 last = f"gave up after 20 minutes ({last})"
                 break
+            t0 = time.time()
             url, why = synthesize(sections, title)
             if url:
                 return {"video_url": url, "sections": sections,
@@ -523,5 +531,12 @@ def generate_for_report(anthropic_client, model: str, report: Dict[str, Any],
                         "note": language_note(report.get("language") or "en")}
             last = why
             if i + 1 < attempts:
-                time.sleep((10, 30, 60)[min(i, 2)])
+                elapsed = time.time() - t0
+                if elapsed < _COLD_START_SECONDS:
+                    # Still starting. Give it a real interval — retrying in
+                    # two seconds just collects another instant 502 and
+                    # spends an attempt for nothing.
+                    time.sleep(_COLD_RETRY_SECONDS)
+                else:
+                    time.sleep((10, 30, 60)[min(i, 2)])
     return {"error": last, "sections": sections, "grounding": detail}

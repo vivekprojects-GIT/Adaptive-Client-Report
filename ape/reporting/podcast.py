@@ -436,6 +436,48 @@ async def _call_mcp(script: str, title: str) -> Dict[str, Any]:
             return result.structuredContent or {}
 
 
+def wake_renderer(timeout: float = 90.0) -> bool:
+    """Wait for /mcp itself to stop returning 502.
+
+    /health IS NOT A READINESS SIGNAL. Measured directly: health answered
+    200 on three consecutive probes while /mcp returned 502 in under a
+    second each time. Waking on health therefore returned instantly and
+    achieved nothing — the retry loop then spent all four of its attempts
+    inside twenty seconds and reported failure on a service that was simply
+    still starting.
+
+    So this polls the endpoint that actually matters. Observed warm-up: two
+    sub-second 502s from /mcp roughly thirty seconds apart, and the call
+    after that renders normally.
+    """
+    try:
+        import httpx
+        deadline = time.time() + timeout
+        with httpx.Client(timeout=25, follow_redirects=True) as c:
+            while time.time() < deadline:
+                try:
+                    # Any non-502 means the app behind the proxy is up. A
+                    # 400/406 is a fine answer here: it came from the MCP
+                    # application rather than from the proxy in front of a
+                    # dead one.
+                    if c.post(MCP_URL, json={}).status_code != 502:
+                        return True
+                except Exception:
+                    pass
+                time.sleep(10)
+    except Exception:
+        pass
+    return False
+
+
+# A failure this fast did not attempt any work — a real render takes 60-90
+# seconds. It is the proxy in front of a sleeping instance, and the right
+# response is to give it time to finish starting, not to retry immediately
+# and not to wait a minute as though it were overloaded.
+_COLD_START_SECONDS = 3.0
+_COLD_RETRY_SECONDS = 15.0
+
+
 def _explain(exc: BaseException, depth: int = 0) -> str:
     """Flatten an exception into something a human can act on.
 
@@ -491,7 +533,7 @@ def synthesize(script: str, title: str) -> Tuple[Optional[str], str]:
 
 def generate_for_report(anthropic_client, model: str, report: Dict[str, Any],
                         snap, minutes: int = 2,
-                        attempts: int = 3) -> Dict[str, Any]:
+                        attempts: int = 5) -> Dict[str, Any]:
     """Write, check and render the podcast for one report. Blocking.
 
     Meant to run ONCE, when the report is generated, not once per client
@@ -547,10 +589,13 @@ def generate_for_report(anthropic_client, model: str, report: Dict[str, Any],
     deadline = time.time() + 15 * 60
 
     with _RENDER_LOCK:
+        # Wake it before spending an attempt on discovering it was asleep.
+        wake_renderer()
         for i in range(attempts):
             if time.time() > deadline:
                 last = f"gave up after 15 minutes ({last})"
                 break
+            t0 = time.time()
             url, why = synthesize(spoken, title)
             if url:
                 return {"audio_url": url, "script": script, "spoken": spoken,
@@ -558,17 +603,21 @@ def generate_for_report(anthropic_client, model: str, report: Dict[str, Any],
                         "note": language_note(report.get("language") or "en")}
             last = why
             if i + 1 < attempts:
-                # Measured, not guessed. Of a 32s failed run, 6.9s was
-                # writing and checking the script and 25.5s was the render
-                # 502-ing; the client's remaining wait was pure backoff.
+                # Backoff sized to WHAT ACTUALLY FAILED.
                 #
-                # The 502s turn out to be flaky rather than purely
-                # contention — one arrived with nothing else running — so
-                # the first retry goes in quickly and only then backs off
-                # for the case where the instance really is busy. 45s as a
-                # FIRST retry was punishing the common case to be safe
-                # about the rare one.
-                time.sleep((8, 25, 60)[min(i, 2)])
+                # Measured: a sleeping instance 502s in 0.4-0.9 seconds,
+                # while a real render takes 60-90. Waiting a minute after a
+                # sub-second failure was the single largest source of the
+                # client's wait — the box was not busy, it was asleep, and
+                # sleeping boxes want poking rather than patience.
+                elapsed = time.time() - t0
+                if elapsed < _COLD_START_SECONDS:
+                    # Still starting. Give it a real interval — retrying in
+                    # two seconds just collects another instant 502 and
+                    # spends an attempt for nothing.
+                    time.sleep(_COLD_RETRY_SECONDS)
+                else:
+                    time.sleep((8, 25, 60)[min(i, 2)])
     return {"error": last, "script": script, "grounding": detail}
 
 

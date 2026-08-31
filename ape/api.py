@@ -1117,11 +1117,13 @@ async def generate_one_report(request: Request):
     (out / f"{rid}.html").write_text(render_html(report), encoding="utf-8")
     (out / f"{rid}.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
 
-    # Audio and slides, as two independent jobs. They queue against the
-    # same single-CPU renderer, so this is concurrency with the REPORT, not
-    # with each other.
-    _start_podcast_job(rid, report, snap)
-    _start_video_job(rid, report, snap)
+    # No media here. Both are built when the advisor SENDS, after they have
+    # reviewed the draft — see _start_media_job.
+    #
+    # Generating on every draft renders audio and video for reports that
+    # are still being edited, or discarded, and spends the one renderer we
+    # have on work nobody asked for. Send is the point at which this report
+    # is real.
 
     # SQL: the report row (arm, method — the reward address) and every
     # block (source_refs — the localisation for highlight-to-ask).
@@ -1228,16 +1230,13 @@ async def send_report(report_id: str, request: Request):
     # Idempotent. The in-flight guard drops a duplicate, and a podcast that
     # already exists is found in the database and never re-rendered.
     try:
-        if not _podcast_from_db(report_id):
-            from .db.session import init_db as _init, session_scope as _scope
-            from .db.repository import load_snapshot as _load
-            _init()
-            with _scope() as _db:
-                _snap = _load(_db, rep["client_id"], rep.get("period"))
-            if _snap is not None:
-                _start_podcast_job(report_id, rep, _snap)
-                if not _video_from_db(report_id):
-                    _start_video_job(report_id, rep, _snap)
+        from .db.session import init_db as _init, session_scope as _scope
+        from .db.repository import load_snapshot as _load
+        _init()
+        with _scope() as _db:
+            _snap = _load(_db, rep["client_id"], rep.get("period"))
+        if _snap is not None:
+            _start_media_job(report_id, rep, _snap)
     except Exception as exc:            # sending must never fail for media
         print(f"[podcast] could not start job on send for {report_id}: "
               f"{type(exc).__name__}: {str(exc)[:100]}", flush=True)
@@ -1621,46 +1620,11 @@ def _start_podcast_job(rid: str, report: Dict[str, Any], snap,
             return                      # already being made
         _PODCAST_JOBS[rid] = True
 
-    import threading, json as _json
-    from pathlib import Path as _Path
+    import threading
 
     def _run():
         try:
-            import anthropic
-            from .reporting import podcast as _pod
-            client = anthropic.Anthropic(api_key=api_key)
-            model = _os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5")
-
-            # Patient by design. The renderer fails often and recovers, so
-            # the remedy is to keep asking rather than to give up after
-            # three tries and leave a client with nothing.
-            result = _pod.generate_for_report(client, model, report, snap,
-                                              minutes=minutes, attempts=6)
-
-            # Take our own copy BEFORE recording the link. The renderer's
-            # files disappear fast — two rendered less than an hour earlier
-            # were already 404 — so an un-copied podcast is a dead player
-            # by the time anyone comes back to it.
-            if result.get("audio_url"):
-                mp3 = (_Path(__file__).resolve().parents[1] / "data" /
-                       "generated" / f"{rid}.mp3")
-                if _pod.fetch_audio(result["audio_url"], mp3):
-                    result["remote_url"] = result["audio_url"]
-                    result["audio_url"] = f"/r/{rid}/podcast.mp3"
-                _podcast_to_db(rid, result)
-
-            path = (_Path(__file__).resolve().parents[1] / "data" /
-                    "generated" / f"{rid}.json")
-            try:
-                current = _json.loads(path.read_text(encoding="utf-8"))
-            except Exception:
-                current = report
-            current["podcast"] = result
-            path.write_text(_json.dumps(current, indent=2), encoding="utf-8")
-
-            print(f"[podcast] {rid}: "
-                  + (result.get("audio_url") or f"failed — {result.get('error')}"),
-                  flush=True)
+            _render_podcast(rid, report, snap, api_key, minutes=minutes)
         except Exception as exc:                    # never fail the report
             print(f"[podcast] {rid}: job error {type(exc).__name__}: "
                   f"{str(exc)[:120]}", flush=True)
@@ -1669,6 +1633,44 @@ def _start_podcast_job(rid: str, report: Dict[str, Any], snap,
                 _PODCAST_JOBS.pop(rid, None)
 
     threading.Thread(target=_run, name=f"podcast-{rid}", daemon=True).start()
+
+
+def _render_podcast(rid: str, report: Dict[str, Any], snap, api_key: str,
+                    minutes: int = 2) -> None:
+    """Write, check, render and STORE the podcast. Blocking."""
+    import os as _os, json as _json
+    from pathlib import Path as _Path
+    import anthropic
+    from .reporting import podcast as _pod
+
+    client = anthropic.Anthropic(api_key=api_key)
+    model = _os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5")
+
+    # Patient by design. The renderer sleeps and recovers, so the remedy is
+    # to keep asking rather than give up and leave a client with nothing.
+    result = _pod.generate_for_report(client, model, report, snap,
+                                      minutes=minutes, attempts=6)
+
+    if result.get("audio_url"):
+        mp3 = (_Path(__file__).resolve().parents[1] / "data" / "generated"
+               / f"{rid}.mp3")
+        if _pod.fetch_audio(result["audio_url"], mp3):
+            result["remote_url"] = result["audio_url"]
+            result["audio_url"] = f"/r/{rid}/podcast.mp3"
+        _podcast_to_db(rid, result)
+
+    path = (_Path(__file__).resolve().parents[1] / "data" / "generated"
+            / f"{rid}.json")
+    try:
+        current = _json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        current = report
+    current["podcast"] = result
+    path.write_text(_json.dumps(current, indent=2), encoding="utf-8")
+
+    print(f"[podcast] {rid}: "
+          + (result.get("audio_url") or f"failed — {result.get('error')}"),
+          flush=True)
 
 
 @app.get("/r/{report_id}/podcast")
@@ -1767,41 +1769,11 @@ def _start_video_job(rid: str, report: Dict[str, Any], snap,
             return
         _VIDEO_JOBS[rid] = True
 
-    import threading, json as _json
-    from pathlib import Path as _Path
+    import threading
 
     def _run():
         try:
-            import anthropic
-            from .reporting import presentation as _pres
-            from .reporting import podcast as _pod
-            client = anthropic.Anthropic(api_key=api_key)
-            model = _os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5")
-            result = _pres.generate_for_report(client, model, report, snap)
-
-            if result.get("video_url"):
-                mp4 = (_Path(__file__).resolve().parents[1] / "data" /
-                       "generated" / f"{rid}.mp4")
-                # Same 24h expiry as the audio, same remedy: take a copy
-                # before recording the link, or the player is dead by the
-                # time anyone comes back to it.
-                if _pod.fetch_audio(result["video_url"], mp4):
-                    result["remote_url"] = result["video_url"]
-                    result["video_url"] = f"/r/{rid}/presentation.mp4"
-                _video_to_db(rid, result)
-
-            path = (_Path(__file__).resolve().parents[1] / "data" /
-                    "generated" / f"{rid}.json")
-            try:
-                current = _json.loads(path.read_text(encoding="utf-8"))
-            except Exception:
-                current = report
-            current["presentation"] = result
-            path.write_text(_json.dumps(current, indent=2), encoding="utf-8")
-
-            print(f"[video] {rid}: "
-                  + (result.get("video_url") or f"failed — {result.get('error')}"),
-                  flush=True)
+            _render_video(rid, report, snap, api_key)
         except Exception as exc:
             print(f"[video] {rid}: job error {type(exc).__name__}: "
                   f"{str(exc)[:120]}", flush=True)
@@ -1810,6 +1782,99 @@ def _start_video_job(rid: str, report: Dict[str, Any], snap,
                 _VIDEO_JOBS.pop(rid, None)
 
     threading.Thread(target=_run, name=f"video-{rid}", daemon=True).start()
+
+
+def _render_video(rid: str, report: Dict[str, Any], snap, api_key: str) -> None:
+    """Write, check, render and STORE the presentation. Blocking."""
+    import os as _os, json as _json
+    from pathlib import Path as _Path
+    import anthropic
+    from .reporting import presentation as _pres
+    from .reporting import podcast as _pod
+
+    client = anthropic.Anthropic(api_key=api_key)
+    model = _os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5")
+    result = _pres.generate_for_report(client, model, report, snap)
+
+    if result.get("video_url"):
+        mp4 = (_Path(__file__).resolve().parents[1] / "data" / "generated"
+               / f"{rid}.mp4")
+        # The renderer's files expire fast — two rendered less than an hour
+        # earlier were already 404 — so the copy happens before the link is
+        # recorded, not after.
+        if _pod.fetch_audio(result["video_url"], mp4):
+            result["remote_url"] = result["video_url"]
+            result["video_url"] = f"/r/{rid}/presentation.mp4"
+        _video_to_db(rid, result)
+
+    path = (_Path(__file__).resolve().parents[1] / "data" / "generated"
+            / f"{rid}.json")
+    try:
+        current = _json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        current = report
+    current["presentation"] = result
+    path.write_text(_json.dumps(current, indent=2), encoding="utf-8")
+
+    print(f"[video] {rid}: "
+          + (result.get("video_url") or f"failed — {result.get('error')}"),
+          flush=True)
+
+
+def _start_media_job(rid: str, report: Dict[str, Any], snap) -> None:
+    """Build the video, then the audio. One thread, strictly in order.
+
+    Fired when the advisor SENDS, which is the moment the report becomes
+    real and the client can open the link at any second.
+
+    SEQUENTIAL, AND THAT IS THE POINT. The renderer is one CPU and 512MB.
+    Two jobs racing for it — even correctly serialised by a lock — means a
+    thread sitting on a held lock while the other runs, and any overlap at
+    the boundaries is what pushes the box over its memory limit. Doing the
+    video first and the audio only once it has finished keeps exactly one
+    piece of work in flight, end to end.
+
+    Video first because it is the longer of the two: if only one is going
+    to be ready when the client arrives, it should be the one that took
+    longer to make.
+    """
+    import os as _os
+    api_key = _os.getenv("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return
+    if _pregenerate_disabled(_os):
+        return
+
+    with _PODCAST_JOBS_LOCK:
+        if _VIDEO_JOBS.get(rid) or _PODCAST_JOBS.get(rid):
+            return                       # already being made
+        _VIDEO_JOBS[rid] = True
+        _PODCAST_JOBS[rid] = True
+
+    import threading
+
+    def _run():
+        try:
+            if not _video_from_db(rid):
+                _render_video(rid, report, snap, api_key)
+        except Exception as exc:
+            print(f"[media] {rid}: video step failed "
+                  f"{type(exc).__name__}: {str(exc)[:100]}", flush=True)
+        finally:
+            with _PODCAST_JOBS_LOCK:
+                _VIDEO_JOBS.pop(rid, None)
+
+        try:
+            if not _podcast_from_db(rid):
+                _render_podcast(rid, report, snap, api_key)
+        except Exception as exc:
+            print(f"[media] {rid}: audio step failed "
+                  f"{type(exc).__name__}: {str(exc)[:100]}", flush=True)
+        finally:
+            with _PODCAST_JOBS_LOCK:
+                _PODCAST_JOBS.pop(rid, None)
+
+    threading.Thread(target=_run, name=f"media-{rid}", daemon=True).start()
 
 
 @app.get("/r/{report_id}/video")
