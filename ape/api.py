@@ -214,6 +214,25 @@ def _build() -> ApeOrchestrator:
     #     print(f"[startup] RAG ingest failed (continuing without RAG): {e}", flush=True)
     print("[startup] RAG disabled (initialization commented out)", flush=True)
 
+    # Warm the voice models off the request path. Whisper-tiny costs ~9s on
+    # its very first load (download + init) and piper ~1.5s per voice;
+    # paying either inside a client's first spoken turn reads as the
+    # feature being broken. A daemon thread, because a slow model download
+    # must never hold the server's startup hostage.
+    def _warm_voice():
+        try:
+            from .reporting.transcribe import warm as _stt_warm
+            _stt_warm()
+        except Exception:
+            pass
+        try:
+            from .reporting.speak import warm as _tts_warm
+            _tts_warm("en")
+        except Exception:
+            pass
+    import threading as _threading
+    _threading.Thread(target=_warm_voice, daemon=True).start()
+
     return ApeOrchestrator(client=client, model=model, store=store, domain=domain, rag=RAG)
 
 

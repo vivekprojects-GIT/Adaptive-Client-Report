@@ -24,11 +24,11 @@ of the system is held to and a stronger one than the podcast renderer meets.
 MODEL SIZE AND THE COST OF BEING WRONG
 ────────────────────────────────────────────────────────────────────────────
 
-`base` by default: about 145MB, and measured here at roughly 20x realtime on
-CPU — a ten-second question transcribes in well under a second, which is the
-budget a chat box has before it feels broken. `small` is noticeably more
-accurate on accented speech and about three times slower; APE_WHISPER_MODEL
-switches it without a code change.
+`tiny` by default: about 39MB, measured here at 2-3x the speed of `base`
+with identical language detection on clean speech - a conversational turn
+transcribes in well under a second, which is the budget a voice exchange
+has before it feels broken. `base` and `small` are stronger on accented or
+noisy speech; APE_WHISPER_MODEL switches without a code change.
 
 Accuracy matters less here than it looks, because the text lands in the
 question box for the client to read before they send it. A mistake is
@@ -61,7 +61,18 @@ from typing import Optional, Tuple
 # while the ambiguous short ones land far below.
 _CONFIDENCE_FLOOR = float(os.getenv("APE_WHISPER_MIN_CONFIDENCE", "0.55"))
 
-MODEL_SIZE = os.getenv("APE_WHISPER_MODEL", "base")
+# "tiny", measured against "base" on this CPU: 2-3x faster (0.7s vs 1.6s
+# on a 25-second Dutch clip), identical language detection at 0.99-1.00,
+# and equivalent transcripts on clean speech. The risk is accented or noisy
+# speech, where base is stronger - but a voice-mode transcript is shown on
+# screen before anything is sent, so a miss is visible and correctable,
+# and APE_WHISPER_MODEL=base is one env var away.
+MODEL_SIZE = os.getenv("APE_WHISPER_MODEL", "tiny")
+
+# Greedy decoding. Beam search buys little on short conversational turns
+# and costs up to 2x on longer ones; the visible-transcript safety net
+# applies here too.
+BEAM = int(os.getenv("APE_WHISPER_BEAM", "1"))
 
 # A recording this long is not a question. The browser stops well before it,
 # so this is the guard for anything that did not come from our own page.
@@ -118,7 +129,8 @@ def transcribe(audio: bytes,
     started = time.time()
 
     try:
-        segments, info = model.transcribe(io.BytesIO(audio), vad_filter=True)
+        segments, info = model.transcribe(io.BytesIO(audio), vad_filter=True,
+                                          beam_size=BEAM)
         text = " ".join(s.text.strip() for s in segments).strip()
         language = info.language
         confidence = float(info.language_probability)
@@ -132,7 +144,8 @@ def transcribe(audio: bytes,
             and fallback_language != language):
         try:
             segments, info = model.transcribe(
-                io.BytesIO(audio), language=fallback_language, vad_filter=True)
+                io.BytesIO(audio), language=fallback_language, vad_filter=True,
+                beam_size=BEAM)
             second = " ".join(s.text.strip() for s in segments).strip()
             if second:
                 text, language, retried = second, fallback_language, True
