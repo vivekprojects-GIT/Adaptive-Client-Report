@@ -109,7 +109,21 @@ MAX_ATTEMPTS = 3
 # minutes, which is a briefing rather than the summary this is meant to be
 # — and every extra second is more audio held in memory on a renderer with
 # 512MB to work in.
-MAX_SECTIONS = 4
+# THREE, BECAUSE FOUR DOES NOT RENDER.
+#
+# Measured against the live renderer, one variable, same narration per
+# section: three sections render in 99.7s and leave the service healthy;
+# four kill it. Not memory in the reporting app and not memory in the
+# renderer's interpreter either - it went into the failing render holding
+# 115MB with nearly 400MB free. It is ffmpeg's own encode, on a 512MB
+# instance, and pinning the encoder to one thread bought exactly one more
+# section before the ceiling returned.
+#
+# So this is the renderer's real capacity, written down. The durable fixes
+# are more memory or smaller slides, and both belong over there; until one
+# of them lands, asking for four produces nothing at all, which is plainly
+# worse than a deck of three.
+MAX_SECTIONS = 3
 MAX_WORDS_PER_SECTION = 40
 MAX_TOTAL_WORDS = 150
 MAX_KEY_POINTS = 4
