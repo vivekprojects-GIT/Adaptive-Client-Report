@@ -1548,7 +1548,14 @@ def _start_podcast_job(rid: str, report: Dict[str, Any], snap) -> None:
     without audio is a report; an exception here would be a lost report.
     """
     import os as _os
-    if _os.getenv("APE_PODCAST_PREGENERATE", "1") not in ("1", "true", "yes"):
+    # OFF by default: the podcast is built when a client asks for it.
+    #
+    # Most clients never will, and rendering audio for every report spends
+    # real time and money on files nobody opens. Set
+    # APE_PODCAST_PREGENERATE=1 to warm them in advance instead — the
+    # client path is identical either way, it just finds the audio already
+    # there and returns instantly.
+    if _os.getenv("APE_PODCAST_PREGENERATE", "0") not in ("1", "true", "yes"):
         return
     api_key = _os.getenv("ANTHROPIC_API_KEY", "")
     if not api_key:
@@ -1653,29 +1660,44 @@ async def report_podcast(report_id: str, request: Request):
 
     minutes = max(1, min(5, int(body.get("minutes") or 2)))
 
-    # build_script makes blocking Anthropic calls. Inside an async endpoint
-    # that would stall the whole event loop for the length of the write —
-    # every other client's page load and chat message waits behind it.
+    # The whole job — write, check, convert, render, retry — runs in a
+    # thread. Two reasons it is not done inline:
+    #
+    # The Anthropic calls and the render are blocking, and inside an async
+    # endpoint they would stall the event loop for minutes; every other
+    # client's page load and chat message would queue behind one person
+    # asking for audio.
+    #
+    # And generate_for_report is where the render lock and the real backoff
+    # live. Calling the pieces separately from here would produce a second
+    # path with none of that — which is exactly the path that kept
+    # collecting 502s from the free single-worker renderer.
     import asyncio as _asyncio
-    script, detail = await _asyncio.to_thread(
-        _pod.build_script, client, model, report, snap, minutes)
-    if not script:
-        # The gate refused, or the model never produced dialogue. Say so
-        # plainly rather than narrating something unchecked.
-        raise HTTPException(422, f"could not write a grounded script: {detail}")
+    result = await _asyncio.to_thread(
+        _pod.generate_for_report, client, model, report, snap, minutes)
 
-    spoken = _pod.to_spoken(script)
-    title = f"{report.get('client_name', 'Your')} — {report.get('period', '')}"
-    url, why = await _pod.synthesize_async(spoken, title)
-    if not url:
-        raise HTTPException(502, f"audio service failed: {why}")
+    if not result.get("audio_url"):
+        raise HTTPException(502, f"audio service failed: {result.get('error')}")
+
+    # Cache on the report so a second listen — or a second device — is
+    # instant and costs nothing. Re-read first: this thread has been away
+    # for minutes and the file on disk is the record.
+    try:
+        path = (Path(__file__).resolve().parents[1] / "data" / "generated"
+                / f"{report_id}.json")
+        current = json.loads(path.read_text(encoding="utf-8"))
+        current["podcast"] = result
+        path.write_text(json.dumps(current, indent=2), encoding="utf-8")
+    except Exception as exc:                    # caching is not the product
+        print(f"[podcast] could not cache {report_id}: "
+              f"{type(exc).__name__}: {str(exc)[:100]}", flush=True)
 
     return {
-        "audio_url": url,
-        "script": script,          # the checked form, with digits
-        "spoken": spoken,          # what was actually narrated
-        "grounding": detail,
-        "note": _pod.language_note(report.get("language") or "en"),
+        "audio_url": result["audio_url"],
+        "script": result.get("script", ""),     # the checked form, with digits
+        "spoken": result.get("spoken", ""),     # what was actually narrated
+        "grounding": result.get("grounding", ""),
+        "note": result.get("note", ""),
     }
 
 

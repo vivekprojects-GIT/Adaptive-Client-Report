@@ -423,33 +423,35 @@ document.getElementById("dl").onclick = function(){
     btn.disabled = false;
   }
 
-  var polls = 0;
-  (function poll(){
-    fetch("/r/" + RID + "/podcast?token=" + encodeURIComponent(TOKEN))
-      .then(function(r){ return r.json(); })
-      .then(function(j){
-        if (j.status === "ready") { show(j); return; }
-        if (j.status === "pending" && polls++ < 20) {
-          btn.textContent = "Preparing audio…";
-          btn.disabled = true;
-          setTimeout(poll, 6000);
-          return;
-        }
-        // Nothing waiting for us — let the client ask for one.
-        btn.textContent = "🎧 Listen";
-        btn.disabled = false;
-      })
-      .catch(function(){ btn.disabled = false; });
-  })();
+  // Asked ONCE, on load, and never polled. The podcast is built when
+  // someone asks for it, so "not there yet" is the normal state and not
+  // something to sit watching — a spinner for audio nobody requested is
+  // just a page that looks busy. If a previous listen already rendered it,
+  // this finds it and the player is simply there.
+  fetch("/r/" + RID + "/podcast?token=" + encodeURIComponent(TOKEN))
+    .then(function(r){ return r.json(); })
+    .then(function(j){ if (j.status === "ready") show(j); })
+    .catch(function(){ /* the button still works */ });
 
   btn.onclick = function(){
     if (btn.disabled) return;
     btn.disabled = true;
-    var t0 = Date.now(), label = btn.textContent;
-    btn.textContent = "Making your podcast…";
+    var t0 = Date.now(), label = "🎧 Listen";
+
+    // Say the number out loud. This genuinely takes a couple of minutes —
+    // the dialogue is written, fact-checked, then narrated — and a button
+    // that sits silent for that long reads as broken, gets clicked again,
+    // and every extra click is another render.
+    wrap.hidden = false;
+    note.textContent = "";
+    pre.textContent = "";
     var tick = setInterval(function(){
       var s = Math.round((Date.now() - t0) / 1000);
       btn.textContent = "Making your podcast… " + s + "s";
+      note.textContent = (s < 30)
+        ? "Writing the script…"
+        : (s < 75 ? "Checking every figure against your report…"
+                  : "Recording the audio — this usually takes about two minutes.");
     }, 1000);
 
     ev("podcast_requested", {});
