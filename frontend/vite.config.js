@@ -10,6 +10,16 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
+      // The advisor session. Without this the dev frontend can never
+      // authenticate: every route below is gated on a cookie that only
+      // /login issues, so the registry 401s forever and the client list
+      // renders empty against a backend that is fine.
+      "/login":     "http://localhost:7860",
+      // The chart runtime and vendored ECharts the client report loads,
+      // plus anything else served from the backend static mount.
+      "/static":    "http://localhost:7860",
+      "/r":         "http://localhost:7860",
+
       // Exact-path API endpoints
       "/turn":      "http://localhost:7860",
       "/feedback":  "http://localhost:7860",

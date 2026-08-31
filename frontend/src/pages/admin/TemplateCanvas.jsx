@@ -18,54 +18,100 @@ import { api } from "../../api.js";
  *   - blocks that silently could not build for this client's data
  */
 
-const PALETTE = [
-  ["Headline", [
-    ["kpi_grid", "KPI grid"],
-    ["callout", "Callout banner"],
-  ]],
-  ["Prose", [
-    ["narrative", "Narrative"],
-    ["key_takeaways", "Key takeaways"],
-    ["explainer", "Plain-English explainer"],
-    ["disclosures", "Disclosures"],
-  ]],
-  ["Performance", [
-    ["performance_history", "Return over time"],
-    ["returns_table", "Return by period"],
-    ["comparison_chart", "Portfolio vs benchmark"],
-    ["comparison_table", "Contribution table"],
-    ["top_contributors", "Top contributors"],
-    ["top_detractors", "Top detractors"],
-    ["performance_line", "Return this period"],
-  ]],
-  ["Composition", [
-    ["allocation_donut", "Asset allocation"],
-    ["allocation_vs_target", "Allocation vs target"],
-    ["holdings_table", "Holdings table"],
-    ["risk_card", "Risk level"],
-  ]],
-  ["Money", [
-    ["fees_table", "Fees and costs"],
-  ]],
-];
+// Display names for the blocks we have bothered to name. The palette
+// itself comes from /registry/blocks - see usePalette below - so this map
+// only prettifies; it never decides what exists.
+const NICE = {
+  kpi_grid: "KPI grid",
+  callout: "Callout banner",
+  narrative: "Narrative",
+  key_takeaways: "Key takeaways",
+  explainer: "Plain-English explainer",
+  disclosures: "Disclosures",
+  performance_history: "Return over time",
+  returns_table: "Return by period",
+  comparison_chart: "Portfolio vs benchmark",
+  comparison_table: "Contribution table",
+  top_contributors: "Top contributors",
+  top_detractors: "Top detractors",
+  performance_line: "Return this period",
+  allocation_donut: "Asset allocation",
+  allocation_vs_target: "Allocation vs target",
+  holdings_table: "Holdings table",
+  risk_card: "Risk level",
+  fees_table: "Fees and costs",
+  wealth_cover: "Statement cover",
+  asset_class_table: "Asset classes vs mandate",
+  currency_split: "Currency exposure",
+  holdings_by_sector: "Holdings by sector",
+  sector_analysis: "Sector analysis",
+};
+
+const CATEGORY_TITLE = {
+  headline: "Headline",
+  prose: "Prose",
+  performance: "Performance",
+  attribution: "Attribution",
+  allocation: "Composition",
+  costs: "Money",
+  risk: "Risk",
+  smallprint: "Small print",
+};
+
+function titleFor(id) {
+  return NICE[id] || String(id).replace(/_/g, " ").replace(
+    /^./, (c) => c.toUpperCase());
+}
 
 const CHART_KINDS = ["donut", "pie", "bar", "hbar", "line", "area", "stacked",
                      "waterfall", "treemap", "funnel", "gauge", "progress",
                      "radar", "heatmap", "scatter", "bubble", "combo",
                      "histogram"];
 
-const LABELS = Object.fromEntries(
-  PALETTE.flatMap(([, items]) => items).map(([id, label]) => [id, label]));
-
 function labelFor(spec) {
   const [type, opt] = String(spec).split(":");
   if (type === "chart") return `Chart — ${opt || "donut"}`;
-  return LABELS[type] || type.replace(/_/g, " ");
+  return titleFor(type);
+}
+
+/**
+ * The palette, from the server.
+ *
+ * Every block the registry declares, grouped by the fact category it
+ * covers. Fetched rather than listed here so that adding a block to the
+ * backend is enough to make it selectable - the previous hardcoded copy
+ * meant a new block existed everywhere except the screen where somebody
+ * would choose it.
+ *
+ * Chart variants are filtered out: they arrive as chart:donut, chart:bar
+ * and so on, and the canvas already has a dedicated chart control with a
+ * kind selector. Listing eighteen of them again would bury the blocks.
+ */
+function usePalette() {
+  const [groups, setGroups] = useState([]);
+  useEffect(() => {
+    let alive = true;
+    api.registryBlocks()
+      .then((r) => {
+        if (!alive) return;
+        const cats = (r && r.categories) || [];
+        setGroups(cats.map((c) => [
+          CATEGORY_TITLE[c.category] || titleFor(c.category),
+          (c.blocks || [])
+            .filter((b) => b.kind !== "chart")
+            .map((b) => [b.block, titleFor(b.block), b.shows]),
+        ]).filter(([, items]) => items.length));
+      })
+      .catch(() => setGroups([]));
+    return () => { alive = false; };
+  }, []);
+  return groups;
 }
 
 export default function TemplateCanvas({
   blocks, setBlocks, reportType, strategy, label, brief, notify,
 }) {
+  const palette               = usePalette();
   const [preview, setPreview] = useState(null);
   const [busy, setBusy]       = useState(false);
   const [err, setErr]         = useState(null);
@@ -123,11 +169,14 @@ export default function TemplateCanvas({
       {/* palette */}
       <div>
         <div style={hdr}>Blocks</div>
-        {PALETTE.map(([group, items]) => (
+        {palette.map(([group, items]) => (
           <div key={group} style={{ marginBottom: 10 }}>
             <div style={grpLbl}>{group}</div>
-            {items.map(([id, name]) => (
-              <button key={id} type="button" onClick={() => add(id)}
+            {items.map(([id, name, shows]) => (
+              /* title carries the registry's own description of the block,
+                 so an author can tell two similar ones apart without
+                 adding it. */
+              <button key={id} type="button" onClick={() => add(id)} title={shows || name}
                       disabled={blocks.includes(id)} style={chip(blocks.includes(id))}>
                 {name}
               </button>
