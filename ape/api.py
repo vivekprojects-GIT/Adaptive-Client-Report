@@ -2023,16 +2023,26 @@ def _start_media_job(rid: str, report: Dict[str, Any], snap) -> None:
     import threading
 
     def _run():
-        try:
-            if not _video_from_disk(rid):
-                _render_video(rid, report, snap, api_key)
-        except Exception as exc:
-            print(f"[media] {rid}: video step failed "
-                  f"{type(exc).__name__}: {str(exc)[:100]}", flush=True)
-        finally:
-            with _PODCAST_JOBS_LOCK:
-                _VIDEO_JOBS.pop(rid, None)
-
+        # AUDIO FIRST, AND THE ORDER IS THE WHOLE POINT.
+        #
+        # Measured against the live renderer, in one session: text_to_speech
+        # succeeded in 27.6s, generate_video_from_sections then failed after
+        # 21.3s, and the SAME text_to_speech call failed 0.4s later. A
+        # sub-second 502 is a dead worker, not a slow one. The video tool
+        # takes the renderer down with it - it survives long enough to
+        # synthesise narration, then dies where ffmpeg is spawned, because a
+        # 512MB box already holding piper cannot also hold a full narration
+        # waveform, its concatenated copy and an libx264 subprocess.
+        #
+        # With video running first, that crash landed on the podcast too:
+        # the audio step then met an instance that was restarting and got
+        # nothing, which is why NEITHER medium appeared. Podcast first means
+        # the cheap, reliable artefact is already on disk before the
+        # expensive one is allowed to risk the renderer.
+        #
+        # This is a mitigation, not the fix. The fix belongs in the renderer
+        # (Podcast_MCP): free the waveform before spawning ffmpeg, or give
+        # the service enough memory to hold both.
         try:
             if not _podcast_from_disk(rid):
                 _render_podcast(rid, report, snap, api_key)
@@ -2042,6 +2052,16 @@ def _start_media_job(rid: str, report: Dict[str, Any], snap) -> None:
         finally:
             with _PODCAST_JOBS_LOCK:
                 _PODCAST_JOBS.pop(rid, None)
+
+        try:
+            if not _video_from_disk(rid):
+                _render_video(rid, report, snap, api_key)
+        except Exception as exc:
+            print(f"[media] {rid}: video step failed "
+                  f"{type(exc).__name__}: {str(exc)[:100]}", flush=True)
+        finally:
+            with _PODCAST_JOBS_LOCK:
+                _VIDEO_JOBS.pop(rid, None)
 
     threading.Thread(target=_run, name=f"media-{rid}", daemon=True).start()
 
