@@ -391,6 +391,44 @@ def build_sections(anthropic_client, model: str, report: Dict[str, Any],
     return None, detail
 
 
+def _localise_visuals(sections: List[Dict[str, Any]],
+                      locale_code: str) -> List[Dict[str, Any]]:
+    """Translate the LABELS a chart draws. The values are left alone.
+
+    A slide was coming out half-translated: the bullets read "Amerikaanse
+    aandelen: 63,40%" while the bar chart beside them, drawn from the same
+    allocation, was still labelled "US Equity". The narration, the title and
+    the key points all went through translation; the chart's dictionary keys
+    never did, because `_translate_sections` only ever sent the words it
+    could see in title/narration/key_points.
+
+    Translated through the SAME label table the written report uses, not by
+    the model. Two reasons. The table is deterministic, so a chart label and
+    the document's own heading for that holding cannot come out worded
+    differently. And a value can never move, because only the keys are
+    rebuilt — `{n: v}` becomes `{t(n): v}` and v is carried over untouched.
+
+    Non-Latin scripts keep English labels, the same rule the titles follow:
+    the renderer's font cannot draw them and would show empty boxes. A
+    Japanese deck therefore has Japanese narration and English chart labels,
+    which is legible; the alternative is blank rectangles.
+    """
+    from .labels import t
+    from .locales import get as _get_locale
+
+    loc = _get_locale(locale_code)
+    if loc.code == "en" or loc.code not in _LATIN_SCRIPT:
+        return sections
+
+    for sec in sections:
+        vis = sec.get("visual") or {}
+        data = vis.get("data")
+        if not isinstance(data, dict):
+            continue
+        # A label the table does not know comes back unchanged, so an
+        # unrecognised series keeps its English name rather than vanishing.
+        vis["data"] = {(t(k, loc.code) or k): v for k, v in data.items()}
+    return sections
 def _translate_sections(anthropic_client, model: str,
                         sections: List[Dict[str, Any]], locale_code: str,
                         snap) -> Optional[List[Dict[str, Any]]]:
@@ -708,6 +746,11 @@ def generate_for_report(anthropic_client, model: str, report: Dict[str, Any],
     # removes whole sentences, so what survives is a subset of text that
     # already passed — no figure can appear that was not checked, and
     # nothing needs re-validating.
+    # Chart labels follow the slides they sit on. Values are untouched,
+    # so nothing here can change a figure the gate already checked.
+    sections = _localise_visuals(sections,
+                                 report.get("language") or "en")
+
     sections, trimmed = _fit_budget(sections)
     est = estimate_seconds(sections)
     _log_fetch(f"[video] {len(sections)} sections, ~{est:.0f}s narration "
