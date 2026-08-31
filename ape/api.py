@@ -1802,21 +1802,41 @@ def _video_from_disk(report_id: str) -> Optional[Dict[str, Any]]:
         pres = (_report_json(report_id).get("presentation") or {})
     except Exception:
         pres = {}
+    sections = pres.get("sections") or []
+    if not sections:
+        # Same as the podcast script: a regenerated report rewrites the
+        # JSON and takes the slide text with it, while the .mp4 remains.
+        sections = (_video_from_db(report_id) or {}).get("sections") or []
     return {"video_url": f"/r/{report_id}/presentation.mp4",
-            "sections": pres.get("sections") or [],
+            "sections": sections,
             "note": pres.get("note", "")}
 
 
 def _podcast_from_disk(report_id: str) -> Optional[Dict[str, Any]]:
-    """The stored podcast, or None. The FILE decides."""
+    """The stored podcast, or None. The FILE decides that it exists.
+
+    The SCRIPT, though, comes from the report JSON first and the database
+    second — because regenerating a report rewrites {rid}.json and drops
+    the podcast entry, while the .mp3 beside it survives. The result was a
+    working player with an empty "Read the script": five of six podcasts
+    here had lost their text that way.
+
+    These are not two sources of truth for one question. The file answers
+    "is there audio"; the row answers "what does it say". The row is only
+    consulted when the file that used to hold the text has been overwritten.
+    """
     if _media_on_disk(report_id, "mp3") is None:
         return None
     try:
         pod = (_report_json(report_id).get("podcast") or {})
     except Exception:
         pod = {}
+    script = pod.get("script") or ""
+    if not script:
+        stored = _podcast_from_db(report_id) or {}
+        script = stored.get("script") or ""
     return {"audio_url": f"/r/{report_id}/podcast.mp3",
-            "script": pod.get("script", ""),
+            "script": script,
             "note": pod.get("note", "")}
 
 
