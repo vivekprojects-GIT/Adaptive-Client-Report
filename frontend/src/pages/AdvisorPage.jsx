@@ -144,27 +144,50 @@ export default function AdvisorPage() {
     if (!selected) { setStatus({}); return; }
     const r = reportFor(selected.client_id);
     if (!r) { setStatus({}); return; }
-    // Do not overwrite a send that just happened FOR THIS REPORT.
+    // ALREADY DESCRIBING THIS REPORT? Leave it alone.
     //
-    // The effect re-runs when busy flips back to false, which is precisely
-    // the moment sendReport finishes — so it was resetting "Email to
-    // client" to Pending a second after the email had actually gone out,
-    // and dropping the delivery panel with the client link in it.
-    if (status.delivery && status.report_id === r.report_id) return;
+    // This effect re-runs the moment `busy` flips back to false, which is
+    // exactly when generateOne and sendReport finish. Anything it writes
+    // then replaces a fresher, richer status with one rebuilt from the
+    // report row — losing the block list, the authors, the findings and
+    // the delivery panel, and briefly the report_id along with them.
+    //
+    // The row-derived status is a FALLBACK for a client whose report was
+    // made earlier or elsewhere. When the panel is already about this
+    // report, whatever put it there knew more than we do.
+    if (status.report_id === r.report_id) return;
+    // UNKNOWN IS NOT PASSED.
+    //
+    // /reports/generated carries no `validation` and no `sent_at`. The
+    // first version of this treated a missing validation as "passed",
+    // which painted a green "Validation (grounding): Passed" for a report
+    // nothing had checked in this session — an unfounded green of exactly
+    // the kind the pipeline exists to avoid.
+    //
+    // It also read `sent_at`, which is absent, while the row's actual
+    // `email_status` reads "sent (stub)" on all 58 reports here — a value
+    // left behind by early testing and true of almost none of them. Wrong
+    // either way, so neither is trusted.
+    //
+    // A report opened from the list therefore shows the two facts the row
+    // really supports — it exists, and it was generated — and leaves the
+    // rest Pending until this session watches them happen.
     setStatus({
       snapshot: "done",
       generate: "done",
       validate: r.validation === "passed" ? "passed"
               : r.validation === "rejected_blocks" ? "caught"
-              : r.validation ? "failed" : "passed",
+              : r.validation === "failed" ? "failed"
+              : "pending",
       validation_summary: r.validation === "rejected_blocks"
         ? "an unsourced figure was caught and replaced"
-        : "all blocks grounded",
-      review: r.sent_at ? "done" : "pending",
-      email: r.sent_at ? "done" : "pending",
+        : r.validation === "passed" ? "all blocks grounded"
+        : "",
+      review: "pending",
+      email: "pending",
       report_id: r.report_id,
     });
-  }, [selected, reportFor, busy, status.delivery, status.report_id]);
+  }, [selected, reportFor, busy, status.report_id]);
 
   async function openClientView(reportId) {
     try {
@@ -210,6 +233,19 @@ export default function AdvisorPage() {
   }
 
   async function generateOne(client) {
+    // Generating for a client SELECTS them.
+    //
+    // The row's Generate button calls stopPropagation so the click does not
+    // also count as selecting the row — which left the status panel
+    // describing whoever happened to be selected before. Once the panel
+    // started following the selection, that mismatch became visible in the
+    // worst way: the freshly generated result was overwritten a moment
+    // later, taking report_id with it, so "Approve & send" vanished the
+    // instant generation finished.
+    //
+    // The panel should describe the client you just acted on. Selecting
+    // here says that once, rather than teaching the effect a special case.
+    setSelected(client);
     setBusy(true);
     setStatus({ snapshot: "done", generate: "running" });
     try {
