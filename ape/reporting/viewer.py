@@ -1822,7 +1822,16 @@ document.getElementById("send").onclick = function(){
   ask(q.value); q.value = "";
 };
 document.getElementById("q").addEventListener("keydown", function(e){
-  if (e.key === "Enter"){ ask(this.value); this.value = ""; }
+  // "Enter" is the standard key value; "Return" and keyCode 13 cover the
+  // synthetic and legacy senders that still say it the old way. The
+  // isComposing guard matters for CJK and other IME input: Enter there
+  // commits the composition, and sending on it would fire a half-typed
+  // question the client never finished.
+  var isEnter = e.key === "Enter" || e.key === "Return" || e.keyCode === 13;
+  if (isEnter && !e.isComposing){
+    e.preventDefault();
+    ask(this.value); this.value = "";
+  }
 });
 // Delegated at the document, because chips are now created inside every
 // answer bubble rather than living in one container that could own a
