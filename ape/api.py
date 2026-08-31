@@ -1117,6 +1117,8 @@ async def generate_one_report(request: Request):
     (out / f"{rid}.html").write_text(render_html(report), encoding="utf-8")
     (out / f"{rid}.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
 
+    _start_podcast_job(rid, report, snap)
+
     # SQL: the report row (arm, method — the reward address) and every
     # block (source_refs — the localisation for highlight-to-ask).
     from .db.repository import persist_report
@@ -1530,6 +1532,151 @@ def d2_state():
                 "updated_at": r.updated_at.isoformat(timespec="seconds"),
             })
     return {"contexts": out}
+
+
+def _start_podcast_job(rid: str, report: Dict[str, Any], snap) -> None:
+    """Render this report's podcast in the background, once.
+
+    Fired when the report is generated so the audio is already sitting
+    there when the client opens their link. The alternative — generating on
+    click — makes every reader wait two minutes, bills a fresh render for
+    identical audio, and puts a single-worker free instance under
+    concurrent load, which is precisely how it starts returning 502.
+
+    A daemon thread, deliberately: this must not hold up the generation
+    response, and it must never be able to fail the report. A report
+    without audio is a report; an exception here would be a lost report.
+    """
+    import os as _os
+    if _os.getenv("APE_PODCAST_PREGENERATE", "1") not in ("1", "true", "yes"):
+        return
+    api_key = _os.getenv("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return
+
+    import threading, json as _json
+    from pathlib import Path as _Path
+
+    def _run():
+        try:
+            import anthropic
+            from .reporting import podcast as _pod
+            client = anthropic.Anthropic(api_key=api_key)
+            model = _os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5")
+            result = _pod.generate_for_report(client, model, report, snap)
+
+            # Re-read before writing: the report on disk is the record, and
+            # this thread has been away for minutes.
+            path = (_Path(__file__).resolve().parents[1] / "data" /
+                    "generated" / f"{rid}.json")
+            try:
+                current = _json.loads(path.read_text(encoding="utf-8"))
+            except Exception:
+                current = report
+            current["podcast"] = result
+            path.write_text(_json.dumps(current, indent=2), encoding="utf-8")
+            print(f"[podcast] {rid}: "
+                  + (result.get("audio_url") or f"failed — {result.get('error')}"),
+                  flush=True)
+        except Exception as exc:                    # never fail the report
+            print(f"[podcast] {rid}: job error {type(exc).__name__}: "
+                  f"{str(exc)[:120]}", flush=True)
+
+    threading.Thread(target=_run, name=f"podcast-{rid}", daemon=True).start()
+
+
+@app.get("/r/{report_id}/podcast")
+async def report_podcast_status(report_id: str, token: str = "",
+                                request: Request = None):
+    """Is the pre-generated audio ready yet?
+
+    The viewer polls this instead of asking for a render, so the common
+    case costs nothing and returns instantly.
+    """
+    _viewer_auth(report_id, token, request)
+    report = _report_json(report_id)
+    pod = report.get("podcast") or {}
+    if pod.get("audio_url"):
+        return {"status": "ready", "audio_url": pod["audio_url"],
+                "script": pod.get("script", ""), "note": pod.get("note", "")}
+    if pod.get("error"):
+        return {"status": "failed", "detail": pod["error"]}
+    return {"status": "pending"}
+
+
+@app.post("/r/{report_id}/podcast")
+async def report_podcast(report_id: str, request: Request):
+    """Turn this report into a two-voice podcast the client can play.
+
+    Same two gates as every other client surface. The audio is derived from
+    the client's own figures, so it is exactly as private as the report.
+
+    The script is written by the model, checked by the grounding gate with
+    its DIGITS INTACT, and only then converted to spoken words in code. That
+    order is not incidental — see ape/reporting/podcast.py. A script that
+    fails the gate is not narrated; it is refused, because nobody proofreads
+    audio.
+    """
+    body = await request.json()
+    _viewer_auth(report_id, str(body.get("token", "")), request)
+
+    report = _report_json(report_id)
+
+    # Already rendered at generation time? Hand it straight back. This is
+    # the common path, and it costs nothing.
+    cached = report.get("podcast") or {}
+    if cached.get("audio_url"):
+        return {"audio_url": cached["audio_url"],
+                "script": cached.get("script", ""),
+                "spoken": cached.get("spoken", ""),
+                "grounding": cached.get("grounding", "pre-generated"),
+                "note": cached.get("note", ""), "cached": True}
+
+    import os as _os
+    api_key = _os.getenv("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        raise HTTPException(503, "podcast needs ANTHROPIC_API_KEY")
+
+    from .db.session import init_db, session_scope
+    from .db.repository import load_snapshot as _sql_snapshot
+    from .reporting import podcast as _pod
+    init_db()
+
+    with session_scope() as db:
+        snap = _sql_snapshot(db, report["client_id"], report.get("period"))
+    if snap is None:
+        raise HTTPException(404, "no snapshot for this report")
+
+    import anthropic
+    client = anthropic.Anthropic(api_key=api_key)
+    model = _os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5")
+
+    minutes = max(1, min(5, int(body.get("minutes") or 2)))
+
+    # build_script makes blocking Anthropic calls. Inside an async endpoint
+    # that would stall the whole event loop for the length of the write —
+    # every other client's page load and chat message waits behind it.
+    import asyncio as _asyncio
+    script, detail = await _asyncio.to_thread(
+        _pod.build_script, client, model, report, snap, minutes)
+    if not script:
+        # The gate refused, or the model never produced dialogue. Say so
+        # plainly rather than narrating something unchecked.
+        raise HTTPException(422, f"could not write a grounded script: {detail}")
+
+    spoken = _pod.to_spoken(script)
+    title = f"{report.get('client_name', 'Your')} — {report.get('period', '')}"
+    url, why = await _pod.synthesize_async(spoken, title)
+    if not url:
+        raise HTTPException(502, f"audio service failed: {why}")
+
+    return {
+        "audio_url": url,
+        "script": script,          # the checked form, with digits
+        "spoken": spoken,          # what was actually narrated
+        "grounding": detail,
+        "note": _pod.language_note(report.get("language") or "en"),
+    }
 
 
 @app.post("/r/{report_id}/chat")

@@ -157,6 +157,20 @@ __DOC_CSS__
  .btn{border:1px solid #cbd5e1;background:#fff;border-radius:6px;
    padding:7px 13px;font-size:12.5px;cursor:pointer;color:#0f172a}
  .btn:hover{border-color:#94a3b8}
+ .btn[disabled]{opacity:.65;cursor:default}
+ .bar-actions{display:flex;gap:8px;align-items:center}
+ /* The player sits with the document, not in the chat rail: it is a way to
+    consume THIS report, not a conversation about it. */
+ .podwrap{max-width:760px;margin:0 auto 14px;padding:12px 14px;
+   border:1px solid #e2e8f0;border-radius:8px;background:#fff}
+ .podhd{display:flex;gap:10px;align-items:baseline;margin-bottom:8px;
+   font-size:13px;color:#0f172a}
+ .podhd span{font-size:12px;color:#b45309}
+ .podwrap audio{width:100%}
+ .podwrap details{margin-top:8px}
+ .podwrap summary{font-size:12px;color:#64748b;cursor:pointer}
+ .podwrap pre{white-space:pre-wrap;font-size:12px;line-height:1.5;
+   color:#334155;margin:8px 0 0;max-height:220px;overflow:auto}
  .doc{min-height:auto;box-shadow:0 1px 4px rgba(15,23,42,.08);border-radius:8px}
  section[data-block-id]{cursor:pointer;border-radius:4px}
  section[data-block-id].sel{outline:2px solid #2563eb;outline-offset:8px;
@@ -288,7 +302,16 @@ __DOC_CSS__
     <div><h2>Hello __FIRST_NAME__</h2>
       <div class="sub">Click any section to ask about it, or select the
         exact words you mean.</div></div>
-    <button class="btn" id="dl">Download PDF</button>
+    <div class="bar-actions">
+      <button class="btn" id="pod">&#127911; Listen</button>
+      <button class="btn" id="dl">Download PDF</button>
+    </div>
+  </div>
+  <div id="podwrap" class="podwrap" hidden>
+    <div class="podhd"><b>Your report as a podcast</b><span id="podnote"></span></div>
+    <audio id="podaudio" controls preload="none"></audio>
+    <details id="poddet"><summary>Read the script</summary>
+      <pre id="podscript"></pre></details>
   </div>
   __DOC__
 </div>
@@ -374,6 +397,92 @@ setTimeout(function(){ ev("dwell_60s", {}); }, 60000);
 document.getElementById("dl").onclick = function(){
   ev("pdf_downloaded", {}); window.print();
 };
+
+// ── Listen: one click, report to podcast ────────────────────────────────
+// Generation runs well over a minute (a cold service, then roughly 1.5
+// minutes of rendering per minute of audio), so the button has to say so.
+// A silent button that looks broken for two minutes gets clicked again,
+// and every click is another billed generation.
+(function(){
+  var btn = document.getElementById("pod");
+  if (!btn) return;
+  var wrap = document.getElementById("podwrap"),
+      audio = document.getElementById("podaudio"),
+      note = document.getElementById("podnote"),
+      pre  = document.getElementById("podscript");
+
+  // The audio is normally rendered when the report is generated, so the
+  // usual case is "already there". Ask first; only offer to build one if
+  // there genuinely isn't one.
+  function show(j){
+    audio.src = j.audio_url;
+    note.textContent = j.note || "";
+    pre.textContent = j.script || "";
+    wrap.hidden = false;
+    btn.textContent = "🎧 Listen";
+    btn.disabled = false;
+  }
+
+  var polls = 0;
+  (function poll(){
+    fetch("/r/" + RID + "/podcast?token=" + encodeURIComponent(TOKEN))
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        if (j.status === "ready") { show(j); return; }
+        if (j.status === "pending" && polls++ < 20) {
+          btn.textContent = "Preparing audio…";
+          btn.disabled = true;
+          setTimeout(poll, 6000);
+          return;
+        }
+        // Nothing waiting for us — let the client ask for one.
+        btn.textContent = "🎧 Listen";
+        btn.disabled = false;
+      })
+      .catch(function(){ btn.disabled = false; });
+  })();
+
+  btn.onclick = function(){
+    if (btn.disabled) return;
+    btn.disabled = true;
+    var t0 = Date.now(), label = btn.textContent;
+    btn.textContent = "Making your podcast…";
+    var tick = setInterval(function(){
+      var s = Math.round((Date.now() - t0) / 1000);
+      btn.textContent = "Making your podcast… " + s + "s";
+    }, 1000);
+
+    ev("podcast_requested", {});
+    fetch("/r/" + RID + "/podcast", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({token: TOKEN, minutes: 2})
+    }).then(function(r){
+      return r.json().then(function(j){ return {ok: r.ok, body: j}; });
+    }).then(function(res){
+      clearInterval(tick);
+      btn.disabled = false;
+      btn.textContent = label;
+      if (!res.ok) {
+        note.textContent = (res.body && res.body.detail) || "could not make the audio";
+        wrap.hidden = false;
+        return;
+      }
+      audio.src = res.body.audio_url;
+      note.textContent = res.body.note || "";
+      pre.textContent = res.body.script || "";
+      wrap.hidden = false;
+      audio.scrollIntoView({behavior: "smooth", block: "nearest"});
+      ev("podcast_ready", {});
+    }).catch(function(e){
+      clearInterval(tick);
+      btn.disabled = false;
+      btn.textContent = label;
+      note.textContent = "could not reach the audio service";
+      wrap.hidden = false;
+    });
+  };
+})();
 
 (function(){
   var yes = document.getElementById("rfb-yes"),
