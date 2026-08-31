@@ -1,8 +1,15 @@
-"""Email delivery — one interface, three backends.
+"""Email delivery — one interface, four backends.
 
     EMAIL_PROVIDER=file     (default)  writes .eml to data/generated/emails/
+    EMAIL_PROVIDER=smtp                real send, app password, never expires
     EMAIL_PROVIDER=gmail               Gmail API, local OAuth desktop flow
     EMAIL_PROVIDER=stub                records the intent, sends nothing
+
+PREFER `smtp` OVER `gmail` FOR ANYTHING THAT MUST KEEP WORKING. The OAuth
+route stops after seven days while the consent screen is in Testing, and
+escaping that means publishing an app that uses a RESTRICTED scope, which
+Google gates behind a logo, a homepage, a privacy policy and a security
+review. An app password takes two minutes and does not expire.
 
 `file` is the default rather than `stub` because a written .eml opens in any
 mail client, so the actual rendered email can be inspected without
@@ -185,6 +192,77 @@ class StubEmailProvider:
                 "to": adviser_email, "trigger": trigger}
 
 
+class SmtpEmailProvider:
+    """Plain SMTP with an app password. No OAuth, no expiry.
+
+    WHY THIS EXISTS ALONGSIDE THE GMAIL PROVIDER
+    --------------------------------------------
+    The Gmail API route needs an OAuth grant, and Google expires refresh
+    tokens after SEVEN DAYS while the consent screen sits in "Testing".
+    Sending stops without warning a week after it was set up, which is a
+    poor foundation for a demo and worse for anything scheduled.
+
+    The obvious escape — publish the app — is a dead end here. gmail.send
+    is a RESTRICTED scope, so publishing triggers Google's verification
+    review: a logo, a homepage, a privacy policy and a security assessment
+    aimed at apps with thousands of users. That is a great deal of process
+    to email a report to yourself.
+
+    An app password is the proportionate answer. It is issued once, it does
+    not expire, it is revocable from the account page, and it works with
+    the standard library — no Google client libraries at all.
+
+    SETUP (done by the account holder, not by this code):
+      1. Google Account -> Security -> 2-Step Verification must be ON
+      2. Security -> App passwords -> create one for "Mail"
+      3. Put it in .env as SMTP_PASSWORD, and set:
+           EMAIL_PROVIDER=smtp
+           SMTP_USER=you@gmail.com
+           EMAIL_FROM=you@gmail.com
+    Defaults target Gmail; SMTP_HOST and SMTP_PORT override for any other
+    provider.
+    """
+
+    name = "smtp"
+
+    def __init__(self):
+        self.host = os.getenv("SMTP_HOST", "smtp.gmail.com")
+        self.port = int(os.getenv("SMTP_PORT", "587"))
+        self.user = os.getenv("SMTP_USER", "") or os.getenv("EMAIL_FROM", "")
+        self.password = os.getenv("SMTP_PASSWORD", "")
+
+    def _send(self, msg) -> None:
+        import smtplib
+        if not self.user or not self.password:
+            # Named precisely. "SMTP not configured" would leave someone
+            # guessing which of four settings is missing.
+            missing = [n for n, v in (("SMTP_USER", self.user),
+                                      ("SMTP_PASSWORD", self.password)) if not v]
+            raise RuntimeError(
+                f"{' and '.join(missing)} not set — create an app password at "
+                f"Google Account > Security > App passwords and put it in .env")
+        with smtplib.SMTP(self.host, self.port, timeout=30) as s:
+            s.starttls()
+            s.login(self.user, self.password)
+            s.send_message(msg)
+
+    def send_report_ready(self, to_email, client_name, report_url, period):
+        msg = _build_message(to_email, client_name, report_url, period,
+                             os.getenv("EMAIL_FROM", self.user))
+        self._send(msg)
+        return {"status": "sent", "provider": "smtp",
+                "to": to_email, "url": report_url}
+
+    def send_adviser_alert(self, adviser_email, adviser_name, client_name,
+                           report_id, trigger, detail):
+        msg = _build_alert(adviser_email, adviser_name, client_name,
+                           report_id, trigger, detail,
+                           os.getenv("EMAIL_FROM", self.user))
+        self._send(msg)
+        return {"status": "sent", "provider": "smtp",
+                "to": adviser_email, "trigger": trigger}
+
+
 class GmailEmailProvider:
     """Gmail API via a local OAuth desktop flow.
 
@@ -263,7 +341,7 @@ class GmailEmailProvider:
 
 
 _PROVIDERS = {"file": FileEmailProvider, "gmail": GmailEmailProvider,
-              "stub": StubEmailProvider}
+              "smtp": SmtpEmailProvider, "stub": StubEmailProvider}
 
 
 def get_provider(name: Optional[str] = None) -> EmailProvider:
