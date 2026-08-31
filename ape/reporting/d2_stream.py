@@ -227,9 +227,31 @@ def stream_answer(
     from ape.reporting.locales import get as _get_locale
     loc = _get_locale(getattr(snap, "language", None))
 
-    facts_text, allowlist = _facts_for_scope(snap, block, report_json)
+    facts_text, allowlist = _facts_for_scope(snap, block, report_json,
+                                              selected_text=selected_text)
     if selected_text:
-        facts_text += f'\nHIGHLIGHTED WORDS (what they are pointing at, not a limit): "{selected_text[:400]}"'
+        # THE SELECTION IS THE QUERY; THE BLOCK IS ITS CONTEXT.
+        #
+        # This line used to say the highlight was "not a limit", and the
+        # model took it at its word: it explained the whole section the
+        # client was already looking at, instead of the words they
+        # pointed at. The block is handed over in full so the selection
+        # can be INTERPRETED, not so it can be summarised.
+        facts_text += (
+            f'\nHIGHLIGHTED WORDS - THE SUBJECT OF YOUR ANSWER: '
+            f'"{selected_text[:400]}"'
+            "\nAnswer about these words specifically. The section content "
+            "above is context for interpreting them, not the topic. If the "
+            "highlight is a name, say what it is and what it means for this "
+            "client; a figure, what it measures and where it came from; a "
+            "term, what it means in this report. Do not summarise the rest "
+            "of the section. A highlight with no figure in it - a name, a "
+            "label, a heading - still deserves an answer: say what it "
+            "is and what it means on this document. Explaining a name "
+            "needs no numbers. If it is a code or identifier - an ISIN, an "
+            "account or portfolio number - say which row or holding it "
+            "belongs to on this statement and what kind of identifier "
+            "it is; that is in this document, not outside it.")
 
     # Resolved before the answer is written, for the same reason as the
     # buffered path: the writer has to know a chart is coming, or it
@@ -238,7 +260,7 @@ def stream_answer(
     if wants_visual(question):
         try:
             widget, declined = _choose_widget(question, intent,
-                                              block_type or "", snap)
+                                              block_type or "", snap, block=block)
         except Exception:
             widget, declined = None, ""
 
@@ -252,9 +274,19 @@ def stream_answer(
         style = STRATEGY_STYLE.get(strategy, STRATEGY_STYLE["concise_direct"])
         if widget:
             visual = ('\n\nA {kind} chart titled "{title}" is being shown '
-                      'directly beneath your answer. Write text that '
-                      'complements it — do not describe the chart, and never '
-                      'say you cannot produce charts.').format(
+                      # The request IS answered by the chart. A writer
+                      # told only to "complement" it found nothing it
+                      # was allowed to say for "show this as a chart" -
+                      # no factual question - and fell back to the
+                      # mandated decline line, under a chart that had
+                      # drawn perfectly. So the text gets a JOB: the
+                      # one-line read of the chart.
+                      'directly beneath your answer - the chart itself '
+                      'fulfils their request, so never decline and '
+                      'never say you cannot produce charts. Your text '
+                      'is its caption: one to three sentences naming '
+                      'the largest and smallest entries and one thing '
+                      'worth noticing, using only the facts above.').format(
                           kind=widget["kind"], title=widget["title"])
         elif declined:
             visual = ("\n\nNo chart can be drawn for this. Answer in words "

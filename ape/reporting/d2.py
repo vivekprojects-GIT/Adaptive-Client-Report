@@ -395,6 +395,7 @@ def _money(key: str) -> str:
 def _facts_for_scope(snap: ClientSnapshot,
                      block: Optional[Dict],
                      report: Optional[Dict] = None,
+                     selected_text: str = "",
                      ) -> Tuple[str, Dict[str, float]]:
     """(prompt text, allowlist) for either one block's scope or the whole
     report. The allowlist is what the answer's numbers are checked against
@@ -478,11 +479,103 @@ def _facts_for_scope(snap: ClientSnapshot,
         for k, v in scoped.items():
             lines.append(f"{k} = {_money(k)}{v}")
         data = block.get("content_json") or block.get("data") or {}
-        text = json.dumps({k: v for k, v in data.items()
-                           if k not in ("_author", "_facts")}, default=str,
-                          ensure_ascii=False)
+
+        def _scrub(node):
+            """Drop builder scaffolding the page never displays.
+
+            weight_raw is an intermediate the position generator uses; it
+            appears nowhere in the rendered table, and carrying it for
+            forty rows is a third of the block's bulk spent on numbers the
+            client cannot see and the answer must not quote.
+            """
+            if isinstance(node, dict):
+                return {k: _scrub(v) for k, v in node.items()
+                        if k not in ("_author", "_facts", "weight_raw")}
+            if isinstance(node, list):
+                return [_scrub(v) for v in node]
+            return node
+
+        text = json.dumps(_scrub(data), default=str, ensure_ascii=False)
+        # THE WHOLE BLOCK, NOT ITS FIRST FEW ROWS.
+        #
+        # This was cut at 1,200 characters, which covers one sector of a
+        # nine-sector holdings table. Every question about anything below
+        # the fold was answered "not in this section" while the section
+        # displayed it. The client SELECTED this block - handing the model
+        # less than the client is looking at is the one economy that can
+        # never be right here.
+        #
+        # 12,000 chars covers the largest block this system produces (the
+        # full holdings table is ~15KB of JSON but its prose fields trim
+        # below the cap); the ceiling exists so a pathological block cannot
+        # blow the prompt, not as an expected working limit.
+        # Untruncated. The block is bounded by what generation produced -
+        # the largest this system makes is ~14KB scrubbed - and any cut
+        # point reintroduces the bug where the client is looking at a row
+        # the model was never shown.
         lines.append(f"SELECTED CONTENT ({block.get('block_type') or block.get('type')}): "
-                     f"{text[:1200]}")
+                     f"{text}")
+
+        # EVERY NUMBER THE BLOCK SHOWS IS GROUNDABLE.
+        #
+        # Showing the model forty rows and allowlisting only the headline
+        # facts produced a second-order decline: it could SEE each row's
+        # unrealised figure and was forbidden to quote any of them. A
+        # figure the client is looking at inside the selected section is,
+        # by definition, safe to repeat - so every numeric leaf joins the
+        # allowlist, keyed by its path. Allowlist only: the prompt already
+        # carries these numbers inside the block JSON, and listing them
+        # twice would double the prompt for nothing.
+        def _leaves(node, path):
+            if isinstance(node, dict):
+                for _k, _v in node.items():
+                    yield from _leaves(_v, f"{path}.{_k}" if path else str(_k))
+            elif isinstance(node, list):
+                for _ix, _v in enumerate(node):
+                    yield from _leaves(_v, f"{path}.{_ix}")
+            elif isinstance(node, (int, float)) and not isinstance(node, bool):
+                yield path, float(node)
+
+        for _pth, _val in _leaves(_scrub(data), "blk"):
+            scoped.setdefault(_pth, _val)
+        # THE ROWS THE HIGHLIGHT ACTUALLY POINTS AT, IN FULL.
+        #
+        # The blob above is truncated at 1,200 characters, which covers the
+        # first sector of a nine-sector holdings table and nothing after
+        # it. A client highlighted a position on row thirty, the model was
+        # shown rows one to six, and it honestly reported the holding was
+        # not in the section - while the page displayed it. So the rows
+        # whose text contains the highlighted words are pulled out and
+        # given whole, and their figures join the scope so the answer can
+        # quote them and still be checked.
+        if selected_text:
+            _needle = selected_text.strip().lower()
+
+            def _walk(node):
+                found = []
+                if isinstance(node, dict):
+                    strings = [str(v) for v in node.values()
+                               if isinstance(v, str)]
+                    if any(_needle in s.lower() for s in strings):
+                        found.append(node)
+                    else:
+                        for v in node.values():
+                            found.extend(_walk(v))
+                elif isinstance(node, list):
+                    for v in node:
+                        found.extend(_walk(v))
+                return found
+
+            _matches_sel = _walk(data)[:3]
+            for _mi, _row in enumerate(_matches_sel):
+                lines.append(
+                    "ROW MATCHING THE HIGHLIGHT: "
+                    + json.dumps(_row, default=str,
+                                 ensure_ascii=False)[:800])
+                for _rk, _rv in _row.items():
+                    if isinstance(_rv, (int, float)) and not isinstance(_rv, bool):
+                        scoped.setdefault(f"sel{_mi}.{_rk}", float(_rv))
+
         lines.append(
             "SCOPE: the client has selected ONE section, and the figures "
             "above are the only ones in it. If they ask about anything "
@@ -969,7 +1062,9 @@ def suggest_followups(report: Dict[str, Any], intent: str = "",
 
 
 def _choose_widget(question: str, intent: str, block_type: str,
-                   snap: ClientSnapshot) -> Tuple[Optional[Dict[str, Any]], str]:
+                   snap: ClientSnapshot,
+                   block: Optional[Dict] = None,
+                   ) -> Tuple[Optional[Dict[str, Any]], str]:
     """Pick and draw a widget for a client who asked to see something.
 
     Returns (widget, decline_reason). Exactly one is ever populated.
@@ -985,6 +1080,15 @@ def _choose_widget(question: str, intent: str, block_type: str,
     guess whether we ignored them or could not do it.
     """
     from ape.reporting import chat_widgets as cw
+
+    # THE SELECTED SECTION FIRST. A client who selected the sector table
+    # and asked for a chart wants THAT table drawn - offering them the
+    # snapshot's menu instead answers a question they did not ask. Only
+    # when the selection has nothing chartable does the menu take over.
+    if block is not None:
+        w = cw.build_from_block(snap, block, cw.named_kind(question))
+        if w is not None:
+            return w, ""
 
     options = cw.available(snap)
     if not options:
@@ -1076,9 +1180,31 @@ def answer_question(
     from ape.reporting.locales import get as _get_locale
     loc = _get_locale(getattr(snap, "language", None))
 
-    facts_text, allowlist = _facts_for_scope(snap, block, report_json)
+    facts_text, allowlist = _facts_for_scope(snap, block, report_json,
+                                              selected_text=selected_text)
     if selected_text:
-        facts_text += f'\nHIGHLIGHTED WORDS (what they are pointing at, not a limit): "{selected_text[:400]}"'
+        # THE SELECTION IS THE QUERY; THE BLOCK IS ITS CONTEXT.
+        #
+        # This line used to say the highlight was "not a limit", and the
+        # model took it at its word: it explained the whole section the
+        # client was already looking at, instead of the words they
+        # pointed at. The block is handed over in full so the selection
+        # can be INTERPRETED, not so it can be summarised.
+        facts_text += (
+            f'\nHIGHLIGHTED WORDS - THE SUBJECT OF YOUR ANSWER: '
+            f'"{selected_text[:400]}"'
+            "\nAnswer about these words specifically. The section content "
+            "above is context for interpreting them, not the topic. If the "
+            "highlight is a name, say what it is and what it means for this "
+            "client; a figure, what it measures and where it came from; a "
+            "term, what it means in this report. Do not summarise the rest "
+            "of the section. A highlight with no figure in it - a name, a "
+            "label, a heading - still deserves an answer: say what it "
+            "is and what it means on this document. Explaining a name "
+            "needs no numbers. If it is a code or identifier - an ISIN, an "
+            "account or portfolio number - say which row or holding it "
+            "belongs to on this statement and what kind of identifier "
+            "it is; that is in this document, not outside it.")
 
     # Resolved BEFORE the answer is written, because the writer has to know.
     # Left until afterwards, it produced answers that apologised for being
@@ -1088,7 +1214,7 @@ def answer_question(
     if wants_visual(question):
         try:
             widget, declined = _choose_widget(question, intent,
-                                              block_type or "", snap)
+                                              block_type or "", snap, block=block)
         except Exception:
             widget, declined = None, ""
 
@@ -1102,9 +1228,17 @@ def answer_question(
         if widget:
             visual = (f"\n\nA {widget['kind']} chart titled "
                       f"\"{widget['title']}\" is being shown directly beneath "
-                      f"your answer. Write text that complements it — do not "
-                      f"describe the chart, and never say you cannot produce "
-                      f"charts.")
+                      # Same lesson as the streaming path: with no factual
+                      # question in "show this as a chart", a writer told
+                      # only to complement found nothing it could say and
+                      # fell back to the mandated decline, under a chart
+                      # that had drawn. The text gets a JOB instead.
+                      f"your answer - the chart itself fulfils their "
+                      f"request, so never decline and never say you "
+                      f"cannot produce charts. Your text is its caption: "
+                      f"one to three sentences naming the largest and "
+                      f"smallest entries and one thing worth noticing, "
+                      f"using only the facts above.")
         elif declined:
             visual = ("\n\nNo chart can be drawn for this. Answer in words "
                       "only. Do not offer to draw one and do not explain why "

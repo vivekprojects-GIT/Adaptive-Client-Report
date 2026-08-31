@@ -477,6 +477,73 @@ def resolve_kind(binding: str, asked: Optional[str]) -> str:
     return DEFAULT_KIND[BINDINGS[binding]["shape"]]
 
 
+def build_from_block(snap: ClientSnapshot, block: Dict[str, Any],
+                     kind: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """A chart of the SELECTED section, or None when it has no series.
+
+    The statement blocks compute their own figures, so the snapshot's
+    bindings cannot draw them. Their data has two regular shapes - groups
+    with per-sector subtotals, and flat rows - and both reduce to
+    (label, value) pairs deterministically. No model call: the client
+    already chose the subject by selecting the section.
+
+    Refs are the block's own fact keys, which the grounding gate accepts
+    since the extra_facts work - a chart of the selection is exactly as
+    checkable as a chart of the snapshot.
+    """
+    d = block.get("content_json") or block.get("data") or {}
+    # The chat passes the DB row, which stores no title; the type is
+    # there and prettifies to the same heading the page shows.
+    title = (block.get("title")
+             or str(block.get("block_type") or block.get("type")
+                    or "Selected section").replace("_", " ").capitalize())
+    pairs: List[Tuple[str, float]] = []
+    refs: List[str] = []
+    unit = "%"
+
+    groups = d.get("groups")
+    if isinstance(groups, list) and groups:
+        for g in groups:
+            if isinstance(g, dict) and g.get("sector") is not None:
+                pairs.append((str(g["sector"]), float(g.get("weight_pct") or 0)))
+                refs.append(f"sector.{str(g['sector']).replace(' ', '_')}")
+
+    rows = d.get("rows")
+    if not pairs and isinstance(rows, list) and rows:
+        for r in rows:
+            if not isinstance(r, dict):
+                continue
+            label = r.get("currency") or r.get("sector") or r.get("asset_class")
+            val = r.get("weight_pct")
+            if label is not None and val is not None:
+                pairs.append((str(label), float(val)))
+                key = ("currency_share_pct." if r.get("currency")
+                       else "sector." if r.get("sector")
+                       else "alloc.")
+                refs.append(key + str(label).replace(" ", "_")
+                            if key != "alloc." else f"alloc.{label}")
+
+    if len(pairs) < 2:
+        return None                      # one bar is not a chart
+
+    k = kind or ("donut" if len(pairs) <= 8 else "hbar")
+    data = dict(_parts(pairs, unit, dp=2), kind=k)
+
+    lang = getattr(snap, "language", "") or ""
+    if lang and lang != "en":
+        from ape.reporting.labels import t as _t
+        data["items"] = [dict(i, label=_t(i["label"], lang))
+                         for i in data["items"]]
+
+    from ape.reporting.charts import render_chart
+    from ape.reporting.echarts_opts import build_option
+    svg = render_chart(data)
+    if "<svg" not in svg:
+        return None
+    return {"binding": "selected_section", "kind": k, "title": title,
+            "svg": svg, "option": build_option(data), "source_refs": refs}
+
+
 def build(snap: ClientSnapshot, binding: str,
           kind: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """The rendered widget, or None if this client's data cannot draw it.

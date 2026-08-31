@@ -299,9 +299,14 @@ def holdings_by_sector(s, n: int) -> Dict[str, Any]:
         facts[f"sector_cost.{key}"] = g["cost_value"]
         facts[f"sector_unrealised.{key}"] = g["unrealised"]
         for r in g["rows"]:
-            pos = r["name"].split(" ")[0].replace(",", "")
+            # The key carries the NAME AS SHOWN, not its first word. A
+            # client highlights "AB Namn-Aktier A" out of the middle of
+            # "Nordkompressor AB Namn-Aktier A SK -,637", and a key that
+            # kept only "Nordkompressor" matches nothing they selected.
+            pos = r["name"][:60].strip()
             facts[f"pos_value.{pos}"] = r["market_value"]
             facts[f"pos_weight.{pos}"] = r["weight_pct"]
+            facts[f"pos_unrealised.{pos}"] = r["unrealised"]
     return {
         "block_id": f"holdings_by_sector_{n:02d}",
         "extra_facts": facts,
