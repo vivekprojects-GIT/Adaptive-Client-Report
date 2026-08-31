@@ -637,8 +637,22 @@ def _disclosures(s: ClientSnapshot, n: int):
     }
 
 
+# The private-bank statement blocks. Kept in their own module because they
+# are a different DOCUMENT, not a different chart: a cover page with a
+# contents list, positions grouped by sector with subtotals, mandate bands.
+from . import wealth_statement as _wst                                # noqa: E402
+# One opening per kind of report: a fees report and a risk report should
+# not lead with the same four cards.
+from . import headlines as _hl                                        # noqa: E402
+
 BUILDERS = {
     "chart": _chart,
+    "wealth_cover": _wst.cover,
+    "asset_class_table": _wst.asset_classes,
+    "currency_split": _wst.currency_split,
+    "holdings_by_sector": _wst.holdings_by_sector,
+    "sector_analysis": _wst.sector_analysis,
+    **_hl.BUILDERS,
     "kpi_grid": _kpi_grid,
     "allocation_donut": _allocation_donut,
     "performance_line": _performance_line,
@@ -1215,6 +1229,15 @@ def _render_block(b: Dict[str, Any], number: Optional[int] = None) -> str:
         body = (f'<div class="disc"><p>{_esc(d.get("text", ""))}</p>'
                 f'<p class="src">{_esc(d.get("source", ""))}</p></div>')
 
+    elif t in _hl.RENDERERS:
+        body = _hl.RENDERERS[t](d)
+
+    elif t in _wst.RENDERERS:
+        # Delegated rather than inlined: these five carry a whole document's
+        # worth of markup, and folding them into this if/elif would bury the
+        # blocks every report uses under the ones only one template does.
+        body = _wst.RENDERERS[t](d)
+
     else:
         return ""
 
@@ -1294,6 +1317,129 @@ DOC_CSS = """ body{font-family:"Segoe UI",system-ui,Arial,sans-serif;color:#0f17
  .disc{border-top:1px solid #e2e8f0;padding-top:12px;font-size:11px;color:#94a3b8}
  .disc p{margin:0 0 4px} .disc .src{color:#cbd5e1}
  section[data-block-id]:hover{outline:2px solid #dbeafe;outline-offset:6px;border-radius:4px}
+
+ /* ── custody statement blocks ───────────────────────────────────────
+    A statement is denser than a summary: forty rows of positions with
+    nine columns each. The type is small, the rules are light, and the
+    grouping does the work that whitespace does elsewhere. */
+ /* ── headline openings ──────────────────────────────────────────────
+    Each report type leads with the figure it is actually about. They share
+    a caption style so a reader moving between report types recognises the
+    shape, and differ in what they put in the large slot. */
+ .hv-cap{display:block;font-size:10.5px;text-transform:uppercase;
+   letter-spacing:.06em;color:#94a3b8;font-weight:600}
+ .hero{padding:6px 0 2px}
+ .hero .hv-num{display:block;font-size:38px;font-weight:650;
+   letter-spacing:-.02em;line-height:1.1;margin:4px 0 6px;
+   font-variant-numeric:tabular-nums}
+ .hv-row{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+ .hv-ret{font-size:17px;font-weight:650}
+ .hv-ret.up{color:#15803d} .hv-ret.dn{color:#b91c1c} .hv-ret.flat{color:#64748b}
+ .hv-bm{font-size:12px;color:#64748b}
+
+ /* The verdict is a sentence, so it is set as one - the figure large, the
+    claim beside it, and a colour that only ever follows the arithmetic. */
+ .verdict{display:flex;align-items:baseline;gap:12px;padding:13px 16px;
+   border-radius:10px;background:#f1f5f9;flex-wrap:wrap}
+ .verdict b{font-size:26px;font-weight:650;font-variant-numeric:tabular-nums}
+ .verdict span{font-size:13px;color:#475569}
+ .verdict.v-ahead{background:#f0fdf4} .verdict.v-ahead b{color:#15803d}
+ .verdict.v-behind{background:#fef2f2} .verdict.v-behind b{color:#b91c1c}
+
+ .riskhead b{display:block;font-size:24px;font-weight:650;margin:3px 0 8px}
+ .rh-scale{display:flex;gap:4px;margin-bottom:7px}
+ .rh-scale i{flex:1;font-style:normal;font-size:9.5px;text-align:center;
+   padding:5px 2px;border-radius:5px;background:#f1f5f9;color:#94a3b8;
+   border:1px solid #e2e8f0}
+ .rh-scale i.on{background:#1d4ed8;border-color:#1d4ed8;color:#fff;
+   font-weight:700}
+ .rh-vol{font-size:12px;color:#64748b}
+ /* An unmeasured figure says so. Shown as 0.0% it would read as "no
+    risk" rather than "not measured". */
+ .rh-none{color:#94a3b8;font-style:italic}
+
+ .costhead{display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap}
+ .costhead .ch-main b{display:block;font-size:30px;font-weight:650;
+   margin:3px 0 4px;font-variant-numeric:tabular-nums}
+ .ch-drag{font-size:12px;color:#64748b}
+ .ch-parts{list-style:none;margin:2px 0 0;padding:0;font-size:12px;min-width:180px}
+ .ch-parts li{display:flex;justify-content:space-between;gap:14px;
+   padding:4px 0;border-bottom:1px solid #eef2f6}
+ .ch-parts span{color:#64748b;text-transform:capitalize}
+ .ch-parts b{font-variant-numeric:tabular-nums}
+
+ .flowhead{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+ .fh-cell{background:#f8fafc;border:1px solid #eef2f6;border-radius:9px;
+   padding:11px 13px}
+ .fh-cell span{display:block;font-size:10.5px;text-transform:uppercase;
+   letter-spacing:.05em;color:#94a3b8;font-weight:600;margin-bottom:4px}
+ .fh-cell b{font-size:18px;font-weight:650;font-variant-numeric:tabular-nums}
+ .fh-cell b.up{color:#15803d} .fh-cell b.dn{color:#b91c1c}
+
+ .trendhead svg{width:100%;height:64px;display:block;margin:6px 0 2px}
+ .th-x{display:flex;justify-content:space-between;font-size:9.5px;
+   color:#94a3b8}
+
+ .wcover{padding:4px 0 8px}
+ .wc-conf{background:#5b6b70;color:#fff;padding:9px 16px;font-size:12px;
+   display:inline-block;min-width:320px;border-radius:2px}
+ .wc-band{background:linear-gradient(90deg,#2f6f6a,#1c6b62);color:#fff;
+   padding:18px 18px 22px;max-width:520px;border-radius:2px}
+ .wc-band h1{font-size:30px;margin:0;font-weight:400;letter-spacing:-.01em}
+ .wc-band p{margin:6px 0 0;font-size:17px;font-weight:300;opacity:.94}
+ /* The client's name, alone. The risk profile moved into the labelled
+    metadata grid below, where it says what it is. */
+ .wc-who{margin:22px 0 14px}
+ .wc-who b{font-size:16px;font-weight:600}
+ .wc-meta{display:grid;grid-template-columns:repeat(3,minmax(0,220px));
+   gap:6px 18px;margin-bottom:20px}
+ .wc-meta div{display:flex;flex-direction:column;gap:1px}
+ .wc-meta span{font-size:10px;color:#94a3b8;text-transform:uppercase;
+   letter-spacing:.05em}
+ .wc-meta b{font-size:12px}
+ .wc-toc{list-style:none;margin:6px 0 0;padding:0;max-width:430px}
+ .wc-toc li{display:flex;align-items:baseline;gap:8px;padding:4px 0;
+   border-bottom:1px dotted #cbd5d8;font-size:12px}
+ .wc-toc li span{flex:1}
+ .wc-toc li b{font-weight:600;color:#64748b}
+
+ /* Tables: the header band is what makes a statement legible at this
+    density - it separates nine columns without nine vertical rules. */
+ .wtab{width:100%;border-collapse:collapse;font-size:11px;margin-top:4px}
+ .wtab th{background:#2f6f6a;color:#fff;font-weight:600;text-align:right;
+   padding:6px 7px;vertical-align:bottom;line-height:1.25;font-size:9.5px;
+   letter-spacing:.01em}
+ .wtab th.l,.wtab td.l{text-align:left}
+ .wtab td{padding:5px 7px;text-align:right;border-bottom:1px solid #eef2f4;
+   vertical-align:top;font-variant-numeric:tabular-nums}
+ .wtab tr.wgrp td{background:#e8eef0;font-weight:700;
+   border-bottom:1px solid #cbd5d8}
+ .wtab tr.wtot td{background:#14524b;color:#fff;font-weight:700}
+ .wok{color:#15803d;font-weight:700}
+ .wbad{color:#b91c1c;font-weight:700}
+ .wneg{color:#b91c1c}
+ /* The second line under a figure: FX rate, YTD, result percent. */
+ .wsub{display:block;font-size:9px;color:#94a3b8;margin-top:1px;
+   font-weight:400}
+ .wpos td.l b{font-weight:600}
+ .wpos{table-layout:auto}
+
+ /* Currency exposure: the pie must be a fixed size. Left to itself the
+    SVG scales to the column and swallows the page. */
+ .wccy{display:flex;align-items:center;gap:20px;margin-top:6px;flex-wrap:wrap}
+ .wccy svg{width:150px;height:150px;flex:none}
+ .wccy ul{list-style:none;margin:0;padding:0;font-size:11px;line-height:1.85}
+ .wccy li{display:flex;align-items:center;gap:7px}
+ .wccy i{width:8px;height:8px;border-radius:2px;display:inline-block;
+   flex:none}
+
+ .wsplit{display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap}
+ .wsplit svg{width:320px;flex:none}
+ .wsplit .wtab{flex:1;min-width:280px}
+ @media (max-width:760px){
+   .wsplit svg,.wccy svg{width:100%;max-width:320px}
+   .wtab{font-size:10px}
+ }
  .riskscale{display:flex;gap:4px;margin-top:8px}
  .riskscale i{flex:1;font-style:normal;font-size:10px;text-align:center;
    padding:5px 2px 4px;border-radius:5px;background:#f1f5f9;color:#94a3b8;

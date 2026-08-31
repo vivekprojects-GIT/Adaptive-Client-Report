@@ -25,6 +25,28 @@ from ape.reporting.csv_source import ClientSnapshot
 # `needs` is checked against the snapshot; blocks whose data is missing are
 # withheld from the composer entirely.
 REGISTRY: Dict[str, Dict[str, Any]] = {
+    # ---- private-bank statement blocks -------------------------------
+    # needs=None because they build from portfolio_value and allocations,
+    # which every snapshot has. A composer may pick them, but in practice
+    # the statement template names them explicitly.
+    "wealth_cover": dict(
+        category="headline", needs=None,
+        shows="Statement cover: mandate, valuation dates, contents list."),
+    "asset_class_table": dict(
+        category="allocation", needs="allocations",
+        shows="Asset classes with the mandate's permitted band and whether "
+              "the portfolio sits inside it."),
+    "currency_split": dict(
+        category="allocation", needs=None,
+        shows="Share of the book held in each currency."),
+    "holdings_by_sector": dict(
+        category="allocation", needs=None,
+        shows="Every position grouped by sector, with cost, market value, "
+              "FX and unrealised result."),
+    "sector_analysis": dict(
+        category="allocation", needs=None,
+        shows="One row per sector, split by developed and emerging markets."),
+
     "kpi_grid": dict(
         category="headline", needs=None,
         shows="Four headline figures: value, return, benchmark, risk level."),
@@ -165,3 +187,15 @@ def catalogue_flat(snapshot: ClientSnapshot) -> str:
              for i in items]
     names = ", ".join(i["block"] for i in items)
     return "\n".join(lines) + f"\n\nVALID NAMES, exactly as written: {names}"
+
+
+# The headline openings are declared beside the builders and renderers that
+# implement them, in headlines.py, and merged in here. One list, in one
+# place: a block that exists in one file and is described in another is how
+# the palette and the registry drifted apart before.
+def _merge_headlines() -> None:
+    from .headlines import REGISTRY_ENTRIES
+    REGISTRY.update(REGISTRY_ENTRIES)
+
+
+_merge_headlines()
