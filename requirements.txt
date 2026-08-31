@@ -14,3 +14,12 @@ google-auth-oauthlib>=1.1
 google-auth-httplib2>=0.1
 python-multipart>=0.0.9
 gradio>=5.0.0
+
+# Speech-to-text for the client chat microphone. MIT, runs locally, and
+# detects the spoken language itself. Pulls in PyAV, which carries its own
+# ffmpeg so no system binary is needed.
+faster-whisper>=1.2.1
+
+# Local neural TTS for the chat voice. MIT, same engine as the podcasts,
+# so the client hears one voice across the whole report.
+piper-tts>=1.7.0

@@ -2075,6 +2075,81 @@ def report_video_file(report_id: str, token: str = "", request: Request = None):
                  f'inline; filename="{safe or report_id}.mp4"'})
 
 
+@app.post("/r/{report_id}/transcribe")
+async def report_transcribe(report_id: str, request: Request,
+                            token: str = ""):
+    """Turn a recorded question into text, in whatever language it was asked.
+
+    Behind the same two gates as everything else on the client surface: a
+    microphone endpoint that anyone could POST to is a free transcription
+    service running on our CPU.
+
+    The audio is decoded and transcribed in this process and then dropped.
+    It is never written to disk and never forwarded, which is what lets the
+    page say the recording does not leave the building.
+    """
+    _viewer_auth(report_id, token, request)
+
+    audio = await request.body()
+    if not audio:
+        raise HTTPException(400, "no audio received")
+
+    # The report's language is a prior, not an instruction: it is consulted
+    # only when detection is unsure. See transcribe.py.
+    try:
+        report = _report_json(report_id)
+        fallback = report.get("language") or "en"
+    except Exception:
+        fallback = "en"
+
+    from .reporting.transcribe import transcribe, TranscriptionError
+    try:
+        # Whisper is CPU-bound and would block the event loop for the whole
+        # decode, stalling every other client on this worker.
+        text, language, confidence = await asyncio.to_thread(
+            transcribe, audio, fallback)
+    except TranscriptionError as exc:
+        raise HTTPException(422, str(exc))
+
+    return {"text": text, "language": language,
+            "confidence": round(confidence, 3)}
+
+
+@app.post("/r/{report_id}/speak")
+async def report_speak(report_id: str, request: Request, token: str = ""):
+    """Read a chat answer aloud, in the language it was written in.
+
+    Piper, locally, rather than the browser's own voice: same engine as the
+    client's podcast, so they hear one voice across the whole report instead
+    of a warm narrator in one place and a robot in another. It also means
+    the answer - figures included - is never handed to a speech vendor.
+
+    Behind the same two gates as the rest of the client surface.
+    """
+    _viewer_auth(report_id, token, request)
+
+    body = await request.json()
+    text = (body or {}).get("text") or ""
+    language = (body or {}).get("language") or ""
+    if not language:
+        try:
+            language = _report_json(report_id).get("language") or "en"
+        except Exception:
+            language = "en"
+
+    from .reporting.speak import synthesize, SpeechError
+    try:
+        # Synthesis is CPU-bound; on the event loop it would stall every
+        # other client on this worker for its duration.
+        audio, voice = await asyncio.to_thread(synthesize, text, language)
+    except SpeechError as exc:
+        raise HTTPException(422, str(exc))
+
+    from fastapi.responses import Response
+    return Response(audio, media_type="audio/wav",
+                    headers={"X-Voice": voice, "Cache-Control": "no-store"})
+
+
 @app.get("/r/{report_id}/podcast.mp3")
 def report_podcast_audio(report_id: str, token: str = "",
                          request: Request = None):
@@ -2408,14 +2483,20 @@ async def report_chat_stream(report_id: str, request: Request):
                 yield _sse("error", {"detail": "no answer produced"})
                 return
 
-            asked = list(db.scalars(_select(Message.content).where(
-                Message.report_id == report_id, Message.role == "client")))
-            result["followups"] = suggest_followups(
-                report, result.get("intent", ""), asked, snap=snap,
-                block_type=(block or {}).get("block_type", ""),
-                question=question, answer=result.get("answer", ""),
-                sources=result.get("sources") or [],
-                locale=getattr(snap, "language", "") or "")
+            # Follow-up chips cost a model call and produce buttons. A
+            # voice turn has no buttons, so the call is pure latency and
+            # spend on the path where latency is felt most.
+            if body.get("voice"):
+                result["followups"] = []
+            else:
+                asked = list(db.scalars(_select(Message.content).where(
+                    Message.report_id == report_id, Message.role == "client")))
+                result["followups"] = suggest_followups(
+                    report, result.get("intent", ""), asked, snap=snap,
+                    block_type=(block or {}).get("block_type", ""),
+                    question=question, answer=result.get("answer", ""),
+                    sources=result.get("sources") or [],
+                    locale=getattr(snap, "language", "") or "")
 
             _rt = str(report.get("report_type", "") or "")
             record_event(db, report["client_id"], "question_asked",
