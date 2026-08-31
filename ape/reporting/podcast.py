@@ -517,12 +517,25 @@ MIN_WARM_SECONDS = float(os.getenv("APE_RENDERER_MIN_WARM", "60"))
 def _settle(client, deadline: float) -> None:
     """Give a just-woken renderer time to finish loading before we load it."""
     try:
-        r = client.get(MCP_URL.rsplit("/", 1)[0] + "/health")
-        up = float((r.json() or {}).get("uptime_seconds", MIN_WARM_SECONDS))
+        doc = client.get(MCP_URL.rsplit("/", 1)[0] + "/health").json() or {}
     except Exception:
         return                      # no reading: proceed rather than stall
-    if up >= MIN_WARM_SECONDS:
+
+    # The renderer now answers this itself. `ready` is the real signal -
+    # that process knows when its own preload finished - where uptime was
+    # only ever a proxy for it. Absent on older builds, hence the fallback.
+    ready = doc.get("ready")
+    if ready is True:
         return
+    if ready is None:
+        up = float(doc.get("uptime_seconds", MIN_WARM_SECONDS))
+        if up >= MIN_WARM_SECONDS:
+            return
+    else:
+        # Explicitly not ready. The server will hold the call anyway, so
+        # this only decides whether we spend the wait here or there; waiting
+        # here keeps our own timeout budget for the render itself.
+        up = float(doc.get("uptime_seconds", 0.0))
     # Never past the caller's own deadline - waiting is an optimisation, and
     # a render attempted early still usually works.
     nap = min(MIN_WARM_SECONDS - up, max(0.0, deadline - time.time()))
