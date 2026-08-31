@@ -497,6 +497,12 @@ def t(text: Optional[str], locale: Optional[str]) -> Optional[str]:
 from .labels_extra import merge_into as _merge_drafts   # noqa: E402
 _merge_drafts(LABELS)
 
+# The statement and headline blocks brought ~64 terms this table had
+# never seen; their drafts live beside them in labels_statement.py,
+# same REVIEW_FIRST standing, same never-overwrite merge.
+from .labels_statement import merge_into as _merge_statement   # noqa: E402
+_merge_statement(LABELS)
+
 
 # Axis category lists, held as bare strings rather than {"label": ...}.
 # These feed the x-axis of the INTERACTIVE chart, which is why an Arabic

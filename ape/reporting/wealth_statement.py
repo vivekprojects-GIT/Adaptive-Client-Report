@@ -250,8 +250,10 @@ def asset_classes(s, n: int) -> Optional[Dict[str, Any]]:
         "block_id": f"asset_class_table_{n:02d}",
         "type": "asset_class_table",
         "title": "Portfolio analysis",
-        "subtitle": "How your portfolio is divided across asset classes, "
-                    "against the ranges agreed for your mandate.",
+        # Short, single-string subtitles: they are lookup keys in the label
+        # table, and a key split across two source lines picks up the
+        # concatenation gap and matches nothing.
+        "subtitle": "Asset classes against the agreed mandate ranges.",
         "data": {"rows": rows,
                  "total_value": round(s.portfolio_value, 2),
                  "total_pct": round(sum(r["weight_pct"] for r in rows), 2)},
@@ -312,8 +314,7 @@ def holdings_by_sector(s, n: int) -> Dict[str, Any]:
         "extra_facts": facts,
         "type": "holdings_by_sector",
         "title": "Holdings by sector",
-        "subtitle": "Every position held, grouped by sector. Market values "
-                    "use the most recent available prices.",
+        "subtitle": "Every position held, grouped by sector.",
         "data": {"groups": groups,
                  "total_market": round(sum(g["market_value"] for g in groups), 2),
                  "total_cost": round(sum(g["cost_value"] for g in groups), 2),
