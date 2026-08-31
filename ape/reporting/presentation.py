@@ -72,7 +72,7 @@ import threading
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
-from .grounding import derived_facts, validate_block
+from .grounding import derived_facts, validate_block, is_money_fact, report_currency
 from .podcast import (MCP_URL, MCP_TIMEOUT_SECONDS, _COLD_START_SECONDS,
                       _COLD_RETRY_SECONDS,
                       _explain, _log_fetch, wake_renderer,
@@ -261,18 +261,24 @@ FACTS — THIS IS THE PART THAT MATTERS
 narration, in the key_points, AND in any chart, is checked against it \
 automatically. One invented figure rejects the whole presentation.
 - Write figures EXACTLY as the fact sheet writes them.
+- The currency symbol is PART of the figure: copy it exactly and never swap
+  it for another currency or name a different one in words.
+- Chart values stay bare numbers — no symbol there.
 - Chart values must be plain numbers matching the fact sheet, e.g. 2.41.
 - Do not compute new numbers. No advice, no predictions."""
 
 
 def _fact_sheet(facts: Dict[str, float], locale_code: str) -> str:
+    cur = report_currency()
     from .locales import format_number
     keep = []
     for k, v in sorted(facts.items()):
         if (k.startswith("derived.group_") or k.startswith("hold.")
                 or k.startswith("hist.")):
             continue
-        keep.append(f"  {k} = {format_number(float(v), locale_code, 2)}")
+        num = format_number(float(v), locale_code, 2)
+        keep.append(f"  {k} = {cur}{num}" if is_money_fact(k)
+                    else f"  {k} = {num}")
     return "\n".join(keep)
 
 
@@ -636,7 +642,14 @@ def code_built_sections(report: Dict[str, Any], snap) -> List[Dict[str, Any]]:
 
 # ────────────────────────────────────────────────────────── MCP synthesis
 
-async def _call_mcp(sections: List[Dict[str, Any]], title: str) -> Dict[str, Any]:
+def _narrator(locale: str) -> str:
+    """The single voice this presentation is read in."""
+    from .voices import narrator
+    return narrator(locale)
+
+
+async def _call_mcp(sections: List[Dict[str, Any]], title: str,
+                    locale: str = "en") -> Dict[str, Any]:
     from mcp import ClientSession
     from mcp.client.streamable_http import streamablehttp_client
 
@@ -645,13 +658,18 @@ async def _call_mcp(sections: List[Dict[str, Any]], title: str) -> Dict[str, Any
             await session.initialize()
             result = await session.call_tool(
                 "generate_video_from_sections",
-                {"sections": sections, "title": title})
+                {"sections": sections, "title": title,
+                 # One narrator, and deliberately the podcast's HOST
+                 # voice: a client who plays both hears the same
+                 # person introduce their report twice.
+                 "voice": _narrator(locale)})
             return result.structuredContent or {}
 
 
-def synthesize(sections: List[Dict[str, Any]], title: str) -> Tuple[Optional[str], str]:
+def synthesize(sections: List[Dict[str, Any]], title: str,
+               locale: str = "en") -> Tuple[Optional[str], str]:
     try:
-        out = asyncio.run(_call_mcp(sections, title))
+        out = asyncio.run(_call_mcp(sections, title, locale))
     except BaseException as exc:
         return None, _explain(exc)
     url = out.get("video_url") or out.get("url")
@@ -713,7 +731,8 @@ def generate_for_report(anthropic_client, model: str, report: Dict[str, Any],
                 last = f"gave up after 20 minutes ({last})"
                 break
             t0 = time.time()
-            url, why = synthesize(sections, title)
+            url, why = synthesize(sections, title,
+                                  report.get("language") or "en")
             if url:
                 return {"video_url": url, "sections": sections,
                         "grounding": detail, "attempts": i + 1,

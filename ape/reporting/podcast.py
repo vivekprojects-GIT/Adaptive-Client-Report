@@ -36,11 +36,11 @@ figures and then check its work with a Dutch parser, and "18,730.97" is
 read as 18730 and 97 — two numbers, neither in the snapshot — so every
 attempt is rejected for a mistake nobody made.
 
-The VOICE is a separate, real limitation. The TTS engine (piper) ships
-en_US and en_GB voices only, so non-English audio is an English voice
-reading foreign words. The script shown on the page is genuinely in the
-client's language; the narration is approximate, and `language_note` says
-so rather than letting them wonder. `SPOKEN_LOCALES` is where that changes
+The VOICE follows the language too. Piper serves 51 languages, downloaded
+on demand, and `voices.py` picks a host and a guest for each — two
+distinct speakers wherever the catalogue has them. Seven of our locales
+have no voice at all and fall back to English audio; `language_note` says
+so for those, and stays quiet when the audio is genuinely theirs.
 when the engine gains voices.
 
 ═══════════════════════════════════════════════════════════════════════════
@@ -59,7 +59,7 @@ import threading
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
-from .grounding import derived_facts, validate_block
+from .grounding import derived_facts, validate_block, is_money_fact, report_currency
 
 MCP_URL = "https://podcast-mcp-yr3m.onrender.com/mcp"
 
@@ -74,7 +74,10 @@ MCP_URL = "https://podcast-mcp-yr3m.onrender.com/mcp"
 MCP_TIMEOUT_SECONDS = 240
 
 # Languages we can actually SPEAK. Everything else gets an English script.
-SPOKEN_LOCALES = {"en"}
+# Languages we can actually SPEAK. Derived from the voice table rather
+# than maintained beside it — the two drifting apart is exactly how a
+# client gets told their audio is English while a Dutch voice reads it.
+from .voices import SPOKEN_LOCALES  # noqa: E402
 
 PRIVACY_NOTE = (
     "Audio is rendered by an external service. The dialogue script, which "
@@ -216,6 +219,9 @@ whole script.
 - Write figures EXACTLY as they appear in the fact sheet, with digits: \
 2.76%, £1,249,327.22. Do NOT spell numbers out as words and do NOT round, \
 re-punctuate or convert them. They are converted for speech afterwards.
+- The currency symbol is PART of the figure. Copy it exactly as the fact \
+sheet writes it, and never swap it for another currency or name a different \
+one in words. These amounts are not dollars or euros unless the sheet says so.
 - Do not compute new numbers. If it is not in the fact sheet, do not say it.
 - No advice, no predictions, no recommendations. Explain what happened.
 
@@ -225,6 +231,7 @@ financial professional."""
 
 
 def _fact_sheet(facts: Dict[str, float], locale_code: str = "en") -> str:
+    cur = report_currency()
     keep = []
     for k, v in sorted(facts.items()):
         # Handing over every derived fact — hundreds once subset sums exist
@@ -249,7 +256,12 @@ def _fact_sheet(facts: Dict[str, float], locale_code: str = "en") -> str:
         # the way their own statements are.
         from .locales import format_number
         dp = 2
-        keep.append(f"  {k} = {format_number(float(v), locale_code, dp)}")
+        num = format_number(float(v), locale_code, dp)
+        # The symbol rides WITH the figure rather than sitting in a
+        # header line, because the model copies figures one at a time
+        # and a header is the first thing a long prompt loses track of.
+        keep.append(f"  {k} = {cur}{num}" if is_money_fact(k)
+                    else f"  {k} = {num}")
     return "\n".join(keep)
 
 
@@ -422,16 +434,28 @@ def _keep_dialogue(text: str) -> str:
 
 # ────────────────────────────────────────────────────────── MCP synthesis
 
-async def _call_mcp(script: str, title: str) -> Dict[str, Any]:
+def _voice_pair(locale: str):
+    """(host, guest) for this report's language."""
+    from .voices import pair
+    return pair(locale)
+
+
+async def _call_mcp(script: str, title: str,
+                    locale: str = "en") -> Dict[str, Any]:
     from mcp import ClientSession
     from mcp.client.streamable_http import streamablehttp_client
 
     async with streamablehttp_client(MCP_URL, timeout=MCP_TIMEOUT_SECONDS) as (r, w, _):
         async with ClientSession(r, w) as session:
             await session.initialize()
+            host, guest = _voice_pair(locale)
             result = await session.call_tool(
                 "generate_podcast_from_script",
-                {"script": script, "title": title},
+                {"script": script, "title": title,
+                 # Omitting these is what made every language sound
+                 # English: the server falls back to its own
+                 # en_US defaults when they are absent or blank.
+                 "host_voice": host, "guest_voice": guest},
             )
             return result.structuredContent or {}
 
@@ -503,7 +527,8 @@ def _unpack(out: Dict[str, Any]) -> Tuple[Optional[str], str]:
     return url, "ok"
 
 
-async def synthesize_async(script: str, title: str) -> Tuple[Optional[str], str]:
+async def synthesize_async(script: str, title: str,
+                           locale: str = "en") -> Tuple[Optional[str], str]:
     """Render a spoken script to an MP3 URL, from inside an event loop.
 
     This is the form the API uses. asyncio.run() raises outright when there
@@ -511,12 +536,13 @@ async def synthesize_async(script: str, title: str) -> Tuple[Optional[str], str]
     sync-only version of this could never have worked from an endpoint.
     """
     try:
-        return _unpack(await _call_mcp(script, title))
+        return _unpack(await _call_mcp(script, title, locale))
     except BaseException as exc:          # ExceptionGroup is not an Exception
         return None, _explain(exc)
 
 
-def synthesize(script: str, title: str) -> Tuple[Optional[str], str]:
+def synthesize(script: str, title: str,
+               locale: str = "en") -> Tuple[Optional[str], str]:
     """Same, for callers with no event loop — scripts, tests, a CLI."""
     try:
         asyncio.get_running_loop()
@@ -526,7 +552,7 @@ def synthesize(script: str, title: str) -> Tuple[Optional[str], str]:
         raise RuntimeError("synthesize() called from an event loop; "
                            "await synthesize_async() instead")
     try:
-        return _unpack(asyncio.run(_call_mcp(script, title)))
+        return _unpack(asyncio.run(_call_mcp(script, title, locale)))
     except BaseException as exc:
         return None, _explain(exc)
 
@@ -596,7 +622,7 @@ def generate_for_report(anthropic_client, model: str, report: Dict[str, Any],
                 last = f"gave up after 15 minutes ({last})"
                 break
             t0 = time.time()
-            url, why = synthesize(spoken, title)
+            url, why = synthesize(spoken, title, lang)
             if url:
                 return {"audio_url": url, "script": script, "spoken": spoken,
                         "grounding": detail, "attempts": i + 1,

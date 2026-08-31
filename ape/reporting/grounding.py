@@ -556,3 +556,60 @@ def validate_report(report: Dict[str, Any], facts: Dict[str, float],
         else:
             v.accepted.append(block)
     return v
+
+
+# ───────────────────────────────────────── which facts are money
+
+# WHY THIS EXISTS
+#
+# The fact sheet used to hand the writer bare numbers — portfolio_value =
+# 2,193,278.93 — and say nothing about what they were denominated in. In
+# English that was invisible: the model wrote "£2,193,278.93" because the
+# surrounding prompt was English and pounds were the obvious guess.
+#
+# In another language the guess stopped being obvious. A Japanese script
+# called one portfolio ポンド in the podcast and ドル in the presentation;
+# an Arabic script called the same money دولار. The written report says £.
+#
+# The grounding gate could not catch any of it, and that is the part worth
+# understanding. The gate checks FIGURES, and 2,193,278.93 matches the
+# snapshot whatever currency word happens to stand next to it — so a script
+# that quietly redenominated a client's portfolio passed on attempt one.
+#
+# That breaks the rule in the one direction it must never break: the
+# language changed WHAT the number meant, not merely how it was worded. So
+# the sheet now states the currency and the prompt pins it.
+_MONEY_PREFIXES = (
+    "fees.", "flows.", "cash.", "hold.",
+    "derived.value_alloc.", "derived.group_value_",
+)
+_MONEY_EXACT = frozenset({
+    "portfolio_value", "derived.fees_total",
+    "derived.net_flow", "derived.net_flow_abs",
+})
+
+
+def is_money_fact(key: str) -> bool:
+    """True when this fact is a currency amount rather than a percentage.
+
+    A prefix alone is not enough to decide: `fees.drag_pct` sits under
+    `fees.` and is a percentage, while `fees.total` beside it is money. So
+    anything naming itself a percent is ruled out first, and the rest is an
+    explicit list — no inference from the value, which cannot tell 7,457.15
+    pounds from 7,457.15 percent.
+    """
+    if "pct" in key:
+        return False
+    if key in _MONEY_EXACT:
+        return True
+    return key.startswith(_MONEY_PREFIXES)
+
+
+def report_currency() -> str:
+    """The symbol every report is denominated in.
+
+    One constant, imported here rather than re-declared, so the fact sheet
+    can never disagree with the document the client is reading.
+    """
+    from .generate import _CURRENCY
+    return _CURRENCY
