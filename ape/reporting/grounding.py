@@ -143,7 +143,45 @@ def extract_numbers(text: str,
     pattern = _NUMBER if loc.code == "en" else _number_re_for(loc.code)
 
     out: List[Tuple[float, int, str, int]] = []
-    for m in pattern.finditer(text or ""):
+    src = text or ""
+    for m in pattern.finditer(src):
+        # DIGITS GLUED TO A LETTER ARE AN IDENTIFIER, NOT A FIGURE.
+        #
+        # "SE0019338004" is an ISIN and "P471282222" a portfolio number,
+        # and this loop was extracting 19338004 and 471282222 out of them
+        # as figures. Neither is in any allowlist, so every answer that
+        # honestly quoted an identifier off the page was rejected as
+        # ungrounded, and the client saw a decline for asking what a code
+        # on their own statement was.
+        #
+        # A letter immediately BEFORE the match marks it (unless the match
+        # opens with a currency symbol, which legitimately follows a word
+        # when a space was dropped). A letter immediately AFTER does too -
+        # the recognised multiplier suffixes (k, M, bn, million...) are
+        # consumed INSIDE the match, so a trailing letter here is the rest
+        # of a code, not a unit.
+        # The pattern's \s* can swallow a LEADING space into the match, so
+        # m.start() may sit one character early; the guard anchors on the
+        # first non-space character or it reads the previous word's last
+        # letter and rejects every figure in the sentence.
+        start, end = m.start(), m.end()
+        cs = start
+        while cs < end and src[cs].isspace():
+            cs += 1
+        before = src[cs - 1] if cs > 0 else ""
+        # And the trailing \s* before the optional suffix swallows the
+        # space AFTER a bare number, so the raw end can point at the next
+        # word. Trim it back or "£3,123.32 in fees" reads its after-char
+        # as the i of "in" and a real fee is rejected as an identifier.
+        ce = end
+        while ce > cs and src[ce - 1].isspace():
+            ce -= 1
+        after = src[ce] if ce < len(src) else ""
+        opens_with_currency = cs < end and src[cs] in "£$€"
+        if before.isalpha() and not opens_with_currency:
+            continue
+        if after.isalpha():
+            continue
         raw_num = m.group("num")
         suffix = (m.group("suffix") or "").strip()
         val = to_float(raw_num, loc.code)
@@ -297,12 +335,29 @@ def derived_facts(facts: Dict[str, float]) -> Dict[str, float]:
     # because rejections are inconvenient — the fix for a wrong figure is
     # still to reject it.
     import itertools as _it
-    alloc_items = [(k, v) for k, v in facts.items()
-                   if k.startswith("alloc.") and v is not None]
-    if len(alloc_items) > 1:
+    # Group sums for every share-of-portfolio FAMILY, not only asset
+    # classes. A writer captioning the currency chart summed the top three
+    # currencies - 46.72 + 24.86 + 22.61 = 94.19% - which is honest
+    # arithmetic over figures on the page, and the gate rejected it because
+    # only alloc.* had subset sums. Families never mix: an alloc weight is
+    # never summed with a currency share, since a percentage of one
+    # breakdown added to a percentage of another is exactly the nonsense
+    # the families exist to prevent.
+    #
+    # The member cap is load-bearing. Measured earlier: subset sums over 30
+    # entries push the gate's false-accept rate to ~88% because the sums
+    # densely cover 0-100. At 12 members (286 pairs+triples) the space
+    # stays sparse; a family larger than that gets NO group sums and a
+    # summed claim over it is rejected, which is the safe failure.
+    _FAMILIES = ("alloc.", "ccy.", "currency_share_pct.", "sector.")
+    for _fam in _FAMILIES:
+        fam_items = [(k, v) for k, v in facts.items()
+                     if k.startswith(_fam) and v is not None]
+        if not 1 < len(fam_items) <= 12:
+            continue
         for n in (2, 3):
-            for combo in _it.combinations(alloc_items, n):
-                names = "+".join(k[6:] for k, _ in combo)
+            for combo in _it.combinations(fam_items, n):
+                names = "+".join(k[len(_fam):] for k, _ in combo)
                 total = sum(v for _, v in combo)
                 put(f"derived.group_{names}", total)
                 if pv is not None:
