@@ -1212,6 +1212,30 @@ async def send_report(report_id: str, request: Request):
         body = {}
     base = body.get("base_url") or str(request.base_url).rstrip("/")
 
+    # Start the audio the moment the link goes out, not when the client
+    # opens it.
+    #
+    # Generation already kicks one off, but send is the deadline that
+    # matters: from here a client can click the link at any second, and
+    # anything not started by now is something they wait for. This also
+    # covers the report that was generated days ago, or whose first render
+    # failed — by the time the email lands, a fresh attempt is running.
+    #
+    # Idempotent. The in-flight guard drops a duplicate, and a podcast that
+    # already exists is found in the database and never re-rendered.
+    try:
+        if not _podcast_from_db(report_id):
+            from .db.session import init_db as _init, session_scope as _scope
+            from .db.repository import load_snapshot as _load
+            _init()
+            with _scope() as _db:
+                _snap = _load(_db, rep["client_id"], rep.get("period"))
+            if _snap is not None:
+                _start_podcast_job(report_id, rep, _snap)
+    except Exception as exc:            # sending must never fail for audio
+        print(f"[podcast] could not start job on send for {report_id}: "
+              f"{type(exc).__name__}: {str(exc)[:100]}", flush=True)
+
     url = report_url(report_id, rep["client_id"], base_url=base)
     try:
         result = get_provider(body.get("provider")).send_report_ready(
@@ -1538,8 +1562,18 @@ _PODCAST_JOBS: Dict[str, bool] = {}
 _PODCAST_JOBS_LOCK = __import__("threading").Lock()
 
 
+def _pregenerate_disabled(os_module) -> bool:
+    """Whether to SKIP building audio at report-generation time.
+
+    Only an explicit off switch counts. A client click always renders
+    regardless — this governs the head start, not the feature.
+    """
+    return (os_module.getenv("APE_PODCAST_PREGENERATE", "1").strip().lower()
+            in ("0", "false", "no", "off"))
+
+
 def _start_podcast_job(rid: str, report: Dict[str, Any], snap,
-                       minutes: int = 2) -> None:
+                       minutes: int = 2, on_demand: bool = False) -> None:
     """Render this report's podcast in the background. One job per report.
 
     Started by a client clicking Listen, or at generation time when
@@ -1555,6 +1589,25 @@ def _start_podcast_job(rid: str, report: Dict[str, Any], snap,
     import os as _os
     api_key = _os.getenv("ANTHROPIC_API_KEY", "")
     if not api_key:
+        return
+
+    # ON by default: the audio is built alongside the report, so it is
+    # already there when the client opens their link. Two minutes of
+    # waiting moves from the client, who is standing in front of it, to a
+    # background thread nobody is watching.
+    #
+    # "In parallel" means alongside the report, NOT many renders at once.
+    # The renderer is a single worker: firing thirteen at it would make
+    # twelve of them 502. _RENDER_LOCK queues them, so a batch of thirteen
+    # is thirteen renders in a row, not a stampede.
+    #
+    # Set APE_PODCAST_PREGENERATE=0 to go back to building on the click —
+    # worth it if most clients never listen, since this spends a render on
+    # every report whether or not anyone plays it.
+    # The switch governs the HEAD START only. A client who clicked Listen
+    # asked for this directly and must always get it, whatever the default
+    # is set to.
+    if not on_demand and _pregenerate_disabled(_os):
         return
 
     with _PODCAST_JOBS_LOCK:
@@ -1774,7 +1827,8 @@ async def report_podcast(report_id: str, request: Request):
     # So the work moves to a background job that can retry patiently, and
     # the page just asks "ready yet?". The worst a client sees is that
     # their podcast is still being prepared.
-    _start_podcast_job(report_id, report, snap, minutes=minutes)
+    _start_podcast_job(report_id, report, snap, minutes=minutes,
+                       on_demand=True)
     return {"status": "working"}
 
 

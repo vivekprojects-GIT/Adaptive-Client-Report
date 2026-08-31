@@ -159,6 +159,16 @@ __DOC_CSS__
  .btn:hover{border-color:#94a3b8}
  .btn[disabled]{opacity:.65;cursor:default}
  .bar-actions{display:flex;gap:8px;align-items:center}
+ /* Quiet, not shouty: the client did not ask for a progress bar, they
+    asked for a podcast. This just says the thing is on its way. */
+ .podstat{font-size:11.5px;color:#64748b;white-space:nowrap}
+ .podstat::before{content:"";display:inline-block;width:7px;height:7px;
+   margin-right:6px;border-radius:50%;background:#3b82f6;
+   animation:podpulse 1.4s ease-in-out infinite;vertical-align:middle}
+ @keyframes podpulse{0%,100%{opacity:.25}50%{opacity:1}}
+ @media (prefers-reduced-motion: reduce){
+   .podstat::before{animation:none;opacity:.8}
+ }
  /* The player sits with the document, not in the chat rail: it is a way to
     consume THIS report, not a conversation about it. */
  .podwrap{max-width:760px;margin:0 auto 14px;padding:12px 14px;
@@ -305,6 +315,10 @@ __DOC_CSS__
       <div class="sub">Click any section to ask about it, or select the
         exact words you mean.</div></div>
     <div class="bar-actions">
+      <!-- The progress lives out here, beside the button. The player panel
+           stays hidden until there is something to play: an empty audio
+           element with a dead scrubber looks broken, not busy. -->
+      <span id="podstat" class="podstat" hidden></span>
       <button class="btn" id="pod">&#127911; Listen</button>
       <button class="btn" id="dl">Download PDF</button>
     </div>
@@ -429,7 +443,10 @@ document.getElementById("dl").onclick = function(){
     audio.src = url;
     note.textContent = j.note || "";
     pre.textContent = j.script || "";
-    wrap.hidden = false;
+    wrap.hidden = false;                   // only now, with audio to play
+    if (timer) { clearInterval(timer); timer = null; }
+    var st = document.getElementById("podstat");
+    if (st) { st.hidden = true; st.textContent = ""; }
     btn.textContent = "🎧 Listen";
     btn.disabled = false;
   }
@@ -456,25 +473,34 @@ document.getElementById("dl").onclick = function(){
   // can listen yet. Worst case this says it did not work and offers the
   // button again.
   var timer = null;
+  var stat = document.getElementById("podstat");
+
   function waitFor(t0){
     if (timer) clearInterval(timer);
     btn.disabled = true;
-    wrap.hidden = false;
-    pre.textContent = "";
-    timer = setInterval(function(){
+    // The panel stays HIDDEN while this runs. Showing an audio element
+    // with no source gives the client a dead scrubber and a greyed play
+    // button, which reads as broken rather than as working.
+    wrap.hidden = true;
+    if (stat) stat.hidden = false;
+
+    var paint = function(){
       var s = Math.round((Date.now() - t0) / 1000);
-      btn.textContent = "Making your podcast… " + s + "s";
-      note.textContent = (s < 25)
-        ? "Writing the script…"
-        : (s < 70 ? "Checking every figure against your report…"
-                  : "Recording the audio — this usually takes a couple of minutes.");
-    }, 1000);
+      btn.textContent = "Preparing… " + s + "s";
+      if (!stat) return;
+      stat.textContent = (s < 25)
+        ? "Writing the script"
+        : (s < 70 ? "Checking every figure against your report"
+                  : "Recording the audio — a couple of minutes");
+    };
+    paint();
+    timer = setInterval(paint, 1000);
 
     var stop = function(msg){
       clearInterval(timer); timer = null;
       btn.disabled = false;
       btn.textContent = "🎧 Listen";
-      note.textContent = msg || "";
+      if (stat) { stat.textContent = msg || ""; stat.hidden = !msg; }
     };
 
     (function ask(){
