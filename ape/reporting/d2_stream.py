@@ -227,7 +227,7 @@ def stream_answer(
     from ape.reporting.locales import get as _get_locale
     loc = _get_locale(getattr(snap, "language", None))
 
-    facts_text, allowlist = _facts_for_scope(snap, block)
+    facts_text, allowlist = _facts_for_scope(snap, block, report_json)
     if selected_text:
         facts_text += f'\nHIGHLIGHTED WORDS (what they are pointing at, not a limit): "{selected_text[:400]}"'
 

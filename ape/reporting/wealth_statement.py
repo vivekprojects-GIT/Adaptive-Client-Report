@@ -264,9 +264,12 @@ def currency_split(s, n: int) -> Dict[str, Any]:
     """Currency exposure — eight currencies, each position carrying its own."""
     return {
         "block_id": f"currency_split_{n:02d}",
+        # Key names are the only documentation the model gets. "ccy.EUR =
+        # 46.72" left it unable to tell a share from a rate, so it declined
+        # currency questions with the figures sitting right in front of it.
         "extra_facts": {
-            **{f"ccy.{c}": p for c, p in CURRENCIES},
-            **{f"ccy_value.{c}": round(s.portfolio_value * p / 100.0, 2)
+            **{f"currency_share_pct.{c}": p for c, p in CURRENCIES},
+            **{f"currency_value.{c}": round(s.portfolio_value * p / 100.0, 2)
                for c, p in CURRENCIES},
         },
         "type": "currency_split",
@@ -513,6 +516,29 @@ def r_sector_analysis(d: Dict[str, Any]) -> str:
         f'{regions}{body}'
         f'<tr class="wtot"><td class="l">{_esc(_T("Total equities"))}</td>'
         f'<td>{_money(d.get("total", 0))}</td><td></td></tr></table></div>')
+
+
+def recompute_facts(snap, block_type: str) -> Dict[str, float]:
+    """The facts a statement block of this type would declare, rebuilt.
+
+    For reports stored before blocks persisted their figures: the position
+    book is seeded by client id, so rebuilding the block yields the same
+    numbers the stored report displays. This is only possible BECAUSE the
+    generation is deterministic - a random book would make the recomputed
+    facts disagree with the page, which would be worse than declining.
+    """
+    builders = {"asset_class_table": asset_classes,
+                "currency_split": currency_split,
+                "holdings_by_sector": holdings_by_sector,
+                "sector_analysis": sector_analysis}
+    fn = builders.get(block_type)
+    if fn is None:
+        return {}
+    try:
+        built = fn(snap, 1)
+        return dict((built or {}).get("extra_facts") or {})
+    except Exception:
+        return {}
 
 
 RENDERERS: Dict[str, Callable[[Dict[str, Any]], str]] = {

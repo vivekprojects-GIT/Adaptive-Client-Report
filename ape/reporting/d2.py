@@ -393,7 +393,9 @@ def _money(key: str) -> str:
 
 
 def _facts_for_scope(snap: ClientSnapshot,
-                     block: Optional[Dict]) -> Tuple[str, Dict[str, float]]:
+                     block: Optional[Dict],
+                     report: Optional[Dict] = None,
+                     ) -> Tuple[str, Dict[str, float]]:
     """(prompt text, allowlist) for either one block's scope or the whole
     report. The allowlist is what the answer's numbers are checked against
     afterwards — same derived arithmetic as report validation."""
@@ -431,6 +433,15 @@ def _facts_for_scope(snap: ClientSnapshot,
         block_facts = (block.get("extra_facts")
                        or (block.get("content_json") or {}).get("_facts")
                        or {})
+        # A report stored before blocks persisted their figures has rows
+        # without _facts, and highlighting one declined on numbers the page
+        # was displaying. The statement builders are deterministic - the
+        # book is seeded by client id - so rebuilding yields the same
+        # figures the stored report shows.
+        if not block_facts:
+            from .wealth_statement import recompute_facts
+            block_facts = recompute_facts(
+                snap, block.get("block_type") or block.get("type") or "")
         if isinstance(block_facts, dict):
             for k, v in block_facts.items():
                 try:
@@ -483,9 +494,43 @@ def _facts_for_scope(snap: ClientSnapshot,
         # computed from its parts is still this section's own number.
         return "\n".join(lines), derived_facts(scoped)
 
-    for k, v in snap.numeric_facts().items():
+    # FIGURES THE BLOCKS THEMSELVES DECLARE.
+    #
+    # The snapshot knows asset classes. It does not know sectors,
+    # currencies or individual positions - those are computed by the
+    # blocks that draw them. Without this, a client asking about a
+    # sector, having not thought to highlight the sector table first,
+    # is told the report does not contain one while it sits two
+    # sections above.
+    #
+    # They join the allowlist as well as the prompt, so a figure in the
+    # answer is still rejected unless it is one of these or a snapshot
+    # fact. The checkable set grows to match what the document shows;
+    # nothing becomes unchecked.
+    whole = dict(snap.numeric_facts())
+    for _b in ((report or {}).get('blocks') or []):
+        _extra = (_b.get('extra_facts')
+                  or (_b.get('content_json') or {}).get('_facts')
+                  or (_b.get('data') or {}).get('_facts')
+                  or {})
+        if not _extra:
+            from .wealth_statement import recompute_facts
+            _extra = recompute_facts(
+                snap, _b.get('block_type') or _b.get('type') or '')
+        if isinstance(_extra, dict):
+            for _k, _v in _extra.items():
+                try:
+                    whole.setdefault(str(_k), float(_v))
+                except (TypeError, ValueError):
+                    continue
+
+    for k, v in whole.items():
         lines.append(f"{k} = {_money(k)}{v}")
-    return "\n".join(lines), all_facts
+    # The allowlist covers the merged set, so a figure a block
+    # declares is groundable in the answer rather than merely
+    # visible in the prompt - showing the model a sector weight it
+    # is then forbidden to quote is worse than not showing it.
+    return "\n".join(lines), derived_facts(whole)
 
 
 # Sentences in which the model volunteers that it cannot draw. It has now
@@ -1031,7 +1076,7 @@ def answer_question(
     from ape.reporting.locales import get as _get_locale
     loc = _get_locale(getattr(snap, "language", None))
 
-    facts_text, allowlist = _facts_for_scope(snap, block)
+    facts_text, allowlist = _facts_for_scope(snap, block, report_json)
     if selected_text:
         facts_text += f'\nHIGHLIGHTED WORDS (what they are pointing at, not a limit): "{selected_text[:400]}"'
 
