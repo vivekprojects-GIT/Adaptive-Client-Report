@@ -385,6 +385,94 @@ def build_sections(anthropic_client, model: str, report: Dict[str, Any],
     return None, detail
 
 
+def _translate_sections(anthropic_client, model: str,
+                        sections: List[Dict[str, Any]], locale_code: str,
+                        snap) -> Optional[List[Dict[str, Any]]]:
+    """Translate code-built slides, then check them again.
+
+    Returns None on any doubt. English slides are visibly imperfect; slides
+    whose figures moved in translation would be wrong, and wrong is the one
+    thing this cannot ship.
+
+    CHART VALUES ARE NEVER TOUCHED. Only the words are sent for
+    translation; the numeric data is carried across from the original by
+    code, so a translation step has no way to alter a figure a slide draws.
+    """
+    from .locales import get as _get_locale
+    loc = _get_locale(locale_code)
+    latin = loc.code in _LATIN_SCRIPT
+
+    payload = [{"title": s.get("title", ""),
+                "narration": s.get("narration", ""),
+                "key_points": list(s.get("key_points") or [])}
+               for s in sections]
+
+    try:
+        resp = anthropic_client.messages.create(
+            model=model, max_tokens=3000,
+            system=(
+                f"Translate this slide deck into {loc.prompt_name}. Return "
+                "ONLY a JSON array with the same length and the same keys: "
+                "title, narration, key_points.\n"
+                "- Reproduce every number, currency symbol and percent sign "
+                "EXACTLY as written. Do not reformat or re-punctuate them.\n"
+                "- Translate only the words.\n"
+                + ("" if latin else
+                   "- Keep TITLES and KEY_POINTS in English; only translate "
+                   "narration. The slide renderer cannot draw this script "
+                   "and would show empty boxes.")),
+            messages=[{"role": "user",
+                       "content": json.dumps(payload, ensure_ascii=False)}],
+        )
+        raw = "".join(getattr(c, "text", "") for c in resp.content)
+    except Exception as exc:
+        _log_fetch(f"[video] slide translation failed: "
+                   f"{type(exc).__name__}: {str(exc)[:100]}")
+        return None
+
+    text = raw.strip()
+    fence = re.search(r"```(?:json)?\s*(.+?)```", text, re.S)
+    if fence:
+        text = fence.group(1).strip()
+    start, end = text.find("["), text.rfind("]")
+    if start < 0 or end <= start:
+        return None
+    try:
+        got = json.loads(text[start:end + 1])
+    except Exception:
+        return None
+    if not isinstance(got, list) or len(got) != len(sections):
+        return None
+
+    out = []
+    for original, new in zip(sections, got):
+        if not isinstance(new, dict):
+            return None
+        merged = dict(original)          # keeps `visual` and its numbers
+        merged["title"] = new.get("title") or original.get("title", "")
+        merged["narration"] = new.get("narration") or original.get("narration", "")
+        pts = new.get("key_points")
+        if isinstance(pts, list) and pts:
+            merged["key_points"] = [str(p) for p in pts]
+        out.append(merged)
+
+    facts = derived_facts(snap.numeric_facts())
+    prose = "\n".join(
+        " ".join([str(s.get("title", "")), str(s.get("narration", ""))]
+                 + [str(p) for p in (s.get("key_points") or [])]) for s in out)
+    block = {"block_id": "presentation", "block_type": "narrative",
+             "source_refs": sorted(facts.keys())[:40] or ["portfolio_value"],
+             "data": {"text": prose}}
+    bad = [f for f in validate_block(block, facts, labels=snap.label_terms(),
+                                     locale=loc.code)
+           if f.kind == "ungrounded_number"]
+    if bad:
+        _log_fetch("[video] translated slides rejected, keeping English "
+                   f"({'; '.join(f.detail for f in bad[:2])[:90]})")
+        return None
+    return out
+
+
 def _parse_sections(raw: str) -> Optional[List[Dict[str, Any]]]:
     """Pull the sections array out of a model reply."""
     text = raw.strip()
@@ -583,6 +671,20 @@ def generate_for_report(anthropic_client, model: str, report: Dict[str, Any],
     if not sections:
         sections = code_built_sections(report, snap)
         detail = f"code-built ({detail})"
+
+        # code_built_sections writes English. On a Dutch report that ships
+        # English slides beside a Dutch document — the same fault the
+        # podcast had, and this is where it was still living. Translate and
+        # RE-CHECK; a translation that moved a figure is rejected and the
+        # English original ships, which is visibly imperfect rather than
+        # quietly wrong.
+        lang = report.get("language") or "en"
+        if lang != "en":
+            translated = _translate_sections(anthropic_client, model,
+                                             sections, lang, snap)
+            if translated:
+                sections = translated
+                detail += " + translated"
 
     # The budget is applied AFTER the gate, deliberately. Trimming only
     # removes whole sentences, so what survives is a subset of text that
