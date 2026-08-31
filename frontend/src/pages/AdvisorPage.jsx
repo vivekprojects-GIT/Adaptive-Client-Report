@@ -268,10 +268,20 @@ export default function AdvisorPage() {
     setStatus((st) => ({ ...st, email: "running" }));
     try {
       const r = await api.sendReport(reportId);
-      setStatus((st) => ({ ...st, review: "done", email: "done", delivery: r }));
-      notify(r.provider === "file"
-        ? `Written to ${r.path.split(/[\/]/).pop()} — open it in a mail client`
-        : `Sent to ${r.to} via ${r.provider}`);
+      // The report can be finished and approved while the EMAIL fails —
+      // an unauthorised mail provider, most often. Saying "done" then
+      // would tell an advisor their client had been written to when
+      // nobody had, which is the one outcome worth being careful about.
+      if (r.sent === false) {
+        setStatus((st) => ({ ...st, review: "done", email: "failed", delivery: r }));
+        notify(`Not emailed — ${r.remedy || r.error}. The link below still works.`,
+               "error");
+      } else {
+        setStatus((st) => ({ ...st, review: "done", email: "done", delivery: r }));
+        notify(r.provider === "file"
+          ? `Written to ${r.path.split(/[\/]/).pop()} — open it in a mail client`
+          : `Sent to ${r.to} via ${r.provider}`);
+      }
     } catch (e) {
       setStatus((st) => ({ ...st, email: "failed" }));
       notify("Send failed: " + e.message, "error");
@@ -656,9 +666,18 @@ export default function AdvisorPage() {
                     <a href={status.delivery.url} target="_blank" rel="noreferrer">
                       open the client link &rarr;
                     </a>
+                    {status.delivery.sent === false && (
+                      <div className="adv-import warn" style={{ margin: "8px 0 0" }}>
+                        <b>The email did not go out.</b> {status.delivery.remedy}
+                        <div className="adv-sub" style={{ marginTop: 4 }}>
+                          {status.delivery.error}
+                        </div>
+                      </div>
+                    )}
                     <div className="adv-sub">
-                      This is the exact link the client receives. It carries a
-                      signed token and expires.
+                      {status.delivery.sent === false
+                        ? "The report and this link are ready — you can send the link yourself."
+                        : "This is the exact link the client receives. It carries a signed token and expires."}
                     </div>
                   </div>
                 )}

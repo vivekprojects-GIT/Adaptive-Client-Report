@@ -1250,7 +1250,32 @@ async def send_report(report_id: str, request: Request):
             period=rep.get("period", ""),
         )
     except Exception as exc:
-        raise HTTPException(502, f"email failed: {exc}")
+        # A MAIL PROBLEM IS NOT A FAILED REPORT.
+        #
+        # This raised 502, which an advisor reads as "the system broke" —
+        # and it threw away the two things that were actually fine: the
+        # report is finished and its signed link is valid. Gmail simply
+        # needing a one-time authorisation on this machine should not look
+        # like a server crash, and it should not leave the advisor with
+        # nothing to hand their client.
+        #
+        # So: report it as UNSENT, plainly, with the link and the remedy.
+        # Nothing here pretends the email went — that would be far worse
+        # than an error — but the advisor can still copy the link, and the
+        # audio and video jobs started above are unaffected.
+        detail = str(exc)
+        remedy = ("Run scripts/connect_gmail.py once to authorise this "
+                  "machine, or set EMAIL_PROVIDER=file to write the message "
+                  "to disk instead."
+                  if "token.json" in detail or "gmail" in detail.lower()
+                  else "Check EMAIL_PROVIDER and the provider's credentials.")
+        print(f"[send] {report_id}: email not sent — {detail[:160]}", flush=True)
+        return {"status": "not sent", "sent": False,
+                "provider": (body.get("provider")
+                             or _os_getenv_provider()),
+                "to": rep.get("email", ""), "url": url,
+                "error": detail[:300], "remedy": remedy,
+                "report_id": report_id}
 
     _guard_store().db["ape_report_delivery"].update_one(
         {"report_id": report_id},
@@ -1260,6 +1285,11 @@ async def send_report(report_id: str, request: Request):
         upsert=True,
     )
     return {**result, "report_id": report_id}
+
+
+def _os_getenv_provider() -> str:
+    import os as _os
+    return _os.getenv("EMAIL_PROVIDER", "file")
 
 
 def _first_name(client_id: str) -> str:
