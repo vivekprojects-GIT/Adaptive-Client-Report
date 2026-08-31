@@ -1264,11 +1264,25 @@ async def send_report(report_id: str, request: Request):
         # than an error — but the advisor can still copy the link, and the
         # audio and video jobs started above are unaffected.
         detail = str(exc)
-        remedy = ("Run scripts/connect_gmail.py once to authorise this "
-                  "machine, or set EMAIL_PROVIDER=file to write the message "
-                  "to disk instead."
-                  if "token.json" in detail or "gmail" in detail.lower()
-                  else "Check EMAIL_PROVIDER and the provider's credentials.")
+        low = detail.lower()
+        if "invalid_grant" in low or "expired or revoked" in low:
+            # The commonest Gmail failure here, and the least obvious.
+            # Google expires refresh tokens after SEVEN DAYS while the
+            # OAuth app sits in "Testing", so a setup that worked when it
+            # was made stops silently a week later. Saying "check your
+            # credentials" sends someone hunting for a problem that is not
+            # there — the credentials are fine, the grant simply aged out.
+            remedy = ("The Gmail token has expired. Re-run "
+                      "scripts/connect_gmail.py to refresh it. Google expires "
+                      "these after 7 days while the OAuth app is in Testing — "
+                      "publish the app (Google Auth Platform > Audience) to "
+                      "stop it recurring weekly.")
+        elif "token.json" in low:
+            remedy = ("Run scripts/connect_gmail.py once to authorise this "
+                      "machine, or set EMAIL_PROVIDER=file to write the "
+                      "message to disk instead.")
+        else:
+            remedy = "Check EMAIL_PROVIDER and the provider's credentials."
         print(f"[send] {report_id}: email not sent — {detail[:160]}", flush=True)
         return {"status": "not sent", "sent": False,
                 "provider": (body.get("provider")

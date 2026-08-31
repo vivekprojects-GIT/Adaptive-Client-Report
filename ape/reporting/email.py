@@ -200,7 +200,24 @@ class GmailEmailProvider:
     SCOPES = ["https://www.googleapis.com/auth/gmail.send"]
 
     def __init__(self, token_path: Optional[str] = None):
-        self.token_path = token_path or os.getenv("GMAIL_TOKEN_PATH", "token.json")
+        # ANCHORED TO THE REPO, not to the working directory.
+        #
+        # This defaulted to the bare string "token.json", which Python
+        # resolves against wherever the process happens to have been
+        # started. Run the app from the repo root and Gmail worked; start
+        # it from anywhere else — a service directory, a deploy script, a
+        # different shell — and the very same authorised token became
+        # invisible, reporting "token.json not found — run
+        # scripts/connect_gmail.py", which sends you off to redo an
+        # authorisation that was already done.
+        #
+        # EMAIL_DIR above already does it correctly; this now matches.
+        # An explicit GMAIL_TOKEN_PATH still wins, and a relative one is
+        # resolved against the repo rather than the cwd for the same reason.
+        _root = Path(__file__).resolve().parents[2]
+        raw = token_path or os.getenv("GMAIL_TOKEN_PATH", "token.json")
+        p = Path(raw)
+        self.token_path = str(p if p.is_absolute() else (_root / p))
 
     def _service(self):
         try:
