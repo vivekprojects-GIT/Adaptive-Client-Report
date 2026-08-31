@@ -1683,7 +1683,7 @@ async def report_podcast_status(report_id: str, token: str = "",
     """
     _viewer_auth(report_id, token, request)
 
-    cached = _podcast_from_db(report_id)
+    cached = _podcast_from_disk(report_id)
     if cached:
         return {"status": "ready", **cached}
 
@@ -1707,6 +1707,58 @@ async def report_podcast_status(report_id: str, token: str = "",
 
 
 _VIDEO_JOBS: Dict[str, bool] = {}
+
+# ── MEDIA LIVES IN A FOLDER ─────────────────────────────────────────────
+#
+# data/generated/{report_id}.mp3 and .mp4, beside the report's own HTML and
+# JSON. The file's existence IS the record — there is no separate row to
+# agree with it, so there is no way for the two to disagree.
+#
+# The database columns are still written as a convenience for anything that
+# wants to query media without touching the filesystem, but nothing READS
+# them on the client path. A row saying "ready" while the file is missing
+# would show a client a dead player, and that is precisely the failure a
+# second source of truth invites.
+#
+# The script and the slide sections live in the report's own JSON, which is
+# in the same folder. Clearing a report's media is deleting two files.
+
+def _media_dir() -> Path:
+    d = Path(__file__).resolve().parents[1] / "data" / "generated"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _media_on_disk(report_id: str, ext: str) -> Optional[Path]:
+    """The rendered file, if it is actually there."""
+    p = _media_dir() / f"{report_id}.{ext}"
+    return p if (p.is_file() and p.stat().st_size > 0) else None
+
+
+def _video_from_disk(report_id: str) -> Optional[Dict[str, Any]]:
+    """The stored presentation, or None. The FILE decides."""
+    if _media_on_disk(report_id, "mp4") is None:
+        return None
+    try:
+        pres = (_report_json(report_id).get("presentation") or {})
+    except Exception:
+        pres = {}
+    return {"video_url": f"/r/{report_id}/presentation.mp4",
+            "sections": pres.get("sections") or [],
+            "note": pres.get("note", "")}
+
+
+def _podcast_from_disk(report_id: str) -> Optional[Dict[str, Any]]:
+    """The stored podcast, or None. The FILE decides."""
+    if _media_on_disk(report_id, "mp3") is None:
+        return None
+    try:
+        pod = (_report_json(report_id).get("podcast") or {})
+    except Exception:
+        pod = {}
+    return {"audio_url": f"/r/{report_id}/podcast.mp3",
+            "script": pod.get("script", ""),
+            "note": pod.get("note", "")}
 
 
 def _video_from_db(report_id: str) -> Optional[Dict[str, Any]]:
@@ -1855,7 +1907,7 @@ def _start_media_job(rid: str, report: Dict[str, Any], snap) -> None:
 
     def _run():
         try:
-            if not _video_from_db(rid):
+            if not _video_from_disk(rid):
                 _render_video(rid, report, snap, api_key)
         except Exception as exc:
             print(f"[media] {rid}: video step failed "
@@ -1865,7 +1917,7 @@ def _start_media_job(rid: str, report: Dict[str, Any], snap) -> None:
                 _VIDEO_JOBS.pop(rid, None)
 
         try:
-            if not _podcast_from_db(rid):
+            if not _podcast_from_disk(rid):
                 _render_podcast(rid, report, snap, api_key)
         except Exception as exc:
             print(f"[media] {rid}: audio step failed "
@@ -1882,7 +1934,7 @@ async def report_video_status(report_id: str, token: str = "",
                               request: Request = None):
     """Is the presentation ready yet?"""
     _viewer_auth(report_id, token, request)
-    cached = _video_from_db(report_id)
+    cached = _video_from_disk(report_id)
     if cached:
         return {"status": "ready", **cached}
     legacy = (_report_json(report_id).get("presentation") or {})
@@ -1904,7 +1956,7 @@ async def report_video(report_id: str, request: Request):
     _viewer_auth(report_id, str(body.get("token", "")), request)
     report = _report_json(report_id)
 
-    stored = _video_from_db(report_id)
+    stored = _video_from_disk(report_id)
     if stored:
         return {**stored, "cached": True}
 
@@ -2029,7 +2081,7 @@ async def report_podcast(report_id: str, request: Request):
     # Rendered once, ever. A second click, a second device, a client coming
     # back next week — all of it is a row lookup, not another two minutes
     # and another render nobody should pay for twice.
-    stored = _podcast_from_db(report_id)
+    stored = _podcast_from_disk(report_id)
     if stored:
         return {**stored, "spoken": "", "grounding": "cached", "cached": True}
     legacy = report.get("podcast") or {}

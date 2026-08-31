@@ -179,7 +179,15 @@ __DOC_CSS__
  .poddl{margin-left:auto;font-size:12px;color:#1d4ed8;text-decoration:none}
  .poddl:hover{text-decoration:underline}
  .podwrap audio{width:100%}
- .podwrap video{width:100%;max-height:420px;background:#0f172a;border-radius:6px}
+ /* The video is 1280x720 of SLIDES — text and charts, not faces. Squeezed
+    into the 760px document column it was rendering bullet text at a size
+    nobody would choose to read, which rather defeats a presentation.
+    So the panel breaks out of the column when it is open, and the player
+    fills it. Native fullscreen is available in the controls on top of
+    this; the point here is that it should be legible without it. */
+ #vidwrap{max-width:min(1180px, 96vw)}
+ .podwrap video{width:100%;max-height:min(70vh, 660px);display:block;
+   background:#0f172a;border-radius:6px}
  .podwrap details{margin-top:8px}
  .podwrap summary{font-size:12px;color:#64748b;cursor:pointer}
  .podwrap pre{white-space:pre-wrap;font-size:12px;line-height:1.5;

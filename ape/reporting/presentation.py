@@ -93,12 +93,21 @@ MAX_ATTEMPTS = 3
 # holds it to the number regardless, because "usually" is not a guarantee
 # and the failure mode is a dead job rather than a long one.
 #
-# Roughly 150 words per minute of speech, so ~220 words lands near 90
-# seconds of narration and comfortably inside the 1-3 minute range.
-MAX_SECTIONS = 4
-MAX_WORDS_PER_SECTION = 45
-MAX_TOTAL_WORDS = 220
-MAX_KEY_POINTS = 3
+# Sized from measurement, not caution. Four sections and 67 seconds of
+# narration rendered in 93 seconds with no trouble, and the failures at
+# smaller sizes turned out to be a sleeping instance rather than strain.
+#
+# The first budget was set defensively and it showed: a five-section report
+# became a four-section video that skipped asset allocation. Covering the
+# document is the point of the feature, so the limit sits where the
+# renderer actually struggles rather than where it might.
+#
+# ~150 words per minute, so 340 words is a little under two and a half
+# minutes — inside the 1-3 minute range with room for the slide beats.
+MAX_SECTIONS = 6
+MAX_WORDS_PER_SECTION = 60
+MAX_TOTAL_WORDS = 340
+MAX_KEY_POINTS = 4
 WORDS_PER_MINUTE = 150.0
 
 
@@ -219,13 +228,24 @@ Return ONLY a JSON object:
                "key_points": ["...", "..."],
                "visual": {"type": "bar_chart", "data": {"Label": 1.23}}}]}
 
+COVER THE WHOLE REPORT
+Work through what this client's facts actually contain, in this order, \
+skipping only what is genuinely absent from the fact sheet:
+  1. where the portfolio stands — value, return, risk level
+  2. how it did against the benchmark
+  3. how it is invested — the asset allocation
+  4. what drove the return — the attribution
+  5. what it cost — the fees
+A presentation that leaves out a section the client can see in their \
+written report is worse than no presentation, because they will notice.
+
 LENGTH — A HARD LIMIT, NOT A PREFERENCE
-- EXACTLY 3 or 4 sections. Never more.
-- Each narration is AT MOST 40 words. Two or three sentences.
-- At most 3 key_points per section, a few words each.
-- The whole presentation must be under two minutes when spoken. Anything \
-longer is cut before it is rendered, so write to the limit rather than \
-past it.
+- 5 or 6 sections.
+- Each narration is AT MOST 55 words. Two to four sentences.
+- At most 4 key_points per section, a few words each.
+- The whole presentation must run under two and a half minutes when \
+spoken. Anything longer is cut before it is rendered, so write to the \
+limit rather than past it.
 
 RULES
 - Each section has a title, one short narration paragraph, and key_points.
@@ -412,35 +432,79 @@ def code_built_sections(report: Dict[str, Any], snap) -> List[Dict[str, Any]]:
         pts.append(f"Portfolio value: {cur}{pv:,.2f}")
     if qr is not None:
         pts.append(f"Return this period: {qr:.2f}%")
-    # Kept short by construction. This is the fallback that ships when the
-    # model could not produce a grounded script, so it must already fit the
-    # free tier's budget rather than rely on the trimmer to rescue it.
+    # COVER WHAT THE REPORT COVERS.
+    #
+    # This is not a placeholder. It ships whenever the model's script is
+    # rejected — which happened on the very first real send, over a single
+    # figure — so in practice a client is as likely to watch this as the
+    # model's version, and it was leaving out a whole section of their
+    # report. The written document had five sections; the video had four,
+    # and asset allocation was the one missing.
+    #
+    # Being grounded by construction means length is free here: every
+    # figure is interpolated from the snapshot, so there is nothing to
+    # reject and no reason to be terse.
+    risk = getattr(snap, "risk_level", "") or ""
+    if risk:
+        pts.append(f"Risk level: {risk}")
     sections.append({
         "title": "At a glance",
-        "narration": (f"Here is your {period} review. "
-                      + (f"Your portfolio was valued at {cur}{pv:,.2f}. " if pv is not None else "")
-                      + (f"It returned {qr:.2f}% over the period." if qr is not None else "")),
+        "narration": (f"Here is your {period} portfolio review. "
+                      + (f"Your portfolio was valued at {cur}{pv:,.2f} at the "
+                         f"end of the period. " if pv is not None else "")
+                      + (f"It returned {qr:.2f}% over the quarter. " if qr is not None else "")
+                      + (f"Your portfolio is managed to a {risk.lower()} risk "
+                         f"profile." if risk else "")),
         "key_points": pts or ["Your portfolio review"],
     })
 
     if qr is not None and br is not None:
+        gap = round(abs(qr - br), 2)
+        ahead = qr >= br
+        bench = getattr(snap, "benchmark_name", "") or "the benchmark"
         sections.append({
             "title": "Against your benchmark",
-            "narration": (f"Your portfolio returned {qr:.2f}%, while the "
-                          f"benchmark returned {br:.2f}%."),
-            "key_points": [f"Portfolio: {qr:.2f}%", f"Benchmark: {br:.2f}%"],
+            "narration": (f"Your portfolio returned {qr:.2f}%, while {bench} "
+                          f"returned {br:.2f}%. That puts you "
+                          f"{'ahead by' if ahead else 'behind by'} {gap:.2f}% "
+                          f"over the quarter."),
+            "key_points": [f"Portfolio: {qr:.2f}%", f"Benchmark: {br:.2f}%",
+                           f"{'Ahead' if ahead else 'Behind'} by {gap:.2f}%"],
             "visual": {"type": "bar_chart",
                        "data": {"Portfolio": round(qr, 2),
                                 "Benchmark": round(br, 2)}},
         })
 
+    # ASSET ALLOCATION — the section the first real video left out entirely.
+    allocs = sorted(((k[6:], v) for k, v in f.items() if k.startswith("alloc.")),
+                    key=lambda kv: kv[1], reverse=True)
+    if allocs:
+        top = allocs[:2]
+        sections.append({
+            "title": "How your portfolio is invested",
+            "narration": ("Your largest holding is "
+                          + ", then ".join(f"{n} at {v:.2f}%" for n, v in top)
+                          + ". The rest is spread across the remaining asset "
+                            "classes shown here."),
+            "key_points": [f"{n}: {v:.2f}%" for n, v in allocs[:4]],
+            "visual": {"type": "bar_chart",
+                       "data": {n: round(v, 2) for n, v in allocs[:6]}},
+        })
+
     drivers = sorted(((k[5:], v) for k, v in f.items() if k.startswith("attr.")),
                      key=lambda kv: kv[1], reverse=True)[:4]
     if drivers:
+        worst = sorted(((k[5:], v) for k, v in f.items()
+                        if k.startswith("attr.")), key=lambda kv: kv[1])[0]
+        tail = (f" The largest drag was {worst[0]}, at {worst[1]:.2f}%."
+                if worst[1] < 0 else "")
         sections.append({
             "title": "What drove your return",
-            "narration": ("The largest contributor was "
-                          f"{drivers[0][0]}, adding {drivers[0][1]:.2f}%."),
+            "narration": (f"The largest contributor was {drivers[0][0]}, "
+                          f"adding {drivers[0][1]:.2f}%. "
+                          + (f"{drivers[1][0]} added {drivers[1][1]:.2f}%."
+                             if len(drivers) > 1 else "")
+                          + tail),
             "key_points": [f"{n}: {v:.2f}%" for n, v in drivers],
             "visual": {"type": "bar_chart",
                        "data": {n: round(v, 2) for n, v in drivers}},
@@ -448,13 +512,36 @@ def code_built_sections(report: Dict[str, Any], snap) -> List[Dict[str, Any]]:
 
     total_fees = f.get("fees.total")
     if total_fees is not None:
+        adv, fund = f.get("fees.advisory"), f.get("fees.fund")
+        drag = f.get("fees.drag_pct")
+        pts_f = [f"Total fees: {cur}{total_fees:,.2f}"]
+        if adv is not None:
+            pts_f.append(f"Advisory: {cur}{adv:,.2f}")
+        if fund is not None:
+            pts_f.append(f"Fund expenses: {cur}{fund:,.2f}")
         sections.append({
             "title": "Fees and costs",
             "narration": (f"Total fees for the period came to "
-                          f"{cur}{total_fees:,.2f}. Nothing here is advice — "
-                          f"for anything about your plan, speak to your adviser."),
-            "key_points": [f"Total fees: {cur}{total_fees:,.2f}"],
+                          f"{cur}{total_fees:,.2f}"
+                          + (f", which is {drag:.2f}% of your portfolio value."
+                             if drag is not None else ".")
+                          + " Every return shown is after these have been "
+                            "deducted."),
+            "key_points": pts_f,
         })
+
+    # The disclosure gets its own slide rather than being tacked onto the
+    # end of the fees narration, where it was competing with a figure for
+    # the listener's attention in the same breath.
+    sections.append({
+        "title": "Before you go",
+        "narration": ("Nothing here is advice — this is a summary of what "
+                      "happened to your portfolio this period. Past "
+                      "performance is not a guide to future results. For "
+                      "anything about your plan, speak to your adviser."),
+        "key_points": ["A summary, not advice",
+                       "Past performance is not a guide to the future"],
+    })
 
     return sections
 
