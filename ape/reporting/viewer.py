@@ -433,23 +433,50 @@ document.getElementById("dl").onclick = function(){
   // The audio is normally rendered when the report is generated, so the
   // usual case is "already there". Ask first; only offer to build one if
   // there genuinely isn't one.
-  function show(j){
+  // The audio may be ready long before anyone asks for it, so "we have it"
+  // and "the client wants to see it" are two different things. Keeping them
+  // apart is what lets the button be a toggle instead of a one-way door.
+  var haveAudio = false;
+  var wanted = false;
+
+  function load(j){
     // A stored url is a PATH, with no token in it — the row must not be
     // frozen to a credential that expires. This page has a live one.
     var url = j.audio_url || "";
+    if (!url) return;
     if (url.charAt(0) === "/") {
       url += (url.indexOf("?") < 0 ? "?" : "&") + "token=" + encodeURIComponent(TOKEN);
     }
-    audio.src = url;
+    if (audio.src !== url) audio.src = url;
     note.textContent = j.note || "";
     pre.textContent = j.script || "";
-    wrap.hidden = false;                   // only now, with audio to play
+    haveAudio = true;
     if (timer) { clearInterval(timer); timer = null; }
     var st = document.getElementById("podstat");
     if (st) { st.hidden = true; st.textContent = ""; }
-    btn.textContent = "🎧 Listen";
     btn.disabled = false;
+    btn.textContent = "🎧 Listen";
+    if (wanted) reveal();
   }
+
+  function reveal(){
+    wanted = true;
+    wrap.hidden = false;
+    btn.textContent = "🎧 Hide";
+    audio.scrollIntoView({behavior: "smooth", block: "nearest"});
+  }
+
+  function hide(){
+    wanted = false;
+    wrap.hidden = true;
+    btn.textContent = "🎧 Listen";
+    // Stop the audio on the way out. Leaving it playing behind a closed
+    // panel gives the client a voice they can hear and cannot pause.
+    try { audio.pause(); } catch (e) {}
+  }
+
+  // Kept so the older call sites read the same way.
+  function show(j){ load(j); reveal(); }
 
   // Asked ONCE, on load, and never polled. The podcast is built when
   // someone asks for it, so "not there yet" is the normal state and not
@@ -459,9 +486,13 @@ document.getElementById("dl").onclick = function(){
   fetch("/r/" + RID + "/podcast?token=" + encodeURIComponent(TOKEN))
     .then(function(r){ return r.json(); })
     .then(function(j){
-      if (j.status === "ready") { show(j); return; }
-      // A render already running — from a click before a refresh, or from
-      // another device. Rejoin it instead of starting a second one.
+      // Ready is LOADED, not OPENED. The client came to read their report;
+      // an audio player that unfurls by itself is the page deciding for
+      // them. Loading it now just means the button is instant when they do
+      // ask.
+      if (j.status === "ready") { load(j); return; }
+      // A render already running — started at send, or by a click before a
+      // refresh. Show that it is coming, but still do not open the panel.
       if (j.status === "working") waitFor(Date.now());
     })
     .catch(function(){ /* the button still works */ });
@@ -509,8 +540,10 @@ document.getElementById("dl").onclick = function(){
         .then(function(j){
           if (j.status === "ready") {
             clearInterval(timer); timer = null;
-            show(j);
-            audio.scrollIntoView({behavior: "smooth", block: "nearest"});
+            // load() opens it only if the client asked. A render that
+            // finishes while they are reading, having never pressed
+            // Listen, should not throw a player across the page.
+            load(j);
             ev("podcast_ready", {});
             return;
           }
@@ -526,9 +559,17 @@ document.getElementById("dl").onclick = function(){
 
   btn.onclick = function(){
     if (btn.disabled) return;
+
+    // Open, close, open again. The panel carries a player and the full
+    // script, which is a lot of page for someone who only wanted to check
+    // one figure — being able to put it away matters as much as opening it.
+    if (!wrap.hidden) { hide(); return; }
+    if (haveAudio) { reveal(); return; }
+
+    // Nothing rendered yet: ask for one and open it when it arrives.
     ev("podcast_requested", {});
-    var t0 = Date.now();
-    waitFor(t0);
+    wanted = true;
+    waitFor(Date.now());
     fetch("/r/" + RID + "/podcast", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
