@@ -414,6 +414,30 @@ def _facts_for_scope(snap: ClientSnapshot,
         refs = block.get("source_refs") or []
         scoped = {k: v for k, v in all_facts.items() if k in refs}
 
+        # FACTS THE BLOCK ITSELF IS THE SOURCE OF.
+        #
+        # Both routes below look figures up in the SNAPSHOT, which assumes
+        # everything on screen came from there. A statement block computes
+        # its own sector, currency and position figures, so none of them
+        # matched and the scope collapsed to portfolio_value - leaving the
+        # model asked to explain a table it had not been given, which it
+        # correctly declined to do.
+        #
+        # These join the scope and the allowlist together, so the answer can
+        # discuss them and is still checked against them.
+        # In memory the builder puts them on the block; from the database
+        # they arrive inside content_json. Both, because the chat sees the
+        # stored copy and the preview sees the built one.
+        block_facts = (block.get("extra_facts")
+                       or (block.get("content_json") or {}).get("_facts")
+                       or {})
+        if isinstance(block_facts, dict):
+            for k, v in block_facts.items():
+                try:
+                    scoped.setdefault(str(k), float(v))
+                except (TypeError, ValueError):
+                    continue
+
         # source_refs UNDER-declares for prose. A narrative cites four
         # refs and then quotes allocation weights, attribution
         # contributions, fee totals and four quarters of history in its
@@ -444,7 +468,7 @@ def _facts_for_scope(snap: ClientSnapshot,
             lines.append(f"{k} = {_money(k)}{v}")
         data = block.get("content_json") or block.get("data") or {}
         text = json.dumps({k: v for k, v in data.items()
-                           if k != "_author"}, default=str,
+                           if k not in ("_author", "_facts")}, default=str,
                           ensure_ascii=False)
         lines.append(f"SELECTED CONTENT ({block.get('block_type') or block.get('type')}): "
                      f"{text[:1200]}")

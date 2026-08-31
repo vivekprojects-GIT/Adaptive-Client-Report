@@ -233,7 +233,14 @@ def persist_report(session: Session, report: Dict, strategy: str,
             block_id=b["block_id"], report_id=rid,
             client_id=report["client_id"], block_type=b["type"],
             title=b.get("title") or "",
+            # _facts: figures the block itself is the source of, for
+            # blocks that compute rather than quote the snapshot. Kept in
+            # content_json beside _author because the shape is per-block and
+            # free-form; a column would buy nothing. Omitted when empty so
+            # ordinary blocks are unchanged.
             content_json={**b.get("data", {}),
-                          "_author": authors.get(b["block_id"], "code")},
+                          "_author": authors.get(b["block_id"], "code"),
+                          **({"_facts": b["extra_facts"]}
+                             if b.get("extra_facts") else {})},
             source_refs=b.get("source_refs", []),
             display_order=i))
