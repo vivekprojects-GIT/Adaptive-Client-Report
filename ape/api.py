@@ -1362,7 +1362,18 @@ async def client_report_verify(request: Request, report_id: str):
         url=f"/r/{report_id}?token={quote(token, safe='')}", status_code=303)
     resp.set_cookie(
         key=cookie_name(report_id), value=mint_pass(report_id, client_id),
-        max_age=PASS_TTL_SECONDS, path=cookie_path(report_id),
+        # NO max_age — a SESSION cookie, gone when the browser closes.
+        #
+        # With max_age set this was written to disk and survived everything:
+        # closing the tab, closing the browser, restarting the machine. A
+        # client who answered once on a shared laptop left that report
+        # unlocked there for a fortnight.
+        #
+        # Without it the cookie lives in memory for this browsing session
+        # only, and the pass inside it expires on its own after
+        # PASS_TTL_SECONDS regardless. Two independent limits: close the
+        # browser, or wait out the clock.
+        path=cookie_path(report_id),
         httponly=True,          # never readable by page script
         samesite="lax",         # not sent on cross-site POSTs
         secure=request.url.scheme == "https",

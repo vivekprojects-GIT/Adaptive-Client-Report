@@ -30,6 +30,7 @@ would walk the whole range in under a minute.
 
 from __future__ import annotations
 
+import os
 import hashlib
 import hmac
 import time
@@ -48,11 +49,24 @@ from ape.reporting.tokens import _b64, _secret, _unb64
 # point this is only reached by clients the CRM did not cover.
 DEFAULT_BIRTH_YEAR = 1998
 
-# The pass lasts as long as the link it unlocks. A shorter life would mean
-# a client who opens their report twice in a fortnight is challenged twice
-# for a fact that has not changed; a longer one would outlive the token's
-# own authorisation, leaving a cookie that grants access to an expired link.
-PASS_TTL_SECONDS = 14 * 24 * 3600
+# ONE VISIT, NOT ONE FORTNIGHT.
+#
+# This used to last as long as the link itself — fourteen days — on the
+# reasoning that re-asking for a fact that has not changed is friction for
+# no gain. That reasoning was wrong about what the question is for.
+#
+# The year of birth does not prove the client is at the keyboard when they
+# answer it; it proves they were there ONCE. A fortnight-long pass turns a
+# single answer into two weeks of unchallenged access from that browser —
+# on a shared laptop, a family iPad, an unlocked phone left on a desk. The
+# link is emailed, so it outlives the moment it was opened, and the pass
+# was outliving it too.
+#
+# Now it covers a sitting: long enough to read the report, ask the chat a
+# few questions and play the podcast without being interrupted, short
+# enough that coming back later asks again. Combined with a session cookie
+# (see the set_cookie call in api.py), closing the browser also ends it.
+PASS_TTL_SECONDS = int(os.getenv("APE_IDENTITY_PASS_TTL", str(30 * 60)))
 
 MAX_ATTEMPTS = 5
 LOCKOUT_SECONDS = 15 * 60
