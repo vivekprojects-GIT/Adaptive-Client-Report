@@ -166,6 +166,8 @@ __DOC_CSS__
  .podhd{display:flex;gap:10px;align-items:baseline;margin-bottom:8px;
    font-size:13px;color:#0f172a}
  .podhd span{font-size:12px;color:#b45309}
+ .poddl{margin-left:auto;font-size:12px;color:#1d4ed8;text-decoration:none}
+ .poddl:hover{text-decoration:underline}
  .podwrap audio{width:100%}
  .podwrap details{margin-top:8px}
  .podwrap summary{font-size:12px;color:#64748b;cursor:pointer}
@@ -308,6 +310,9 @@ __DOC_CSS__
     </div>
   </div>
   <div id="podwrap" class="podwrap" hidden>
+    <!-- No download link here on purpose: the player's own three-dot menu
+         already offers Download, because nothing sets controlsList to
+         nodownload. A second control for the same action is just clutter. -->
     <div class="podhd"><b>Your report as a podcast</b><span id="podnote"></span></div>
     <audio id="podaudio" controls preload="none"></audio>
     <details id="poddet"><summary>Read the script</summary>
@@ -415,7 +420,13 @@ document.getElementById("dl").onclick = function(){
   // usual case is "already there". Ask first; only offer to build one if
   // there genuinely isn't one.
   function show(j){
-    audio.src = j.audio_url;
+    // A stored url is a PATH, with no token in it — the row must not be
+    // frozen to a credential that expires. This page has a live one.
+    var url = j.audio_url || "";
+    if (url.charAt(0) === "/") {
+      url += (url.indexOf("?") < 0 ? "?" : "&") + "token=" + encodeURIComponent(TOKEN);
+    }
+    audio.src = url;
     note.textContent = j.note || "";
     pre.textContent = j.script || "";
     wrap.hidden = false;
@@ -430,59 +441,73 @@ document.getElementById("dl").onclick = function(){
   // this finds it and the player is simply there.
   fetch("/r/" + RID + "/podcast?token=" + encodeURIComponent(TOKEN))
     .then(function(r){ return r.json(); })
-    .then(function(j){ if (j.status === "ready") show(j); })
+    .then(function(j){
+      if (j.status === "ready") { show(j); return; }
+      // A render already running — from a click before a refresh, or from
+      // another device. Rejoin it instead of starting a second one.
+      if (j.status === "working") waitFor(Date.now());
+    })
     .catch(function(){ /* the button still works */ });
+
+  // Asking the server "ready yet?" until it is.
+  //
+  // Nothing here ever shows the client why a render failed. A 502 from a
+  // TaskGroup is our problem to read in a log; theirs is only whether they
+  // can listen yet. Worst case this says it did not work and offers the
+  // button again.
+  var timer = null;
+  function waitFor(t0){
+    if (timer) clearInterval(timer);
+    btn.disabled = true;
+    wrap.hidden = false;
+    pre.textContent = "";
+    timer = setInterval(function(){
+      var s = Math.round((Date.now() - t0) / 1000);
+      btn.textContent = "Making your podcast… " + s + "s";
+      note.textContent = (s < 25)
+        ? "Writing the script…"
+        : (s < 70 ? "Checking every figure against your report…"
+                  : "Recording the audio — this usually takes a couple of minutes.");
+    }, 1000);
+
+    var stop = function(msg){
+      clearInterval(timer); timer = null;
+      btn.disabled = false;
+      btn.textContent = "🎧 Listen";
+      note.textContent = msg || "";
+    };
+
+    (function ask(){
+      fetch("/r/" + RID + "/podcast?token=" + encodeURIComponent(TOKEN))
+        .then(function(r){ return r.json(); })
+        .then(function(j){
+          if (j.status === "ready") {
+            clearInterval(timer); timer = null;
+            show(j);
+            audio.scrollIntoView({behavior: "smooth", block: "nearest"});
+            ev("podcast_ready", {});
+            return;
+          }
+          if (Date.now() - t0 > 12 * 60 * 1000) {
+            stop("That took longer than expected. Please try again in a few minutes.");
+            return;
+          }
+          setTimeout(ask, 5000);
+        })
+        .catch(function(){ setTimeout(ask, 8000); });
+    })();
+  }
 
   btn.onclick = function(){
     if (btn.disabled) return;
-    btn.disabled = true;
-    var t0 = Date.now(), label = "🎧 Listen";
-
-    // Say the number out loud. This genuinely takes a couple of minutes —
-    // the dialogue is written, fact-checked, then narrated — and a button
-    // that sits silent for that long reads as broken, gets clicked again,
-    // and every extra click is another render.
-    wrap.hidden = false;
-    note.textContent = "";
-    pre.textContent = "";
-    var tick = setInterval(function(){
-      var s = Math.round((Date.now() - t0) / 1000);
-      btn.textContent = "Making your podcast… " + s + "s";
-      note.textContent = (s < 30)
-        ? "Writing the script…"
-        : (s < 75 ? "Checking every figure against your report…"
-                  : "Recording the audio — this usually takes about two minutes.");
-    }, 1000);
-
     ev("podcast_requested", {});
+    var t0 = Date.now();
+    waitFor(t0);
     fetch("/r/" + RID + "/podcast", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({token: TOKEN, minutes: 2})
-    }).then(function(r){
-      return r.json().then(function(j){ return {ok: r.ok, body: j}; });
-    }).then(function(res){
-      clearInterval(tick);
-      btn.disabled = false;
-      btn.textContent = label;
-      if (!res.ok) {
-        note.textContent = (res.body && res.body.detail) || "could not make the audio";
-        wrap.hidden = false;
-        return;
-      }
-      audio.src = res.body.audio_url;
-      note.textContent = res.body.note || "";
-      pre.textContent = res.body.script || "";
-      wrap.hidden = false;
-      audio.scrollIntoView({behavior: "smooth", block: "nearest"});
-      ev("podcast_ready", {});
-    }).catch(function(e){
-      clearInterval(tick);
-      btn.disabled = false;
-      btn.textContent = label;
-      note.textContent = "could not reach the audio service";
-      wrap.hidden = false;
-    });
+    }).catch(function(){ /* the poll above is what actually matters */ });
   };
 })();
 

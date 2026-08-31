@@ -97,6 +97,14 @@ _ADDED_COLUMNS = {
                 # a language onto a client we have not been told about would
                 # send someone a report they cannot read.
                 "language": "VARCHAR(8)"},
+    # The podcast is rendered once, by an external service, and then it is
+    # simply a fact about this report. Keeping it here rather than only in
+    # the generated JSON means a second listen — or the same client on
+    # another device, or the advisor checking what was produced — is a row
+    # lookup instead of a two-minute render nobody should pay for twice.
+    "reports": {"podcast_url": "VARCHAR(400)",
+                "podcast_script": "TEXT",
+                "podcast_at": "DATETIME"},
 }
 
 

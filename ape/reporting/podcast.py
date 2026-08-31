@@ -30,11 +30,18 @@ because by then the digits it would be checked against are gone.
 LANGUAGE
 ═══════════════════════════════════════════════════════════════════════════
 
-The TTS engine (piper) ships en_US and en_GB voices only. A Dutch report
-therefore cannot become a Dutch podcast today. Rather than feed Dutch text
-to an English voice — which produces confident nonsense — the script is
-written in English and the client is told so. When the engine gains voices,
-`SPOKEN_LOCALES` is where that changes.
+The script follows the REPORT's language, and so does the fact sheet it is
+written from. One convention end to end: give a Dutch writer English
+figures and then check its work with a Dutch parser, and "18,730.97" is
+read as 18730 and 97 — two numbers, neither in the snapshot — so every
+attempt is rejected for a mistake nobody made.
+
+The VOICE is a separate, real limitation. The TTS engine (piper) ships
+en_US and en_GB voices only, so non-English audio is an English voice
+reading foreign words. The script shown on the page is genuinely in the
+client's language; the narration is approximate, and `language_note` says
+so rather than letting them wonder. `SPOKEN_LOCALES` is where that changes
+when the engine gains voices.
 
 ═══════════════════════════════════════════════════════════════════════════
 WHAT LEAVES THE BUILDING
@@ -56,11 +63,15 @@ from .grounding import derived_facts, validate_block
 
 MCP_URL = "https://podcast-mcp-yr3m.onrender.com/mcp"
 
-# Free Render instances sleep. The first call after a quiet spell pays a
-# cold start, and generation runs ~1.5 min per minute of audio, so the
-# budget is generous on purpose — a timeout here means a failed podcast,
-# not a slow one.
-MCP_TIMEOUT_SECONDS = 600
+# Long enough for a cold start plus a two-minute render at roughly 1.5x
+# real time, and no longer.
+#
+# This was 600s on the reasoning that a timeout costs a podcast. It costs
+# far more than that: a hung call holds the render lock for ten minutes,
+# and with retries a single stuck request occupies the queue for an hour
+# while every other client waits behind it. Failing at four minutes and
+# retrying is strictly better than waiting ten and then retrying anyway.
+MCP_TIMEOUT_SECONDS = 240
 
 # Languages we can actually SPEAK. Everything else gets an English script.
 SPOKEN_LOCALES = {"en"}
@@ -170,11 +181,19 @@ def _spoken_number(raw: str) -> str:
 _FIGURE_RE = re.compile(r"(?<![\w.])(?:[£$€]\s?)?-?\d[\d,]*(?:\.\d+)?%?(?![\w])")
 
 
-def to_spoken(text: str) -> str:
+def to_spoken(text: str, locale_code: str = "en") -> str:
     """Rewrite every figure in a validated script into words.
 
     Runs AFTER validation, never before. See the module docstring.
+
+    ENGLISH ONLY, deliberately. The number-to-words tables here are English
+    ("two point seven six percent"), and dropping English words into a
+    Dutch sentence would read worse than leaving the digits alone. For any
+    other language the digits stay as written — the figure is still correct,
+    it is just not spelled out.
     """
+    if (locale_code or "en") != "en":
+        return text
     return _FIGURE_RE.sub(lambda m: _spoken_number(m.group(0)), text)
 
 
@@ -205,7 +224,7 @@ Warm and plain. The listener is an intelligent person who is not a \
 financial professional."""
 
 
-def _fact_sheet(facts: Dict[str, float]) -> str:
+def _fact_sheet(facts: Dict[str, float], locale_code: str = "en") -> str:
     keep = []
     for k, v in sorted(facts.items()):
         # Handing over every derived fact — hundreds once subset sums exist
@@ -216,7 +235,21 @@ def _fact_sheet(facts: Dict[str, float]) -> str:
             continue
         if k.startswith("hold.") or k.startswith("hist."):
             continue
-        keep.append(f"  {k} = {v}")
+        # THE SHEET IS WRITTEN IN THE REPORT'S OWN CONVENTION.
+        #
+        # Handing a Dutch writer English figures and then checking its work
+        # with a Dutch parser is a contradiction, and it failed exactly the
+        # way it had to: the model faithfully copied "18,730.97", the Dutch
+        # validator read that as 18730 and 97 — two numbers, neither in the
+        # snapshot — and every attempt was rejected until it gave up and
+        # shipped the English fallback.
+        #
+        # One convention end to end. The model copies what it is given, the
+        # gate reads it the same way, and the client sees figures punctuated
+        # the way their own statements are.
+        from .locales import format_number
+        dp = 2
+        keep.append(f"  {k} = {format_number(float(v), locale_code, dp)}")
     return "\n".join(keep)
 
 
@@ -231,11 +264,29 @@ def build_script(anthropic_client, model: str, report: Dict[str, Any],
     labels = snap.label_terms()
     lines = max(8, int(minutes * 9))
 
+    # The podcast follows the report's language. The listener reads their
+    # statement in Dutch; being handed English audio about it is the same
+    # jarring switch as an English chart label on a Dutch page.
+    #
+    # The VOICE is a separate matter and a real limitation — see
+    # SPOKEN_LOCALES and language_note. Writing the script in the client's
+    # language is worth doing regardless, because the script is shown on
+    # the page under "Read the script" and that half is genuinely theirs.
+    from .locales import get as _get_locale
+    loc = _get_locale(report.get("language") or "en")
+    lang_rule = ("" if loc.code == "en" else
+                 f"\n\nWRITE THE ENTIRE DIALOGUE IN {loc.prompt_name.upper()}. "
+                 f"Speaker labels stay as the English words HOST: and GUEST:. "
+                 f"The fact sheet below is already written the way "
+                 f"{loc.prompt_name} punctuates numbers — copy each figure "
+                 f"EXACTLY as it appears there, character for character.")
+
     user = (
         f"Client: {report.get('client_name', '')}\n"
         f"Period: {report.get('period', '')}\n"
         f"Benchmark: {getattr(snap, 'benchmark_name', '') or 'the benchmark'}\n\n"
-        f"FACT SHEET (the only figures you may use)\n{_fact_sheet(facts)}\n"
+        f"FACT SHEET (the only figures you may use)\n{_fact_sheet(facts, loc.code)}\n"
+        f"{lang_rule}"
     )
 
     feedback = ""
@@ -267,8 +318,12 @@ def build_script(anthropic_client, model: str, report: Dict[str, Any],
             "source_refs": sorted(facts.keys())[:40] or ["portfolio_value"],
             "data": {"text": script},
         }
+        # Checked in the language it was WRITTEN in. A Dutch script read
+        # with English separators turns 1.249.327,22 into 1.249 and the
+        # whole thing is rejected on every attempt — the same trap the
+        # report blocks already documented.
         findings = [f for f in validate_block(block, facts, labels=labels,
-                                              locale="en")
+                                              locale=loc.code)
                     if f.kind == "ungrounded_number"]
         if not findings:
             return script, f"grounded on attempt {attempt + 1}"
@@ -461,7 +516,20 @@ def generate_for_report(anthropic_client, model: str, report: Dict[str, Any],
     if not script:
         script, detail = code_built_script(report, snap), "code-built (no script)"
 
-    spoken = to_spoken(script)
+    # code_built_script writes English. On a Dutch report that lands an
+    # English podcast beside a Dutch document — which is what happened the
+    # first time a Dutch client asked for one. Translate it and RE-CHECK,
+    # exactly as the report's own fallback blocks do: a translation that
+    # moves a digit is rejected and the English original ships instead.
+    lang = (report.get("language") or "en")
+    if lang != "en" and detail.startswith("code-built"):
+        translated = _translate_script(anthropic_client, model, script, lang,
+                                       snap)
+        if translated:
+            script = translated
+            detail += " + translated"
+
+    spoken = to_spoken(script, report.get("language") or "en")
     title = f"{report.get('client_name', 'Your')} — {report.get('period', '')}"
 
     last = "not attempted"
@@ -473,8 +541,16 @@ def generate_for_report(anthropic_client, model: str, report: Dict[str, Any],
     # reports would do immediately, and what repeated testing did here.
     # Serialising costs wall-clock time in a background thread nobody is
     # waiting on, and buys a job that actually succeeds.
+    # A wall clock on the whole job, not just on each call. Without one,
+    # "retry patiently" turns into a thread that holds the render lock for
+    # the best part of an hour while everyone else queues behind it.
+    deadline = time.time() + 15 * 60
+
     with _RENDER_LOCK:
         for i in range(attempts):
+            if time.time() > deadline:
+                last = f"gave up after 15 minutes ({last})"
+                break
             url, why = synthesize(spoken, title)
             if url:
                 return {"audio_url": url, "script": script, "spoken": spoken,
@@ -482,12 +558,98 @@ def generate_for_report(anthropic_client, model: str, report: Dict[str, Any],
                         "note": language_note(report.get("language") or "en")}
             last = why
             if i + 1 < attempts:
-                # Backoff measured against how long a render takes, not
-                # against a web request. Five seconds was hopeless: the
-                # instance is busy for minutes, so a short retry just
-                # collects three 502s and calls it a failure.
-                time.sleep(45 * (i + 1))
+                # Measured, not guessed. Of a 32s failed run, 6.9s was
+                # writing and checking the script and 25.5s was the render
+                # 502-ing; the client's remaining wait was pure backoff.
+                #
+                # The 502s turn out to be flaky rather than purely
+                # contention — one arrived with nothing else running — so
+                # the first retry goes in quickly and only then backs off
+                # for the case where the instance really is busy. 45s as a
+                # FIRST retry was punishing the common case to be safe
+                # about the rare one.
+                time.sleep((8, 25, 60)[min(i, 2)])
     return {"error": last, "script": script, "grounding": detail}
+
+
+def _translate_script(anthropic_client, model: str, script: str,
+                      locale_code: str, snap) -> Optional[str]:
+    """Translate a code-built dialogue, then check it again.
+
+    Returns None on any doubt. A missing translation means English audio,
+    which is visibly imperfect; a translation that quietly moved a figure
+    would be wrong, and wrong is the one thing this cannot ship.
+    """
+    from .locales import get as _get_locale
+    loc = _get_locale(locale_code)
+    try:
+        resp = anthropic_client.messages.create(
+            model=model, max_tokens=2000,
+            system=(
+                f"Translate this podcast dialogue into {loc.prompt_name}. "
+                "Keep every line's HOST: or GUEST: prefix exactly as it is. "
+                "Reproduce every number, currency symbol and percent sign "
+                "EXACTLY as written — do not reformat, round or "
+                "re-punctuate any figure. Translate only the words. "
+                "Return the dialogue and nothing else."),
+            messages=[{"role": "user", "content": script}],
+        )
+        out = _keep_dialogue("".join(getattr(c, "text", "") for c in resp.content))
+    except Exception as exc:
+        _log_fetch(f"[podcast] script translation failed: "
+                   f"{type(exc).__name__}: {str(exc)[:100]}")
+        return None
+    if not out:
+        return None
+
+    facts = derived_facts(snap.numeric_facts())
+    block = {"block_id": "podcast_script", "block_type": "narrative",
+             "source_refs": sorted(facts.keys())[:40] or ["portfolio_value"],
+             "data": {"text": out}}
+    bad = [f for f in validate_block(block, facts, labels=snap.label_terms(),
+                                     locale=loc.code)
+           if f.kind == "ungrounded_number"]
+    if bad:
+        _log_fetch("[podcast] translated script rejected, keeping English "
+                   f"({'; '.join(f.detail for f in bad[:2])[:90]})")
+        return None
+    return out
+
+
+def fetch_audio(url: str, dest) -> bool:
+    """Pull the rendered MP3 onto our own disk.
+
+    The renderer keeps files for about 24 hours on a public URL. Both
+    halves of that are problems: a client who opens their report next week
+    finds a dead player, and until then the audio of their portfolio is
+    reachable by anyone who has the link.
+
+    Downloading it makes the audio ours — permanent, served through the
+    same two gates as the report, and downloadable under a sensible name
+    rather than a render hash. Returns False on any failure; the caller
+    falls back to the remote URL, which is worse but still works.
+    """
+    try:
+        import httpx
+        with httpx.Client(timeout=120, follow_redirects=True) as c:
+            r = c.get(url)
+            r.raise_for_status()
+            data = r.content
+        if not data:
+            return False
+        dest.write_bytes(data)
+        return True
+    except Exception as exc:
+        _log_fetch(f"[podcast] could not download audio: "
+                   f"{type(exc).__name__}: {str(exc)[:120]}")
+        return False
+
+
+def _log_fetch(msg: str) -> None:
+    try:
+        print(msg, flush=True)
+    except Exception:
+        pass
 
 
 def language_note(locale_code: str) -> str:

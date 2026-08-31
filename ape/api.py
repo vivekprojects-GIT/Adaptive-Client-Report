@@ -1534,32 +1534,33 @@ def d2_state():
     return {"contexts": out}
 
 
-def _start_podcast_job(rid: str, report: Dict[str, Any], snap) -> None:
-    """Render this report's podcast in the background, once.
+_PODCAST_JOBS: Dict[str, bool] = {}
+_PODCAST_JOBS_LOCK = __import__("threading").Lock()
 
-    Fired when the report is generated so the audio is already sitting
-    there when the client opens their link. The alternative — generating on
-    click — makes every reader wait two minutes, bills a fresh render for
-    identical audio, and puts a single-worker free instance under
-    concurrent load, which is precisely how it starts returning 502.
 
-    A daemon thread, deliberately: this must not hold up the generation
-    response, and it must never be able to fail the report. A report
-    without audio is a report; an exception here would be a lost report.
+def _start_podcast_job(rid: str, report: Dict[str, Any], snap,
+                       minutes: int = 2) -> None:
+    """Render this report's podcast in the background. One job per report.
+
+    Started by a client clicking Listen, or at generation time when
+    APE_PODCAST_PREGENERATE=1. Either way the client never waits on the
+    renderer and never sees it fail — the page asks whether the audio is
+    ready, and until it is, it says so.
+
+    The de-duplication is not a nicety. Two clicks, or a click plus an
+    impatient refresh, would otherwise start two renders of identical
+    audio against a single-worker service — the second of which makes the
+    first return 502.
     """
     import os as _os
-    # OFF by default: the podcast is built when a client asks for it.
-    #
-    # Most clients never will, and rendering audio for every report spends
-    # real time and money on files nobody opens. Set
-    # APE_PODCAST_PREGENERATE=1 to warm them in advance instead — the
-    # client path is identical either way, it just finds the audio already
-    # there and returns instantly.
-    if _os.getenv("APE_PODCAST_PREGENERATE", "0") not in ("1", "true", "yes"):
-        return
     api_key = _os.getenv("ANTHROPIC_API_KEY", "")
     if not api_key:
         return
+
+    with _PODCAST_JOBS_LOCK:
+        if _PODCAST_JOBS.get(rid):
+            return                      # already being made
+        _PODCAST_JOBS[rid] = True
 
     import threading, json as _json
     from pathlib import Path as _Path
@@ -1570,10 +1571,25 @@ def _start_podcast_job(rid: str, report: Dict[str, Any], snap) -> None:
             from .reporting import podcast as _pod
             client = anthropic.Anthropic(api_key=api_key)
             model = _os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5")
-            result = _pod.generate_for_report(client, model, report, snap)
 
-            # Re-read before writing: the report on disk is the record, and
-            # this thread has been away for minutes.
+            # Patient by design. The renderer fails often and recovers, so
+            # the remedy is to keep asking rather than to give up after
+            # three tries and leave a client with nothing.
+            result = _pod.generate_for_report(client, model, report, snap,
+                                              minutes=minutes, attempts=6)
+
+            # Take our own copy BEFORE recording the link. The renderer's
+            # files disappear fast — two rendered less than an hour earlier
+            # were already 404 — so an un-copied podcast is a dead player
+            # by the time anyone comes back to it.
+            if result.get("audio_url"):
+                mp3 = (_Path(__file__).resolve().parents[1] / "data" /
+                       "generated" / f"{rid}.mp3")
+                if _pod.fetch_audio(result["audio_url"], mp3):
+                    result["remote_url"] = result["audio_url"]
+                    result["audio_url"] = f"/r/{rid}/podcast.mp3"
+                _podcast_to_db(rid, result)
+
             path = (_Path(__file__).resolve().parents[1] / "data" /
                     "generated" / f"{rid}.json")
             try:
@@ -1582,12 +1598,16 @@ def _start_podcast_job(rid: str, report: Dict[str, Any], snap) -> None:
                 current = report
             current["podcast"] = result
             path.write_text(_json.dumps(current, indent=2), encoding="utf-8")
+
             print(f"[podcast] {rid}: "
                   + (result.get("audio_url") or f"failed — {result.get('error')}"),
                   flush=True)
         except Exception as exc:                    # never fail the report
             print(f"[podcast] {rid}: job error {type(exc).__name__}: "
                   f"{str(exc)[:120]}", flush=True)
+        finally:
+            with _PODCAST_JOBS_LOCK:
+                _PODCAST_JOBS.pop(rid, None)
 
     threading.Thread(target=_run, name=f"podcast-{rid}", daemon=True).start()
 
@@ -1601,14 +1621,94 @@ async def report_podcast_status(report_id: str, token: str = "",
     case costs nothing and returns instantly.
     """
     _viewer_auth(report_id, token, request)
-    report = _report_json(report_id)
-    pod = report.get("podcast") or {}
+
+    cached = _podcast_from_db(report_id)
+    if cached:
+        return {"status": "ready", **cached}
+
+    # Older reports cached it in the generated JSON before the column
+    # existed. Still honoured, so nothing already rendered is re-rendered.
+    pod = (_report_json(report_id).get("podcast") or {})
     if pod.get("audio_url"):
         return {"status": "ready", "audio_url": pod["audio_url"],
                 "script": pod.get("script", ""), "note": pod.get("note", "")}
+
+    with _PODCAST_JOBS_LOCK:
+        if _PODCAST_JOBS.get(report_id):
+            return {"status": "working"}
+
+    # A job that finished without audio. The client is told it did not work
+    # and can try again — never why, because "HTTPStatusError 502 from a
+    # TaskGroup" is our problem to read, not theirs.
     if pod.get("error"):
-        return {"status": "failed", "detail": pod["error"]}
-    return {"status": "pending"}
+        return {"status": "none"}
+    return {"status": "none"}
+
+
+@app.get("/r/{report_id}/podcast.mp3")
+def report_podcast_audio(report_id: str, token: str = "",
+                         request: Request = None):
+    """Serve our own copy of the audio, behind the same two gates.
+
+    The client's portfolio read aloud is exactly as private as the report
+    it came from, so it goes through _viewer_auth like everything else. The
+    third-party URL is never handed to the browser.
+
+    A filename is set deliberately: the renderer names files by hash, and
+    "marcus-whitfield-2026q2-2d895a5c.mp3" is not what anyone wants sitting
+    in their downloads folder.
+    """
+    _viewer_auth(report_id, token, request)
+    path = (Path(__file__).resolve().parents[1] / "data" / "generated"
+            / f"{report_id}.mp3")
+    if not path.is_file():
+        raise HTTPException(404, "no audio for this report")
+
+    report = _report_json(report_id)
+    name = f"{report.get('client_name', 'report')} {report.get('period', '')}".strip()
+    safe = "".join(ch if (ch.isalnum() or ch in " -_") else "" for ch in name)
+    from fastapi.responses import FileResponse
+    return FileResponse(
+        path, media_type="audio/mpeg",
+        headers={"Content-Disposition":
+                 f'inline; filename="{safe or report_id}.mp3"'})
+
+
+def _podcast_from_db(report_id: str) -> Optional[Dict[str, Any]]:
+    """The stored podcast for this report, or None if nobody has made one."""
+    from .db.session import init_db, session_scope
+    from .db.models import Report
+    init_db()
+    try:
+        with session_scope() as db:
+            row = db.get(Report, report_id)
+            if row is not None and getattr(row, "podcast_url", None):
+                return {"audio_url": row.podcast_url,
+                        "script": row.podcast_script or "",
+                        "note": ""}
+    except Exception as exc:                 # a cache miss, never a failure
+        print(f"[podcast] cache read failed for {report_id}: "
+              f"{type(exc).__name__}: {str(exc)[:100]}", flush=True)
+    return None
+
+
+def _podcast_to_db(report_id: str, result: Dict[str, Any]) -> None:
+    """Store the rendered podcast against the report row."""
+    from datetime import datetime as _dt
+    from .db.session import init_db, session_scope
+    from .db.models import Report
+    init_db()
+    try:
+        with session_scope() as db:
+            row = db.get(Report, report_id)
+            if row is None:
+                return
+            row.podcast_url = result.get("audio_url")
+            row.podcast_script = result.get("script", "")
+            row.podcast_at = _dt.utcnow()
+    except Exception as exc:                 # caching is not the product
+        print(f"[podcast] cache write failed for {report_id}: "
+              f"{type(exc).__name__}: {str(exc)[:100]}", flush=True)
 
 
 @app.post("/r/{report_id}/podcast")
@@ -1629,15 +1729,19 @@ async def report_podcast(report_id: str, request: Request):
 
     report = _report_json(report_id)
 
-    # Already rendered at generation time? Hand it straight back. This is
-    # the common path, and it costs nothing.
-    cached = report.get("podcast") or {}
-    if cached.get("audio_url"):
-        return {"audio_url": cached["audio_url"],
-                "script": cached.get("script", ""),
-                "spoken": cached.get("spoken", ""),
-                "grounding": cached.get("grounding", "pre-generated"),
-                "note": cached.get("note", ""), "cached": True}
+    # Rendered once, ever. A second click, a second device, a client coming
+    # back next week — all of it is a row lookup, not another two minutes
+    # and another render nobody should pay for twice.
+    stored = _podcast_from_db(report_id)
+    if stored:
+        return {**stored, "spoken": "", "grounding": "cached", "cached": True}
+    legacy = report.get("podcast") or {}
+    if legacy.get("audio_url"):
+        return {"audio_url": legacy["audio_url"],
+                "script": legacy.get("script", ""),
+                "spoken": legacy.get("spoken", ""),
+                "grounding": legacy.get("grounding", "cached"),
+                "note": legacy.get("note", ""), "cached": True}
 
     import os as _os
     api_key = _os.getenv("ANTHROPIC_API_KEY", "")
@@ -1660,45 +1764,18 @@ async def report_podcast(report_id: str, request: Request):
 
     minutes = max(1, min(5, int(body.get("minutes") or 2)))
 
-    # The whole job — write, check, convert, render, retry — runs in a
-    # thread. Two reasons it is not done inline:
+    # The click ENQUEUES. It does not wait.
     #
-    # The Anthropic calls and the render are blocking, and inside an async
-    # endpoint they would stall the event loop for minutes; every other
-    # client's page load and chat message would queue behind one person
-    # asking for audio.
+    # The renderer is a free single-worker instance that returns 502
+    # whenever it is busy or simply out of sorts, and a client should never
+    # be shown the consequences of that — least of all an HTTP status and a
+    # TaskGroup traceback, which is what a synchronous call surfaced.
     #
-    # And generate_for_report is where the render lock and the real backoff
-    # live. Calling the pieces separately from here would produce a second
-    # path with none of that — which is exactly the path that kept
-    # collecting 502s from the free single-worker renderer.
-    import asyncio as _asyncio
-    result = await _asyncio.to_thread(
-        _pod.generate_for_report, client, model, report, snap, minutes)
-
-    if not result.get("audio_url"):
-        raise HTTPException(502, f"audio service failed: {result.get('error')}")
-
-    # Cache on the report so a second listen — or a second device — is
-    # instant and costs nothing. Re-read first: this thread has been away
-    # for minutes and the file on disk is the record.
-    try:
-        path = (Path(__file__).resolve().parents[1] / "data" / "generated"
-                / f"{report_id}.json")
-        current = json.loads(path.read_text(encoding="utf-8"))
-        current["podcast"] = result
-        path.write_text(json.dumps(current, indent=2), encoding="utf-8")
-    except Exception as exc:                    # caching is not the product
-        print(f"[podcast] could not cache {report_id}: "
-              f"{type(exc).__name__}: {str(exc)[:100]}", flush=True)
-
-    return {
-        "audio_url": result["audio_url"],
-        "script": result.get("script", ""),     # the checked form, with digits
-        "spoken": result.get("spoken", ""),     # what was actually narrated
-        "grounding": result.get("grounding", ""),
-        "note": result.get("note", ""),
-    }
+    # So the work moves to a background job that can retry patiently, and
+    # the page just asks "ready yet?". The worst a client sees is that
+    # their podcast is still being prepared.
+    _start_podcast_job(report_id, report, snap, minutes=minutes)
+    return {"status": "working"}
 
 
 @app.post("/r/{report_id}/chat")

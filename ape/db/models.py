@@ -229,6 +229,14 @@ class Report(Base):
     reward_status:     Mapped[str] = mapped_column(String(16), default="PENDING")
     normalized_reward: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
+    # The rendered podcast, once it exists. NULL means nobody has asked.
+    # The script is kept beside the URL deliberately: the audio lives on a
+    # third party's disk for 24 hours, and when it expires the script is
+    # the only record of what the client was actually told.
+    podcast_url:    Mapped[Optional[str]] = mapped_column(String(400), nullable=True)
+    podcast_script: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    podcast_at:     Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
 
 class ReportBlock(Base):
     """One rendered block. `block_id` is what a client highlight resolves to,
