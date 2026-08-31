@@ -668,3 +668,83 @@ def report_currency() -> str:
     """
     from .generate import _CURRENCY
     return _CURRENCY
+
+# ───────────────────────────────────────────── the summary the media speak from
+#
+# THE MEDIA SUMMARISE. THEY DO NOT RECITE.
+#
+# A podcast and a slide deck are two minutes long. The report behind them
+# now carries a full custody statement: 31 named positions, eleven sectors,
+# a currency split and an allocation table, which is several hundred facts
+# once the derived totals are added.
+#
+# Handing all of that to a writer asked for eighteen lines produces the
+# worst of both — it browses the tail, picks whatever it landed on, and the
+# headline figures a client actually wants compete for room with the
+# fourteenth-largest holding. A shorter sheet is also a smaller target for
+# the grounding gate to reject.
+#
+# So the sheet is the HIGHLIGHTS: what the portfolio is worth, how it did
+# against its benchmark, what drove that, what it cost, and the shape of the
+# allocation. Per-instrument detail stays in the report, where the client
+# can read it and ask the chat about it.
+#
+# This narrows only what the writer may CHOOSE from. Validation still runs
+# against the full snapshot, so a figure that is true but unlisted is still
+# accepted — this cannot cause a false rejection.
+
+# The story, in the order a client asks it.
+_HEADLINE = (
+    "portfolio_value", "opening_value", "closing_value",
+    "quarter_return_pct", "benchmark_return_pct", "excess_return_pct",
+    "derived.excess", "derived.excess_abs",
+    "investment_gain", "contributions", "withdrawals",
+)
+
+# Families where the long tail is noise for a two-minute piece.
+_DROP_PREFIX = (
+    "derived.group_",   # subset sums — a browsing hazard, never spoken
+    "hold.", "hist.",   # per-holding and per-period series
+    "pos_value.",       # 31 named positions from the custody statement
+    "target.", "drift.",   # mandate mechanics, not narrative
+    "allocation.",      # duplicates alloc.
+)
+
+# How many of each family survive, largest first.
+_TOP_N = {"attr.": 4, "alloc.": 5, "sector.": 3,
+          "ccy.": 3, "currency_share_pct.": 3}
+
+
+def summary_facts(facts: Dict[str, float]) -> Dict[str, float]:
+    """The highlights a podcast or deck may speak from.
+
+    Headline scalars always survive. Each remaining family keeps only its
+    largest few members, because "the top three sectors" is the shape of the
+    story and members four through eleven are the report's job, not the
+    podcast's.
+    """
+    out: Dict[str, float] = {}
+    for k in _HEADLINE:
+        if k in facts:
+            out[k] = facts[k]
+
+    families: Dict[str, list] = {}
+    for k, v in facts.items():
+        if k in out or k.startswith(_DROP_PREFIX):
+            continue
+        fam = next((f for f in _TOP_N if k.startswith(f)), None)
+        if fam is None:
+            # An unfamiliar scalar (a fee, a yield) — keep it; the tail
+            # this exists to cut is always inside a known family.
+            if "." not in k or k.startswith("fee"):
+                out[k] = v
+            continue
+        families.setdefault(fam, []).append((k, v))
+
+    for fam, items in families.items():
+        # Largest by magnitude: the biggest contributor and the biggest
+        # detractor are both stories; a 0.01% line is not.
+        items.sort(key=lambda kv: abs(float(kv[1])), reverse=True)
+        for k, v in items[:_TOP_N[fam]]:
+            out[k] = v
+    return out

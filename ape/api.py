@@ -233,6 +233,24 @@ def _build() -> ApeOrchestrator:
     import threading as _threading
     _threading.Thread(target=_warm_voice, daemon=True).start()
 
+    # Keep the podcast renderer awake. A free Render instance sleeps after
+    # ~15 minutes idle and then 502s for the best part of a minute while it
+    # wakes — which is what a stalled "generating..." actually was. A ping
+    # every ten minutes keeps that timer from expiring. Costs ~730 of the
+    # account's ~750 free instance-hours a month; APE_RENDERER_KEEPWARM=0
+    # turns it off and leaves the reactive wake_renderer path in place.
+    if os.getenv("APE_RENDERER_KEEPWARM", "1") != "0":
+        def _keep_renderer_warm():
+            try:
+                from .reporting.podcast import keep_warm
+                keep_warm(float(os.getenv("APE_RENDERER_KEEPWARM_SECONDS",
+                                           "600")))
+            except Exception:
+                pass
+        _threading.Thread(target=_keep_renderer_warm, daemon=True,
+                          name="renderer-keepwarm").start()
+        print("[startup] renderer keep-warm on", flush=True)
+
     return ApeOrchestrator(client=client, model=model, store=store, domain=domain, rag=RAG)
 
 
@@ -1655,7 +1673,7 @@ def _pregenerate_disabled(os_module) -> bool:
 
 
 def _start_podcast_job(rid: str, report: Dict[str, Any], snap,
-                       minutes: int = 2, on_demand: bool = False) -> None:
+                       minutes: int = 1, on_demand: bool = False) -> None:
     """Render this report's podcast in the background. One job per report.
 
     Started by a client clicking Listen, or at generation time when
@@ -1713,7 +1731,7 @@ def _start_podcast_job(rid: str, report: Dict[str, Any], snap,
 
 
 def _render_podcast(rid: str, report: Dict[str, Any], snap, api_key: str,
-                    minutes: int = 2) -> None:
+                    minutes: int = 1) -> None:
     """Write, check, render and STORE the podcast. Blocking."""
     import os as _os, json as _json
     from pathlib import Path as _Path

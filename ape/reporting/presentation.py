@@ -72,7 +72,8 @@ import threading
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
-from .grounding import derived_facts, validate_block, is_money_fact, report_currency
+from .grounding import (derived_facts, validate_block, is_money_fact,
+                        report_currency, summary_facts)
 from .podcast import (MCP_URL, MCP_TIMEOUT_SECONDS, _COLD_START_SECONDS,
                       _COLD_RETRY_SECONDS,
                       _explain, _log_fetch, wake_renderer,
@@ -102,11 +103,15 @@ MAX_ATTEMPTS = 3
 # document is the point of the feature, so the limit sits where the
 # renderer actually struggles rather than where it might.
 #
-# ~150 words per minute, so 340 words is a little under two and a half
-# minutes — inside the 1-3 minute range with room for the slide beats.
-MAX_SECTIONS = 6
-MAX_WORDS_PER_SECTION = 60
-MAX_TOTAL_WORDS = 340
+# ONE MINUTE. At ~150 words per minute that is 150 words of narration,
+# and four sections is what divides into a minute while still leaving each
+# slide long enough to read. The earlier budget ran to two and a half
+# minutes, which is a briefing rather than the summary this is meant to be
+# — and every extra second is more audio held in memory on a renderer with
+# 512MB to work in.
+MAX_SECTIONS = 4
+MAX_WORDS_PER_SECTION = 40
+MAX_TOTAL_WORDS = 150
 MAX_KEY_POINTS = 4
 WORDS_PER_MINUTE = 150.0
 
@@ -272,7 +277,8 @@ def _fact_sheet(facts: Dict[str, float], locale_code: str) -> str:
     cur = report_currency()
     from .locales import format_number
     keep = []
-    for k, v in sorted(facts.items()):
+    # Same highlights the podcast speaks from — one summary, both media.
+    for k, v in sorted(summary_facts(facts).items()):
         if (k.startswith("derived.group_") or k.startswith("hold.")
                 or k.startswith("hist.")):
             continue

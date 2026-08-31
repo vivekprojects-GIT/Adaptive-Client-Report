@@ -55,11 +55,13 @@ footnote — see PRIVACY_NOTE, which the caller is expected to surface.
 from __future__ import annotations
 
 import asyncio
+import time
 import threading
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
-from .grounding import derived_facts, validate_block, is_money_fact, report_currency
+from .grounding import (derived_facts, validate_block, is_money_fact,
+                        report_currency, summary_facts)
 
 MCP_URL = "https://podcast-mcp-yr3m.onrender.com/mcp"
 
@@ -233,7 +235,9 @@ financial professional."""
 def _fact_sheet(facts: Dict[str, float], locale_code: str = "en") -> str:
     cur = report_currency()
     keep = []
-    for k, v in sorted(facts.items()):
+    # Highlights only. A two-minute dialogue that recites a custody
+    # statement is not a podcast.
+    for k, v in sorted(summary_facts(facts).items()):
         # Handing over every derived fact — hundreds once subset sums exist
         # — invites the model to browse, combine and round. A two-minute
         # podcast wants the headline numbers and the attribution and
@@ -266,7 +270,7 @@ def _fact_sheet(facts: Dict[str, float], locale_code: str = "en") -> str:
 
 
 def build_script(anthropic_client, model: str, report: Dict[str, Any],
-                 snap, minutes: int = 2) -> Tuple[Optional[str], str]:
+                 snap, minutes: int = 1) -> Tuple[Optional[str], str]:
     """Write a grounded dialogue script. Returns (script_or_None, detail).
 
     The script comes back with DIGITS intact so it can be checked. The
@@ -494,6 +498,53 @@ def wake_renderer(timeout: float = 90.0) -> bool:
     return False
 
 
+def keep_warm(interval: float = 600.0) -> None:
+    """Ping the renderer forever so it never spins down. Blocking; run in a thread.
+
+    WHY THIS EXISTS
+    ───────────────────────────────────────────────────────────────────────
+    The renderer is a free Render instance, and a free instance sleeps
+    after about fifteen minutes without a request. Waking it costs the
+    better part of a minute, and while it wakes it answers /mcp with 502 —
+    which is what "the podcast did not generate" looked like from the
+    outside, every time the demo had been idle for a quarter of an hour.
+
+    wake_renderer() handles that reactively, at the cost of making someone
+    wait. This removes the wait instead: a cheap request every ten minutes
+    keeps the fifteen-minute idle timer from ever expiring.
+
+    /health is deliberately the target rather than /mcp. It is the cheapest
+    thing the service serves, and the ONLY claim being made here is "traffic
+    arrived, do not sleep". That /health returns 200 says nothing about
+    whether /mcp can render — that distinction is exactly what wake_renderer
+    exists for and this does not second-guess it.
+
+    THE COST, STATED PLAINLY
+    ───────────────────────────────────────────────────────────────────────
+    Free instance-hours are metered per account (~750/month). Keeping one
+    service awake around the clock spends roughly 730 of them, so this is
+    close to the whole monthly allowance for one service. That is a fine
+    trade for a demo that must not stall, and a bad one if the account runs
+    other free services. APE_RENDERER_KEEPWARM=0 turns it off; the reactive
+    wake_renderer path still works without it, just more slowly.
+    """
+    import os
+    while True:
+        try:
+            import httpx
+            with httpx.Client(timeout=20, follow_redirects=True) as c:
+                r = c.get(MCP_URL.rsplit("/", 1)[0] + "/health")
+            if os.getenv("APE_RENDERER_KEEPWARM_LOG"):
+                print(f"[keepwarm] {r.status_code}", flush=True)
+        except Exception:
+            # Never log by default and never raise. The renderer being
+            # briefly unreachable is not an event worth a line in the log
+            # every ten minutes, and a dead pinger must not take the
+            # server with it.
+            pass
+        time.sleep(interval)
+
+
 # A failure this fast did not attempt any work — a real render takes 60-90
 # seconds. It is the proxy in front of a sleeping instance, and the right
 # response is to give it time to finish starting, not to retry immediately
@@ -558,7 +609,7 @@ def synthesize(script: str, title: str,
 
 
 def generate_for_report(anthropic_client, model: str, report: Dict[str, Any],
-                        snap, minutes: int = 2,
+                        snap, minutes: int = 1,
                         attempts: int = 5) -> Dict[str, Any]:
     """Write, check and render the podcast for one report. Blocking.
 
@@ -578,8 +629,6 @@ def generate_for_report(anthropic_client, model: str, report: Dict[str, Any],
     failure it returns an "error" entry rather than raising, because a
     missing podcast must never fail a report that is otherwise fine.
     """
-    import time
-
     script, detail = build_script(anthropic_client, model, report, snap, minutes)
     if not script:
         script, detail = code_built_script(report, snap), "code-built (no script)"
