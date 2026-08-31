@@ -595,6 +595,24 @@ function startedMs(j){
   return (j && j.started_at) ? j.started_at * 1000 : Date.now();
 }
 
+// NOTHING MAY COUNT FOREVER.
+//
+// The status endpoints answer "ready", "working" or "none". The pollers
+// handled the first two and fell through the third into another timeout,
+// so a job that DIED - the renderer 502ing, a thread raising - popped its
+// entry, began answering "none", and the client sat counting seconds
+// against a job that no longer existed. That is what a runaway timer was:
+// not a slow render, an unhandled state.
+//
+// Two independent stops now. MEDIA_MAX_MS is the wall: whatever the server
+// says, and even if it says nothing at all, the count ends here and the
+// button comes back. MEDIA_GONE_TRIES is the fast path: a few consecutive
+// "none"s mean the job is gone, and there is no reason to make someone
+// wait out the full ceiling to be told so. The grace exists because a poll
+// can legitimately beat the POST that registers the job.
+var MEDIA_MAX_MS    = 400000;   // 400s, and the render fits well inside it
+var MEDIA_GONE_TRIES = 4;
+
 // ── One status line, shared by both media ───────────────────────────────
 // Each medium used to own a status span next to its own button. With both
 // running, the toolbar carried two timers reading the same number and the
@@ -737,10 +755,22 @@ var MediaStatus = (function(){
       else MediaStatus.clear("podcast");
     };
 
+    var gone = 0;
     (function ask(){
+      if (Date.now() - t0 > MEDIA_MAX_MS) {
+        stop("That took longer than expected. Please try again in a few minutes.");
+        return;
+      }
       fetch("/r/" + RID + "/podcast?token=" + encodeURIComponent(TOKEN))
         .then(function(r){ return r.json(); })
         .then(function(j){
+          // The job vanished without producing audio.
+          if (j.status === "none") {
+            if (++gone >= MEDIA_GONE_TRIES) {
+              stop("That did not work this time. Please try again.");
+              return;
+            }
+          } else { gone = 0; }
           if (j.status === "ready") {
             clearInterval(timer); timer = null;
             // load() opens it only if the client asked. A render that
@@ -750,12 +780,10 @@ var MediaStatus = (function(){
             ev("podcast_ready", {});
             return;
           }
-          if (Date.now() - t0 > 12 * 60 * 1000) {
-            stop("That took longer than expected. Please try again in a few minutes.");
-            return;
-          }
           setTimeout(ask, 5000);
         })
+        // A failing fetch must not become an immortal poll: the ceiling is
+        // rechecked at the top of ask(), so this always terminates.
         .catch(function(){ setTimeout(ask, 8000); });
     })();
   }
@@ -776,7 +804,7 @@ var MediaStatus = (function(){
     fetch("/r/" + RID + "/podcast", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({token: TOKEN, minutes: 2})
+      body: JSON.stringify({token: TOKEN, minutes: 1})
     }).catch(function(){ /* the poll above is what actually matters */ });
   };
 })();
@@ -853,15 +881,30 @@ var MediaStatus = (function(){
       else MediaStatus.clear("video");
     };
 
+    var gone = 0;
     (function ask(){
+      if (Date.now() - t0 > MEDIA_MAX_MS) {
+        stop("That took longer than expected. Please try again shortly.");
+        return;
+      }
       fetch("/r/" + RID + "/video?token=" + encodeURIComponent(TOKEN))
         .then(function(r){ return r.json(); })
         .then(function(j){
-          if (j.status === "ready") { clearInterval(timer); timer = null; load(j); return; }
-          if (Date.now() - t0 > 20 * 60 * 1000) {
-            stop("That took longer than expected. Please try again shortly.");
+          if (j.status === "ready") {
+            clearInterval(timer); timer = null;
+            // load() returns early on a ready-but-urlless reply. Stopping
+            // first means that can no longer strand a disabled button
+            // under a frozen status line.
+            stop(null);
+            load(j);
             return;
           }
+          if (j.status === "none") {
+            if (++gone >= MEDIA_GONE_TRIES) {
+              stop("That did not work this time. Please try again.");
+              return;
+            }
+          } else { gone = 0; }
           setTimeout(ask, 6000);
         })
         .catch(function(){ setTimeout(ask, 9000); });
