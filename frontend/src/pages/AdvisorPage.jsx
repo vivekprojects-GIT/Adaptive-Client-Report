@@ -83,6 +83,8 @@ export default function AdvisorPage() {
        .catch(() => { setInsight(null); setNote(""); });
   }, [selected, reportType]);
 
+
+
   // Templates belong to one report type, so a pick cannot survive a change
   // of type. Defaults to the first authored template where one exists, so
   // the common case needs no interaction at all.
@@ -124,6 +126,38 @@ export default function AdvisorPage() {
       return period ? rs.find((r) => r.period === period) : rs[0];
     };
   }, [generated, reportType, period]);
+
+  // The status panel follows the SELECTED CLIENT, not whatever ran last.
+  //
+  // It used to be written only by the generate handlers, so two things went
+  // wrong at once. A batch run set a finished-looking pipeline with no
+  // report_id — there are thirteen ids, not one — which left "Approve &
+  // send" enabled and completely inert, because sendReport() begins with
+  // `if (!reportId) return`. And selecting a different client never cleared
+  // it, so that green pipeline stayed on screen describing somebody else's
+  // report.
+  //
+  // A pipeline that says Passed while its button does nothing is worse than
+  // an empty panel: the advisor believes the report went out.
+  useEffect(() => {
+    if (busy) return;                 // a run in progress owns the panel
+    if (!selected) { setStatus({}); return; }
+    const r = reportFor(selected.client_id);
+    if (!r) { setStatus({}); return; }
+    setStatus({
+      snapshot: "done",
+      generate: "done",
+      validate: r.validation === "passed" ? "passed"
+              : r.validation === "rejected_blocks" ? "caught"
+              : r.validation ? "failed" : "passed",
+      validation_summary: r.validation === "rejected_blocks"
+        ? "an unsourced figure was caught and replaced"
+        : "all blocks grounded",
+      review: r.sent_at ? "done" : "pending",
+      email: r.sent_at ? "done" : "pending",
+      report_id: r.report_id,
+    });
+  }, [selected, reportFor, busy]);
 
   async function openClientView(reportId) {
     try {
