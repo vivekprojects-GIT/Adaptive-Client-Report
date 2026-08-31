@@ -1563,7 +1563,10 @@ def d2_state():
     return {"contexts": out}
 
 
-_PODCAST_JOBS: Dict[str, bool] = {}
+# rid -> unix time the job started. The VALUE matters: a client that
+# refreshes mid-render must see the elapsed time keep climbing, not
+# restart from zero as though nothing had happened yet.
+_PODCAST_JOBS: Dict[str, float] = {}
 _PODCAST_JOBS_LOCK = __import__("threading").Lock()
 
 
@@ -1618,7 +1621,7 @@ def _start_podcast_job(rid: str, report: Dict[str, Any], snap,
     with _PODCAST_JOBS_LOCK:
         if _PODCAST_JOBS.get(rid):
             return                      # already being made
-        _PODCAST_JOBS[rid] = True
+        _PODCAST_JOBS[rid] = __import__("time").time()
 
     import threading
 
@@ -1695,8 +1698,9 @@ async def report_podcast_status(report_id: str, token: str = "",
                 "script": pod.get("script", ""), "note": pod.get("note", "")}
 
     with _PODCAST_JOBS_LOCK:
-        if _PODCAST_JOBS.get(report_id):
-            return {"status": "working"}
+        started = _PODCAST_JOBS.get(report_id)
+    if started:
+        return {"status": "working", "started_at": started}
 
     # A job that finished without audio. The client is told it did not work
     # and can try again — never why, because "HTTPStatusError 502 from a
@@ -1706,7 +1710,7 @@ async def report_podcast_status(report_id: str, token: str = "",
     return {"status": "none"}
 
 
-_VIDEO_JOBS: Dict[str, bool] = {}
+_VIDEO_JOBS: Dict[str, float] = {}
 
 # ── MEDIA LIVES IN A FOLDER ─────────────────────────────────────────────
 #
@@ -1819,7 +1823,7 @@ def _start_video_job(rid: str, report: Dict[str, Any], snap,
     with _PODCAST_JOBS_LOCK:
         if _VIDEO_JOBS.get(rid):
             return
-        _VIDEO_JOBS[rid] = True
+        _VIDEO_JOBS[rid] = __import__("time").time()
 
     import threading
 
@@ -1900,8 +1904,9 @@ def _start_media_job(rid: str, report: Dict[str, Any], snap) -> None:
     with _PODCAST_JOBS_LOCK:
         if _VIDEO_JOBS.get(rid) or _PODCAST_JOBS.get(rid):
             return                       # already being made
-        _VIDEO_JOBS[rid] = True
-        _PODCAST_JOBS[rid] = True
+        _now = __import__("time").time()
+        _VIDEO_JOBS[rid] = _now
+        _PODCAST_JOBS[rid] = _now
 
     import threading
 
@@ -1943,8 +1948,9 @@ async def report_video_status(report_id: str, token: str = "",
                 "sections": legacy.get("sections") or [],
                 "note": legacy.get("note", "")}
     with _PODCAST_JOBS_LOCK:
-        if _VIDEO_JOBS.get(report_id):
-            return {"status": "working"}
+        started = _VIDEO_JOBS.get(report_id)
+    if started:
+        return {"status": "working", "started_at": started}
     return {"status": "none"}
 
 

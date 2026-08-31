@@ -158,16 +158,21 @@ __DOC_CSS__
    padding:7px 13px;font-size:12.5px;cursor:pointer;color:#0f172a}
  .btn:hover{border-color:#94a3b8}
  .btn[disabled]{opacity:.65;cursor:default}
- .bar-actions{display:flex;gap:8px;align-items:center}
- /* Quiet, not shouty: the client did not ask for a progress bar, they
-    asked for a podcast. This just says the thing is on its way. */
- .podstat{font-size:11.5px;color:#64748b;white-space:nowrap}
- .podstat::before{content:"";display:inline-block;width:7px;height:7px;
-   margin-right:6px;border-radius:50%;background:#3b82f6;
+ /* The heading must not be squeezed by the buttons. It gets the leftover
+    space and a floor; the actions keep their natural width and wrap below
+    on a narrow screen rather than crushing the text beside them. */
+ .mid .bar{flex-wrap:wrap;gap:10px}
+ .mid .bar > div:first-child{flex:1 1 260px;min-width:220px}
+ .bar-actions{display:flex;gap:8px;align-items:center;flex:0 0 auto}
+ /* One status line for both media, under the toolbar. Quiet: the client
+    did not ask for a progress bar, they asked for a podcast. */
+ .mediastat{max-width:760px;margin:0 auto 10px;font-size:12px;color:#64748b}
+ .mediastat::before{content:"";display:inline-block;width:7px;height:7px;
+   margin-right:7px;border-radius:50%;background:#3b82f6;
    animation:podpulse 1.4s ease-in-out infinite;vertical-align:middle}
  @keyframes podpulse{0%,100%{opacity:.25}50%{opacity:1}}
  @media (prefers-reduced-motion: reduce){
-   .podstat::before{animation:none;opacity:.8}
+   .mediastat::before{animation:none;opacity:.8}
  }
  /* The player sits with the document, not in the chat rail: it is a way to
     consume THIS report, not a conversation about it. */
@@ -324,16 +329,17 @@ __DOC_CSS__
       <div class="sub">Click any section to ask about it, or select the
         exact words you mean.</div></div>
     <div class="bar-actions">
-      <!-- The progress lives out here, beside the button. The player panel
-           stays hidden until there is something to play: an empty audio
-           element with a dead scrubber looks broken, not busy. -->
-      <span id="podstat" class="podstat" hidden></span>
       <button class="btn" id="pod">&#127911; Listen</button>
-      <span id="vidstat" class="podstat" hidden></span>
       <button class="btn" id="vid">&#127916; Presentation</button>
       <button class="btn" id="dl">Download PDF</button>
     </div>
   </div>
+  <!-- Progress belongs on its OWN line, under the toolbar.
+       Sitting inline beside the buttons, two of these plus their timers
+       made the action row wider than the page: the heading collapsed into
+       a one-word-per-line column and "Preparing... 86s" appeared twice, as
+       if two different things were happening. One line, one message. -->
+  <div id="mediastat" class="mediastat" hidden><span id="mediastat-txt"></span></div>
   <div id="podwrap" class="podwrap" hidden>
     <!-- No download link here on purpose: the player's own three-dot menu
          already offers Download, because nothing sets controlsList to
@@ -433,6 +439,34 @@ document.getElementById("dl").onclick = function(){
   ev("pdf_downloaded", {}); window.print();
 };
 
+// The instant a job began, according to the server. Falls back to now when
+// the server did not say — a restarted timer is wrong, a missing one worse.
+function startedMs(j){
+  return (j && j.started_at) ? j.started_at * 1000 : Date.now();
+}
+
+// ── One status line, shared by both media ───────────────────────────────
+// Each medium used to own a status span next to its own button. With both
+// running, the toolbar carried two timers reading the same number and the
+// heading was crushed to one word per line. A client does not need to know
+// which of two background jobs is at which stage; they need to know
+// something is coming.
+var MediaStatus = (function(){
+  var el = document.getElementById("mediastat");
+  var txt = document.getElementById("mediastat-txt");
+  var jobs = {};                       // name -> message
+  function paint(){
+    var msgs = Object.keys(jobs).map(function(k){ return jobs[k]; });
+    if (!msgs.length) { if (el) el.hidden = true; return; }
+    if (el) el.hidden = false;
+    if (txt) txt.textContent = msgs[0];
+  }
+  return {
+    set: function(name, msg){ jobs[name] = msg; paint(); },
+    clear: function(name){ delete jobs[name]; paint(); }
+  };
+})();
+
 // ── Listen: one click, report to podcast ────────────────────────────────
 // Generation runs well over a minute (a cold service, then roughly 1.5
 // minutes of rendering per minute of audio), so the button has to say so.
@@ -468,8 +502,7 @@ document.getElementById("dl").onclick = function(){
     pre.textContent = j.script || "";
     haveAudio = true;
     if (timer) { clearInterval(timer); timer = null; }
-    var st = document.getElementById("podstat");
-    if (st) { st.hidden = true; st.textContent = ""; }
+    MediaStatus.clear("podcast");
     btn.disabled = false;
     btn.textContent = "🎧 Listen";
     if (wanted) reveal();
@@ -509,7 +542,10 @@ document.getElementById("dl").onclick = function(){
       if (j.status === "ready") { load(j); return; }
       // A render already running — started at send, or by a click before a
       // refresh. Show that it is coming, but still do not open the panel.
-      if (j.status === "working") waitFor(Date.now());
+      // Count from when the SERVER started the job. Counting from page
+      // load meant every refresh reset the timer to zero, so a render
+      // three minutes in looked like it had only just begun.
+      if (j.status === "working") waitFor(startedMs(j));
     })
     .catch(function(){ /* the button still works */ });
 
@@ -520,7 +556,6 @@ document.getElementById("dl").onclick = function(){
   // can listen yet. Worst case this says it did not work and offers the
   // button again.
   var timer = null;
-  var stat = document.getElementById("podstat");
 
   function waitFor(t0){
     if (timer) clearInterval(timer);
@@ -529,16 +564,17 @@ document.getElementById("dl").onclick = function(){
     // with no source gives the client a dead scrubber and a greyed play
     // button, which reads as broken rather than as working.
     wrap.hidden = true;
-    if (stat) stat.hidden = false;
 
+    // The LABEL stays. Replacing it with a ticking number made the button
+    // change width every second and told the client nothing they could act
+    // on; the stage and the elapsed time belong on the status line.
     var paint = function(){
       var s = Math.round((Date.now() - t0) / 1000);
-      btn.textContent = "Preparing… " + s + "s";
-      if (!stat) return;
-      stat.textContent = (s < 25)
-        ? "Writing the script"
-        : (s < 70 ? "Checking every figure against your report"
-                  : "Recording the audio — a couple of minutes");
+      MediaStatus.set("podcast", "Preparing your podcast — "
+        + ((s < 25) ? "writing the script"
+                    : (s < 70 ? "checking every figure against your report"
+                              : "recording the audio"))
+        + " (" + s + "s)");
     };
     paint();
     timer = setInterval(paint, 1000);
@@ -547,7 +583,8 @@ document.getElementById("dl").onclick = function(){
       clearInterval(timer); timer = null;
       btn.disabled = false;
       btn.textContent = "🎧 Listen";
-      if (stat) { stat.textContent = msg || ""; stat.hidden = !msg; }
+      if (msg) MediaStatus.set("podcast", msg);
+      else MediaStatus.clear("podcast");
     };
 
     (function ask(){
@@ -606,8 +643,7 @@ document.getElementById("dl").onclick = function(){
   if (!btn) return;
   var wrap = document.getElementById("vidwrap"),
       player = document.getElementById("vidplayer"),
-      note = document.getElementById("vidnote"),
-      stat = document.getElementById("vidstat");
+      note = document.getElementById("vidnote");
 
   var haveVideo = false, wanted = false, timer = null;
 
@@ -621,7 +657,7 @@ document.getElementById("dl").onclick = function(){
     note.textContent = j.note || "";
     haveVideo = true;
     if (timer) { clearInterval(timer); timer = null; }
-    stat.hidden = true; stat.textContent = "";
+    MediaStatus.clear("video");
     btn.disabled = false;
     btn.textContent = "🎬 Presentation";
     if (wanted) reveal();
@@ -645,16 +681,16 @@ document.getElementById("dl").onclick = function(){
     if (timer) clearInterval(timer);
     btn.disabled = true;
     wrap.hidden = true;               // never an empty player
-    stat.hidden = false;
 
     var paint = function(){
       var s = Math.round((Date.now() - t0) / 1000);
-      btn.textContent = "Preparing… " + s + "s";
       // Slides take longer than audio — narration plus rendering — so the
       // wording promises minutes rather than "a moment".
-      stat.textContent = (s < 30) ? "Writing the slides"
-        : (s < 90 ? "Checking every figure and every chart"
-                  : "Rendering the video — a few minutes");
+      MediaStatus.set("video", "Preparing your presentation — "
+        + ((s < 30) ? "writing the slides"
+                    : (s < 90 ? "checking every figure and every chart"
+                              : "rendering the video"))
+        + " (" + s + "s)");
     };
     paint();
     timer = setInterval(paint, 1000);
@@ -663,7 +699,8 @@ document.getElementById("dl").onclick = function(){
       clearInterval(timer); timer = null;
       btn.disabled = false;
       btn.textContent = "🎬 Presentation";
-      stat.textContent = msg || ""; stat.hidden = !msg;
+      if (msg) MediaStatus.set("video", msg);
+      else MediaStatus.clear("video");
     };
 
     (function ask(){
@@ -685,7 +722,10 @@ document.getElementById("dl").onclick = function(){
     .then(function(r){ return r.json(); })
     .then(function(j){
       if (j.status === "ready") { load(j); return; }   // loaded, not opened
-      if (j.status === "working") waitFor(Date.now());
+      // Count from when the SERVER started the job. Counting from page
+      // load meant every refresh reset the timer to zero, so a render
+      // three minutes in looked like it had only just begun.
+      if (j.status === "working") waitFor(startedMs(j));
     })
     .catch(function(){});
 
