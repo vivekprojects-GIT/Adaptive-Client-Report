@@ -47,6 +47,8 @@ beats a refusal to a question the report can answer.
 from __future__ import annotations
 
 import os
+import random as _random
+import threading as _threading
 import uuid
 from typing import Any, Dict, Iterator, Optional, Tuple
 
@@ -73,6 +75,105 @@ def _safe_prefix(buf: str) -> int:
     return cut + 1 if cut >= 0 else 0
 
 
+# Replies already written, keyed by (language, kind). A greeting is the
+# most repetitive thing a chat receives - every client opens with one, and
+# most open with the same three words - so paying four seconds and a model
+# call for each is waste that the client feels as lag.
+#
+# A small pool per key rather than one string: an assistant that answers
+# "hi" with the identical sentence every single time reads as a recording.
+# Two or three variants is enough to feel answered rather than played back.
+_SMALLTALK_POOL: Dict[Tuple[str, str], list] = {}
+_POOL_TARGET = 3
+_POOL_LOCK = _threading.Lock()
+
+# The client's own name cannot go in a shared pool - it would be handed to
+# the next client who says hello in the same language. So the model is told
+# not to use it, and greetings stay name-free.
+
+
+def _smalltalk_kind(question: str) -> str:
+    """greeting | thanks | farewell — so the pools do not mix.
+
+    Answering "bye" from the greeting pool would offer help to somebody
+    leaving, which is the exact rudeness this whole path exists to remove.
+    """
+    q = (question or "").strip().lower().strip(" .!?,;:~-")
+    if any(w in q for w in ("bye", "goodbye", "see you", "see ya", "later",
+                            "doei", "tot ziens", "dag", "ciao",
+                            "au revoir", "adios", "tschuss", "arrivederci")):
+        return "farewell"
+    if any(w in q for w in ("thank", "thanks", "thx", "ty", "cheers",
+                            "bedankt", "dank", "danke", "merci", "gracias",
+                            "obrigad", "grazie", "shukran", "dhanyavaad")):
+        return "thanks"
+    return "greeting"
+
+
+def _smalltalk_reply(question: str, loc, client_name: str = "") -> str:
+    """One short, warm line in the client's language. No figures.
+
+    Written by the model rather than a phrase table because the report can
+    be in any of forty-six languages, and a table of greetings in all of
+    them would be both large and unreviewed. The call is tiny - no
+    retrieval, no facts, a handful of tokens - so it costs a fraction of a
+    second against the six to eight seconds the full path was taking.
+
+    NO FIGURES IS THE RULE THAT MATTERS. Nothing here is grounded, because
+    nothing here is supposed to state anything checkable. If the model
+    reaches for a number anyway it is being asked a question it was not
+    given the facts to answer, so the prompt forbids it outright.
+    """
+    kind = _smalltalk_kind(question)
+    key = (loc.code, kind)
+
+    # Full pool: answer instantly, no network at all.
+    with _POOL_LOCK:
+        pool = list(_SMALLTALK_POOL.get(key) or [])
+    if len(pool) >= _POOL_TARGET:
+        return _random.choice(pool)
+
+    fallback = "Hello. Ask me anything about your report."
+    api_key = os.getenv("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return pool[0] if pool else fallback
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=api_key)
+        resp = client.messages.create(
+            model=os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5"),
+            max_tokens=90,
+            system=(
+                "You are the assistant beside a private wealth report. The "
+                "client has said something conversational - a greeting, a "
+                "thank-you, or a goodbye - not a question about their money.\n"
+                "Reply in ONE short, warm sentence, at most fifteen words.\n"
+                "NEVER state a figure, a percentage, an amount or a date. "
+                "You have not been given any, and inventing one is the worst "
+                "thing you can do here.\n"
+                + ("If they greeted you, offer to help with their report.\n"
+                   if kind == "greeting" else
+                   "They thanked you or said goodbye. Acknowledge it warmly "
+                   "and briefly, and do NOT offer further help.\n")
+                + "Do not use their name.\n"
+                + f"Write in {loc.prompt_name}."
+            ),
+            messages=[{"role": "user", "content": question[:200]}],
+        )
+        said = "".join(getattr(c, "text", "") for c in resp.content).strip()
+        if not said:
+            return pool[0] if pool else fallback
+        with _POOL_LOCK:
+            have = _SMALLTALK_POOL.setdefault(key, [])
+            if said not in have and len(have) < _POOL_TARGET:
+                have.append(said)
+        return said
+    except Exception:
+        # A pool entry from an earlier client beats a canned English line
+        # on a Dutch report.
+        return pool[0] if pool else fallback
+
+
 def stream_answer(
     session: Session,
     snap: ClientSnapshot,
@@ -91,6 +192,31 @@ def stream_answer(
     from ape.strategies.catalog import INTENT_STRATEGIES
 
     block_type = (block or {}).get("block_type") or (block or {}).get("type")
+
+    # A greeting is answered as a greeting, and stops here. Everything below
+    # this point - retrieval, strategy selection, the grounded writer, the
+    # bandit - exists to answer questions about the report, and running it
+    # for "hi" was what produced a portfolio summary in reply to hello.
+    from ape.reporting.d2 import is_smalltalk
+    if is_smalltalk(question) and not block_type and not selected_text:
+        from ape.reporting.locales import get as _get_locale
+        _loc = _get_locale(getattr(snap, "language", None))
+        reply = _smalltalk_reply(question, _loc,
+                                 getattr(snap, "display_name", "") or "")
+        yield ("delta", {"text": reply})
+        yield ("final", {
+            "answer": reply,
+            "intent": "smalltalk",
+            # No strategy and no arms: this answer was not chosen by the
+            # bandit, so it must not be reported as though it were, or the
+            # learner credits an arm for work it did not do.
+            "strategy": "", "arms": [], "author": "smalltalk",
+            "sources": [], "followups": [], "widget": None,
+            "conversation_id": conversation_id or conversation_id_for(
+                session, report_id),
+        })
+        return
+
     intent = classify_intent(question, block_type)
     arms = INTENT_STRATEGIES.get(intent) or INTENT_STRATEGIES.get(
         "other_report_question", ["standard_llm"])

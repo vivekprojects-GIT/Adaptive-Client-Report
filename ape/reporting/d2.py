@@ -154,6 +154,104 @@ BLOCK_INTENT_HINT = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Smalltalk
+# ---------------------------------------------------------------------------
+#
+# WHY THIS IS NOT JUST ANOTHER INTENT
+#
+# "hi" used to classify as other_report_question, which meant it went the
+# whole way through retrieval, strategy selection and the grounded writer,
+# and came back with the client's entire portfolio. "bye" returned a
+# four-bullet summary of the quarter. Saying goodbye got you a report.
+#
+# Three separate costs, and the rude answer is only the first:
+#
+#   - it took six to eight seconds to say hello
+#   - every greeting pulled a bandit arm, so "bye" was training the
+#     strategy learner as though a summary had been what the client wanted
+#   - a client testing the box with "hi" is shown a wall of figures, which
+#     teaches them the chat is not for talking to
+#
+# So these are caught before any of that starts. The reply is short, warm,
+# names no figures, and costs one small model call.
+
+# Deliberately not a general "is this chit-chat" classifier. Matching is
+# exact-ish and anchored, because the failure that matters is the other
+# direction: a real question swallowed by the greeting path would be
+# answered with "hello there" and no figures at all. When in doubt this
+# returns False and the question goes the normal way.
+_GREETING_WORDS = {
+    # English
+    "hi", "hii", "hiya", "hello", "hey", "heya", "yo", "howdy",
+    "good morning", "good afternoon", "good evening", "morning", "evening",
+    "how are you", "how are u", "hows it going", "how's it going",
+    "how do you do", "whats up", "what's up", "sup",
+    "bye", "goodbye", "good bye", "see you", "see ya", "cheers", "later",
+    "thanks", "thank you", "thankyou", "ty", "thx", "ok thanks", "okay thanks",
+    # bare "thank" too: the filler strip turns "thank you so much"
+    # into it, and that is unmistakably a thank-you.
+    "thank", "many thanks", "cheers mate",
+    "ok", "okay", "cool", "nice", "great", "got it", "understood",
+    "test", "testing",
+    # Dutch
+    "hallo", "hoi", "hey daar", "goedemorgen", "goedemiddag", "goedenavond",
+    "hoe gaat het", "hoe gaat het met je", "doei", "dag", "tot ziens",
+    "bedankt", "dank je", "dank u", "dankjewel", "prima", "duidelijk",
+    # German
+    "hallo zusammen", "guten morgen", "guten tag", "guten abend",
+    "wie geht es dir", "wie gehts", "tschuss", "auf wiedersehen", "danke",
+    "danke schon", "vielen dank", "alles klar",
+    # French
+    "bonjour", "bonsoir", "salut", "ca va", "comment ca va", "au revoir",
+    "merci", "merci beaucoup", "d'accord",
+    # Spanish / Portuguese / Italian
+    "hola", "buenos dias", "buenas tardes", "adios", "gracias",
+    "ola", "bom dia", "boa tarde", "obrigado", "obrigada",
+    "ciao", "buongiorno", "buonasera", "grazie", "arrivederci",
+    # a few more scripts
+    "salam", "shukran", "namaste", "dhanyavaad",
+}
+
+# Anything containing one of these is about the report, whatever else it
+# also contains. "thanks, and how much did I pay in fees" is a question.
+_NOT_SMALLTALK = (
+    "portfolio", "portefeuille", "fee", "fees", "kosten", "return",
+    "rendement", "benchmark", "value", "waarde", "holding", "aandel",
+    "risk", "risico", "allocation", "verdeling", "chart", "diagram",
+    "show", "laat", "explain", "leg uit", "summary", "samenvatting",
+    "how much", "hoeveel", "what is my", "wat is mijn", "why", "waarom",
+    "%", "euro", "pound", "dollar",
+)
+
+_SMALLTALK_MAX_WORDS = 5
+
+
+def is_smalltalk(question: str) -> bool:
+    """True for a greeting, a thank-you or a goodbye — not a question.
+
+    Length is part of the test, not decoration. "hi" is a greeting; "hi,
+    can you explain the fees table" contains one and is still a question,
+    and the second must never be routed here.
+    """
+    q = (question or "").strip().lower()
+    if not q:
+        return False
+    # Strip the punctuation people end greetings with, and nothing else.
+    q = q.strip(" .!?,;:~-\u2026")
+    if not q or len(q.split()) > _SMALLTALK_MAX_WORDS:
+        return False
+    if any(w in q for w in _NOT_SMALLTALK):
+        return False
+    if q in _GREETING_WORDS:
+        return True
+    # "hi there", "ok thank you so much" - a greeting plus filler.
+    filler = {"there", "so", "much", "very", "you", "u", "again", "mate",
+              "please", "all", "everyone", "man", "sir", "madam"}
+    words = [w for w in q.split() if w not in filler]
+    return bool(words) and " ".join(words) in _GREETING_WORDS
+
+
 def classify_intent(question: str, block_type: Optional[str] = None) -> str:
     q = question.lower()
     for intent, words in INTENT_KEYWORDS:
@@ -281,6 +379,19 @@ their own report. Rules, in order:
    cannot make one is both untrue and visibly contradicted."""
 
 
+def _money(key: str) -> str:
+    """The currency symbol for a fact, or "" for a percentage.
+
+    The chat used to hand the writer bare numbers, so it decided for itself
+    whether 3,496,695.36 was pounds or euros - and decided differently
+    between one answer and the next in the same conversation. The grounding
+    check could not catch it: it verifies FIGURES, and the figure was right
+    either way. Only the unit was wrong, and the unit is a fact.
+    """
+    from .grounding import is_money_fact, report_currency
+    return report_currency() if is_money_fact(key) else ""
+
+
 def _facts_for_scope(snap: ClientSnapshot,
                      block: Optional[Dict]) -> Tuple[str, Dict[str, float]]:
     """(prompt text, allowlist) for either one block's scope or the whole
@@ -330,7 +441,7 @@ def _facts_for_scope(snap: ClientSnapshot,
                 if any(_matches(v, dp, [val]) for v, dp, _r, _p in shown):
                     scoped[ref] = val
         for k, v in scoped.items():
-            lines.append(f"{k} = {v}")
+            lines.append(f"{k} = {_money(k)}{v}")
         data = block.get("content_json") or block.get("data") or {}
         text = json.dumps({k: v for k, v in data.items()
                            if k != "_author"}, default=str,
@@ -349,7 +460,7 @@ def _facts_for_scope(snap: ClientSnapshot,
         return "\n".join(lines), derived_facts(scoped)
 
     for k, v in snap.numeric_facts().items():
-        lines.append(f"{k} = {v}")
+        lines.append(f"{k} = {_money(k)}{v}")
     return "\n".join(lines), all_facts
 
 
@@ -610,9 +721,26 @@ def dynamic_followups(question: str, answer: str, report: Dict[str, Any],
     try:
         import anthropic
         client = anthropic.Anthropic(api_key=api_key)
+        # THE CHIPS FOLLOW THE REPORT'S LANGUAGE.
+        #
+        # This argument was accepted and then never used, so the generated
+        # questions were always English. Next to the capability chips -
+        # which DO translate, through the label table - a Dutch client got
+        # two English suggestions and two Dutch ones in a single row.
+        lang_rule = ""
+        code = (locale or "en").strip().lower()
+        if code and code != "en":
+            try:
+                from .locales import get as _get_locale
+                lang_rule = ("\n\nWrite every suggested question in "
+                             + _get_locale(code).prompt_name
+                             + ". Do not answer in English.")
+            except Exception:
+                lang_rule = ""
+
         resp = client.messages.create(
             model=os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5"),
-            max_tokens=180, system=_FOLLOWUP_SYSTEM,
+            max_tokens=180, system=_FOLLOWUP_SYSTEM + lang_rule,
             messages=[{"role": "user", "content":
                        f"THEY ASKED: {question[:300]}\n\n"
                        f"THE SECTIONS THAT ANSWERED IT CONTAIN:\n"
@@ -710,24 +838,34 @@ def suggest_followups(report: Dict[str, Any], intent: str = "",
                                    sources=sources):
             add(q, content)
 
-    add(_FOLLOWUP_BY_INTENT.get(intent), content)
+    # The tables below are written in English and have no translations.
+    # On an English report they are a useful fallback; on a Dutch one they
+    # are the bug above wearing a different hat, so they are skipped and
+    # the row is simply shorter. Fewer chips in the right language beats
+    # four in two languages.
+    _english = (locale or "en").strip().lower() in ("", "en")
+    if _english:
+        add(_FOLLOWUP_BY_INTENT.get(intent), content)
 
     present = [b.get("type") for b in report.get("blocks", [])]
     # The highlighted block first: a client pointing at the fees table is
     # more likely to want another fees question than a generic one.
-    for bt in ([block_type] if block_type else []) + present:
-        if len(content) >= N_CONTENT:
-            break
-        for q in _FOLLOWUP_BY_BLOCK.get(bt, []):
-            add(q, content)
+    # Both tables below are English-only, so they are offered only where
+    # English is what the client is reading. See the note above _english.
+    if _english:
+        for bt in ([block_type] if block_type else []) + present:
             if len(content) >= N_CONTENT:
                 break
+            for q in _FOLLOWUP_BY_BLOCK.get(bt, []):
+                add(q, content)
+                if len(content) >= N_CONTENT:
+                    break
 
-    for q in ("Give me a quick summary of this report.",
-              "Explain this in simpler terms."):
-        if len(content) >= N_CONTENT:
-            break
-        add(q, content)
+        for q in ("Give me a quick summary of this report.",
+                  "Explain this in simpler terms."):
+            if len(content) >= N_CONTENT:
+                break
+            add(q, content)
 
     # ---- capability: grounded in what can be drawn for this client -------
     capability: List[Dict[str, str]] = []
