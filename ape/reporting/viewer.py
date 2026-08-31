@@ -1448,6 +1448,37 @@ function ask(question, onDone, onDelta){
   var QUIET_MS    = 1100;    // silence that ends a turn
   var MIN_SPEECH  = 350;     // ignore a cough or a door
 
+  // MediaRecorder.start() WITHOUT a timeslice hands over ONE blob at stop(),
+  // containing everything since start(). So a turn's upload spanned from the
+  // moment the mic opened to the end of speech - every second the client
+  // spent thinking, recorded and sent. Whisper then transcribed minutes of
+  // near-silence for a three-second question, and because vad_filter strips
+  // that silence it often came back empty, which lands on the "no text"
+  // branch and returns to listening WITHOUT ANSWERING. Both reported
+  // symptoms, one cause.
+  //
+  // Trimming the chunk list clientside cannot fix it: the first chunk
+  // carries the WebM header, so dropping anything from the front leaves a
+  // blob nothing can decode. Instead the recorder is recycled while the room
+  // is quiet - every recording stays a complete, self-contained file, and
+  // the silence in front of speech is bounded by RECYCLE_MS.
+  var RECYCLE_MS  = 4000;    // discard a recording that has heard nothing
+  var RECYCLE_CALM= 1500;    // ...and only once well clear of speech
+
+  // A turn ends when the room goes quiet - which assumes the room DOES go
+  // quiet below the threshold. On a low-gain mic, or in a room whose noise
+  // floor sits near where speech lands, it may not: `speaking` latches true,
+  // the quiet branch never runs, stop() is never called and NOTHING IS EVER
+  // SENT. That failure is silent and looks exactly like the feature hanging.
+  // A ceiling turns it into a merely-clipped question, which is visible on
+  // screen and can be corrected, instead of a dead microphone.
+  var MAX_TURN_MS = 15000;
+
+  // Peak level seen this turn, reported next to the threshold that judged
+  // it. Whether the gate is set right for a given microphone is not a thing
+  // anyone can hear - it has to be read.
+  var peakRms = 0;
+
   var floorLevel = FLOOR_MIN, calibUntil = 0, calibPeak = 0;
 
   function speechLevel(){
@@ -1457,6 +1488,11 @@ function ask(question, onDone, onDelta){
   var stream=null, ctx=null, analyser=null, data=null, raf=null;
   var recorder=null, chunks=[];
   var live=false, muted=false, speaking=false, heardAt=0, startedAt=0;
+  var recStarted=0, recycling=false;
+
+  function diag(msg){
+    try { console.log("[voice] " + msg); } catch (e) {}
+  }
   var player=null, audioUrl=null;
   // Sentence pipeline: what is queued, what is playing, whether the
   // answer has finished arriving, and how much of it we have consumed.
@@ -1540,9 +1576,31 @@ function ask(question, onDone, onDelta){
       floorLevel = Math.max(FLOOR_MIN, floorLevel * 0.995 + rms * 0.005);
     }
 
+    // Nothing said for a while: throw the recording away and begin a fresh
+    // one, so what eventually gets sent is the question rather than the wait
+    // before it. Only well clear of speech, so onset is never clipped.
+    if (!speaking && !recycling && recorder.state === "recording"
+        && (now - recStarted) > RECYCLE_MS
+        && (now - heardAt) > RECYCLE_CALM){
+      recycling = true;
+      try { recorder.stop(); } catch (e) { recycling = false; }
+      return;
+    }
+
+    if (rms > peakRms) peakRms = rms;
+
     if (rms > speechLevel()){
       if (!speaking){ speaking = true; startedAt = now; chunks = []; }
       heardAt = now;
+      // Speech that never stops (or a room the gate cannot see past) must
+      // still produce a turn rather than recording until the tab closes.
+      if ((now - startedAt) > MAX_TURN_MS){
+        speaking = false;
+        if (recorder.state === "recording"){
+          diag("turn capped at " + (MAX_TURN_MS / 1000) + "s");
+          recorder.stop();
+        }
+      }
     } else if (speaking && (now - heardAt) > QUIET_MS){
       speaking = false;
       if ((heardAt - startedAt) < MIN_SPEECH){ return; }   // too brief
@@ -1736,7 +1794,7 @@ function ask(question, onDone, onDelta){
     // room may have changed while the answer was playing.
     calibUntil = Date.now() + CALIBRATE_MS; calibPeak = 0;
     if (recorder && recorder.state === "inactive"){
-      try { recorder.start(); } catch (e) {}
+      try { recorder.start(); recStarted = Date.now(); } catch (e) {}
     }
   }
 
@@ -1768,10 +1826,22 @@ function ask(question, onDone, onDelta){
       recorder.onstop = function(){
         var blob = new Blob(chunks, {type: chunks.length ? chunks[0].type : "audio/webm"});
         chunks = [];
+        if (recycling){                     // a discarded wait, not a turn
+          recycling = false;
+          if (live && !muted){
+            try { recorder.start(); recStarted = Date.now(); } catch (e) {}
+          }
+          return;
+        }
         if (!live) return;
+        diag("turn: " + blob.size + "B over "
+             + ((Date.now() - recStarted) / 1000).toFixed(1) + "s | peak rms "
+             + peakRms.toFixed(4) + " vs gate " + speechLevel().toFixed(4)
+             + " | floor " + floorLevel.toFixed(4));
+        peakRms = 0;
         if (blob.size > 1200) sendTurn(blob); else resume();
       };
-      recorder.start();
+      recorder.start(); recStarted = Date.now();
       setPhase("listen");
       show("said", "");
       calibUntil = Date.now() + CALIBRATE_MS; calibPeak = 0;
