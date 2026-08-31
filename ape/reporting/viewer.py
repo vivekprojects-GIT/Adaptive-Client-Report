@@ -179,6 +179,7 @@ __DOC_CSS__
  .poddl{margin-left:auto;font-size:12px;color:#1d4ed8;text-decoration:none}
  .poddl:hover{text-decoration:underline}
  .podwrap audio{width:100%}
+ .podwrap video{width:100%;max-height:420px;background:#0f172a;border-radius:6px}
  .podwrap details{margin-top:8px}
  .podwrap summary{font-size:12px;color:#64748b;cursor:pointer}
  .podwrap pre{white-space:pre-wrap;font-size:12px;line-height:1.5;
@@ -320,6 +321,8 @@ __DOC_CSS__
            element with a dead scrubber looks broken, not busy. -->
       <span id="podstat" class="podstat" hidden></span>
       <button class="btn" id="pod">&#127911; Listen</button>
+      <span id="vidstat" class="podstat" hidden></span>
+      <button class="btn" id="vid">&#127916; Presentation</button>
       <button class="btn" id="dl">Download PDF</button>
     </div>
   </div>
@@ -331,6 +334,11 @@ __DOC_CSS__
     <audio id="podaudio" controls preload="none"></audio>
     <details id="poddet"><summary>Read the script</summary>
       <pre id="podscript"></pre></details>
+  </div>
+  <div id="vidwrap" class="podwrap" hidden>
+    <div class="podhd"><b>Your report as a presentation</b>
+      <span id="vidnote"></span></div>
+    <video id="vidplayer" controls preload="none" playsinline></video>
   </div>
   __DOC__
 </div>
@@ -575,6 +583,116 @@ document.getElementById("dl").onclick = function(){
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({token: TOKEN, minutes: 2})
     }).catch(function(){ /* the poll above is what actually matters */ });
+  };
+})();
+
+// ── Presentation: the same report as narrated slides ────────────────────
+//
+// Deliberately a near-copy of the podcast block rather than a shared
+// abstraction over both. They differ in the ways that matter — a <video>
+// element instead of <audio>, no script pane, roughly double the render
+// time — and folding them together would produce a parameterised function
+// whose branches are harder to follow than these forty lines.
+(function(){
+  var btn  = document.getElementById("vid");
+  if (!btn) return;
+  var wrap = document.getElementById("vidwrap"),
+      player = document.getElementById("vidplayer"),
+      note = document.getElementById("vidnote"),
+      stat = document.getElementById("vidstat");
+
+  var haveVideo = false, wanted = false, timer = null;
+
+  function load(j){
+    var url = j.video_url || "";
+    if (!url) return;
+    if (url.charAt(0) === "/") {
+      url += (url.indexOf("?") < 0 ? "?" : "&") + "token=" + encodeURIComponent(TOKEN);
+    }
+    if (player.src !== url) player.src = url;
+    note.textContent = j.note || "";
+    haveVideo = true;
+    if (timer) { clearInterval(timer); timer = null; }
+    stat.hidden = true; stat.textContent = "";
+    btn.disabled = false;
+    btn.textContent = "🎬 Presentation";
+    if (wanted) reveal();
+  }
+
+  function reveal(){
+    wanted = true;
+    wrap.hidden = false;
+    btn.textContent = "🎬 Hide";
+    player.scrollIntoView({behavior: "smooth", block: "nearest"});
+  }
+
+  function hide(){
+    wanted = false;
+    wrap.hidden = true;
+    btn.textContent = "🎬 Presentation";
+    try { player.pause(); } catch (e) {}
+  }
+
+  function waitFor(t0){
+    if (timer) clearInterval(timer);
+    btn.disabled = true;
+    wrap.hidden = true;               // never an empty player
+    stat.hidden = false;
+
+    var paint = function(){
+      var s = Math.round((Date.now() - t0) / 1000);
+      btn.textContent = "Preparing… " + s + "s";
+      // Slides take longer than audio — narration plus rendering — so the
+      // wording promises minutes rather than "a moment".
+      stat.textContent = (s < 30) ? "Writing the slides"
+        : (s < 90 ? "Checking every figure and every chart"
+                  : "Rendering the video — a few minutes");
+    };
+    paint();
+    timer = setInterval(paint, 1000);
+
+    var stop = function(msg){
+      clearInterval(timer); timer = null;
+      btn.disabled = false;
+      btn.textContent = "🎬 Presentation";
+      stat.textContent = msg || ""; stat.hidden = !msg;
+    };
+
+    (function ask(){
+      fetch("/r/" + RID + "/video?token=" + encodeURIComponent(TOKEN))
+        .then(function(r){ return r.json(); })
+        .then(function(j){
+          if (j.status === "ready") { clearInterval(timer); timer = null; load(j); return; }
+          if (Date.now() - t0 > 20 * 60 * 1000) {
+            stop("That took longer than expected. Please try again shortly.");
+            return;
+          }
+          setTimeout(ask, 6000);
+        })
+        .catch(function(){ setTimeout(ask, 9000); });
+    })();
+  }
+
+  fetch("/r/" + RID + "/video?token=" + encodeURIComponent(TOKEN))
+    .then(function(r){ return r.json(); })
+    .then(function(j){
+      if (j.status === "ready") { load(j); return; }   // loaded, not opened
+      if (j.status === "working") waitFor(Date.now());
+    })
+    .catch(function(){});
+
+  btn.onclick = function(){
+    if (btn.disabled) return;
+    if (!wrap.hidden) { hide(); return; }
+    if (haveVideo) { reveal(); return; }
+    ev("presentation_requested", {});
+    wanted = true;
+    waitFor(Date.now());
+    fetch("/r/" + RID + "/video", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({token: TOKEN})
+    }).catch(function(){});
   };
 })();
 

@@ -1117,7 +1117,11 @@ async def generate_one_report(request: Request):
     (out / f"{rid}.html").write_text(render_html(report), encoding="utf-8")
     (out / f"{rid}.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
 
+    # Audio and slides, as two independent jobs. They queue against the
+    # same single-CPU renderer, so this is concurrency with the REPORT, not
+    # with each other.
     _start_podcast_job(rid, report, snap)
+    _start_video_job(rid, report, snap)
 
     # SQL: the report row (arm, method — the reward address) and every
     # block (source_refs — the localisation for highlight-to-ask).
@@ -1232,7 +1236,9 @@ async def send_report(report_id: str, request: Request):
                 _snap = _load(_db, rep["client_id"], rep.get("period"))
             if _snap is not None:
                 _start_podcast_job(report_id, rep, _snap)
-    except Exception as exc:            # sending must never fail for audio
+                if not _video_from_db(report_id):
+                    _start_video_job(report_id, rep, _snap)
+    except Exception as exc:            # sending must never fail for media
         print(f"[podcast] could not start job on send for {report_id}: "
               f"{type(exc).__name__}: {str(exc)[:100]}", flush=True)
 
@@ -1696,6 +1702,179 @@ async def report_podcast_status(report_id: str, token: str = "",
     if pod.get("error"):
         return {"status": "none"}
     return {"status": "none"}
+
+
+_VIDEO_JOBS: Dict[str, bool] = {}
+
+
+def _video_from_db(report_id: str) -> Optional[Dict[str, Any]]:
+    from .db.session import init_db, session_scope
+    from .db.models import Report
+    init_db()
+    try:
+        with session_scope() as db:
+            row = db.get(Report, report_id)
+            if row is not None and getattr(row, "video_url", None):
+                return {"video_url": row.video_url,
+                        "sections": json.loads(row.video_sections or "[]"),
+                        "note": ""}
+    except Exception as exc:
+        print(f"[video] cache read failed for {report_id}: "
+              f"{type(exc).__name__}: {str(exc)[:100]}", flush=True)
+    return None
+
+
+def _video_to_db(report_id: str, result: Dict[str, Any]) -> None:
+    from datetime import datetime as _dt
+    from .db.session import init_db, session_scope
+    from .db.models import Report
+    init_db()
+    try:
+        with session_scope() as db:
+            row = db.get(Report, report_id)
+            if row is None:
+                return
+            row.video_url = result.get("video_url")
+            row.video_sections = json.dumps(result.get("sections") or [],
+                                            ensure_ascii=False)
+            row.video_at = _dt.utcnow()
+    except Exception as exc:
+        print(f"[video] cache write failed for {report_id}: "
+              f"{type(exc).__name__}: {str(exc)[:100]}", flush=True)
+
+
+def _start_video_job(rid: str, report: Dict[str, Any], snap,
+                     on_demand: bool = False) -> None:
+    """Render this report's presentation in the background.
+
+    Same shape as the podcast job, and started at the same two moments —
+    generation and send — so the client finds it already made.
+
+    Kept as a SEPARATE job rather than one job producing both. Audio takes
+    two minutes and video four; bundling them would make every client wait
+    the longer of the two for whichever they wanted first, and one
+    failing would take the other down with it.
+    """
+    import os as _os
+    api_key = _os.getenv("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return
+    if not on_demand and _pregenerate_disabled(_os):
+        return
+
+    with _PODCAST_JOBS_LOCK:
+        if _VIDEO_JOBS.get(rid):
+            return
+        _VIDEO_JOBS[rid] = True
+
+    import threading, json as _json
+    from pathlib import Path as _Path
+
+    def _run():
+        try:
+            import anthropic
+            from .reporting import presentation as _pres
+            from .reporting import podcast as _pod
+            client = anthropic.Anthropic(api_key=api_key)
+            model = _os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5")
+            result = _pres.generate_for_report(client, model, report, snap)
+
+            if result.get("video_url"):
+                mp4 = (_Path(__file__).resolve().parents[1] / "data" /
+                       "generated" / f"{rid}.mp4")
+                # Same 24h expiry as the audio, same remedy: take a copy
+                # before recording the link, or the player is dead by the
+                # time anyone comes back to it.
+                if _pod.fetch_audio(result["video_url"], mp4):
+                    result["remote_url"] = result["video_url"]
+                    result["video_url"] = f"/r/{rid}/presentation.mp4"
+                _video_to_db(rid, result)
+
+            path = (_Path(__file__).resolve().parents[1] / "data" /
+                    "generated" / f"{rid}.json")
+            try:
+                current = _json.loads(path.read_text(encoding="utf-8"))
+            except Exception:
+                current = report
+            current["presentation"] = result
+            path.write_text(_json.dumps(current, indent=2), encoding="utf-8")
+
+            print(f"[video] {rid}: "
+                  + (result.get("video_url") or f"failed — {result.get('error')}"),
+                  flush=True)
+        except Exception as exc:
+            print(f"[video] {rid}: job error {type(exc).__name__}: "
+                  f"{str(exc)[:120]}", flush=True)
+        finally:
+            with _PODCAST_JOBS_LOCK:
+                _VIDEO_JOBS.pop(rid, None)
+
+    threading.Thread(target=_run, name=f"video-{rid}", daemon=True).start()
+
+
+@app.get("/r/{report_id}/video")
+async def report_video_status(report_id: str, token: str = "",
+                              request: Request = None):
+    """Is the presentation ready yet?"""
+    _viewer_auth(report_id, token, request)
+    cached = _video_from_db(report_id)
+    if cached:
+        return {"status": "ready", **cached}
+    legacy = (_report_json(report_id).get("presentation") or {})
+    if legacy.get("video_url"):
+        return {"status": "ready", "video_url": legacy["video_url"],
+                "sections": legacy.get("sections") or [],
+                "note": legacy.get("note", "")}
+    with _PODCAST_JOBS_LOCK:
+        if _VIDEO_JOBS.get(report_id):
+            return {"status": "working"}
+    return {"status": "none"}
+
+
+@app.post("/r/{report_id}/video")
+async def report_video(report_id: str, request: Request):
+    """Ask for the presentation. Enqueues; never waits, never errors at the
+    client. Same contract as /podcast."""
+    body = await request.json()
+    _viewer_auth(report_id, str(body.get("token", "")), request)
+    report = _report_json(report_id)
+
+    stored = _video_from_db(report_id)
+    if stored:
+        return {**stored, "cached": True}
+
+    import os as _os
+    if not _os.getenv("ANTHROPIC_API_KEY", ""):
+        raise HTTPException(503, "presentation needs ANTHROPIC_API_KEY")
+
+    from .db.session import init_db, session_scope
+    from .db.repository import load_snapshot as _sql_snapshot
+    init_db()
+    with session_scope() as db:
+        snap = _sql_snapshot(db, report["client_id"], report.get("period"))
+    if snap is None:
+        raise HTTPException(404, "no snapshot for this report")
+
+    _start_video_job(report_id, report, snap, on_demand=True)
+    return {"status": "working"}
+
+
+@app.get("/r/{report_id}/presentation.mp4")
+def report_video_file(report_id: str, token: str = "", request: Request = None):
+    """Our own copy of the video, behind the same two gates as the report."""
+    _viewer_auth(report_id, token, request)
+    path = (Path(__file__).resolve().parents[1] / "data" / "generated"
+            / f"{report_id}.mp4")
+    if not path.is_file():
+        raise HTTPException(404, "no presentation for this report")
+    report = _report_json(report_id)
+    name = f"{report.get('client_name', 'report')} {report.get('period', '')}".strip()
+    safe = "".join(ch if (ch.isalnum() or ch in " -_") else "" for ch in name)
+    from fastapi.responses import FileResponse
+    return FileResponse(
+        path, media_type="video/mp4",
+        headers={"Content-Disposition":
+                 f'inline; filename="{safe or report_id}.mp4"'})
 
 
 @app.get("/r/{report_id}/podcast.mp3")

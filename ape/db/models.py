@@ -237,6 +237,11 @@ class Report(Base):
     podcast_script: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     podcast_at:     Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
+    # The narrated slide video, same contract as the podcast above.
+    video_url:      Mapped[Optional[str]] = mapped_column(String(400), nullable=True)
+    video_sections: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    video_at:       Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
 
 class ReportBlock(Base):
     """One rendered block. `block_id` is what a client highlight resolves to,

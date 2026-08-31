@@ -104,7 +104,14 @@ _ADDED_COLUMNS = {
     # lookup instead of a two-minute render nobody should pay for twice.
     "reports": {"podcast_url": "VARCHAR(400)",
                 "podcast_script": "TEXT",
-                "podcast_at": "DATETIME"},
+                "podcast_at": "DATETIME",
+                # Same reasoning for the narrated slide video. The sections
+                # are kept beside the URL because the rendered MP4 lives on
+                # a third party's disk for a day, and when it goes the
+                # sections are the only record of what was shown.
+                "video_url": "VARCHAR(400)",
+                "video_sections": "TEXT",
+                "video_at": "DATETIME"},
 }
 
 
