@@ -1524,8 +1524,57 @@ function ask(question, onDone, onDelta){
 
   var floorLevel = FLOOR_MIN, calibUntil = 0, calibPeak = 0;
 
+  // THE GATE CORRECTS ITSELF WHEN IT PROVES TOO HIGH.
+  //
+  // Every constant above is a guess about a microphone nobody here has
+  // heard. Guess high and the failure is total and silent: speech never
+  // crosses the gate, `speaking` never latches, stop() is never called, and
+  // the client talks to an orb that does nothing. There is no louder they
+  // can usefully get, so it never recovers on its own.
+  //
+  // The gate is therefore a hypothesis, tested against what the room does.
+  // If a window passes in which the microphone was CLEARLY not silent - a
+  // peak well above the tracked noise floor - and nothing crossed the gate,
+  // then the gate is wrong rather than the speaker, and a cap is placed
+  // just under what was actually heard.
+  //
+  // One cap rather than adjusting each term: whichever term was holding the
+  // gate up, the proportional one or the absolute floor, the cap is under
+  // both, so it converges in a single window instead of creeping down over
+  // several. ABS_HARD bounds it, comfortably above a digitally-silent
+  // stream, so a dead microphone still cannot talk its way to zero.
+  var ABS_HARD   = 0.0040;
+  var ADAPT_MS   = 6000;   // judge the gate over a window, not a frame
+  // Low, because the microphone that needs rescuing is precisely the one
+  // whose voice barely clears its own room. Demanding a wide margin here
+  // excludes exactly the case this was written for. It stays safe because
+  // adaptation ALSO requires that nothing crossed the gate: a mic that is
+  // working never reaches this code.
+  var ADAPT_OVER = 1.15;   // "clearly not silent" = this much over floor
+  var ADAPT_UNDER= 0.85;   // sit the cap this far under what was heard
+  var gateCap = Infinity;
+  var windowPeak = 0, windowUntil = 0;
+
   function speechLevel(){
-    return Math.max(floorLevel * OVER_FLOOR + FLOOR_MARGIN, ABS_MIN);
+    return Math.max(ABS_HARD, Math.min(gateCap,
+      Math.max(floorLevel * OVER_FLOOR + FLOOR_MARGIN, ABS_MIN)));
+  }
+
+  function adapt(now){
+    if (!windowUntil){ windowUntil = now + ADAPT_MS; return; }
+    if (now < windowUntil) return;
+    if (!speaking && windowPeak > floorLevel * ADAPT_OVER
+                  && windowPeak < speechLevel()){
+      var cap = Math.max(ABS_HARD, windowPeak * ADAPT_UNDER);
+      if (cap < gateCap){
+        gateCap = cap;
+        diag("gate too high for this mic - capped at "
+             + speechLevel().toFixed(4) + " (peak " + windowPeak.toFixed(4)
+             + ", floor " + floorLevel.toFixed(4) + ")");
+      }
+    }
+    windowPeak = 0;
+    windowUntil = now + ADAPT_MS;
   }
 
   var stream=null, ctx=null, analyser=null, data=null, raf=null;
@@ -1615,8 +1664,24 @@ function ask(question, onDone, onDelta){
 
     // Keep following the room while it is quiet, so a fan or a street that
     // starts up later raises the bar instead of holding a conversation.
+    //
+    // ASYMMETRIC, AND IT HAS TO BE. A single rate absorbed everything under
+    // the gate - INCLUDING speech the gate had failed to recognise - so a
+    // mic whose voice sits near its room noise dragged its own floor up
+    // toward that voice, which raised the gate, which kept the voice out.
+    // A feedback loop that got worse the longer someone talked, and the one
+    // case the cap above could not rescue on its own.
+    //
+    // Falling fast is safe: a quieter room is simply a quieter room.
+    // Rising slowly is what keeps a voice from being mistaken for one.
     if (!speaking && rms < speechLevel()){
-      floorLevel = Math.max(FLOOR_MIN, floorLevel * 0.995 + rms * 0.005);
+      var a = (rms < floorLevel) ? 0.050 : 0.001;
+      // And when it does rise, it rises toward the ROOM, not toward
+      // whatever loud thing is currently under the gate. Clamping the input
+      // is what finally breaks the loop: unrecognised speech can no longer
+      // contribute more than a plausible room level, however long it goes on.
+      var toward = Math.min(rms, floorLevel * 1.5);
+      floorLevel = Math.max(FLOOR_MIN, floorLevel * (1 - a) + toward * a);
     }
 
     // Nothing said for a while: throw the recording away and begin a fresh
@@ -1631,6 +1696,8 @@ function ask(question, onDone, onDelta){
     }
 
     if (rms > peakRms) peakRms = rms;
+    if (rms > windowPeak) windowPeak = rms;
+    adapt(now);
 
     if (rms > speechLevel()){
       if (!speaking){ speaking = true; startedAt = now; chunks = []; }
