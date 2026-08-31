@@ -55,6 +55,7 @@ footnote — see PRIVACY_NOTE, which the caller is expected to surface.
 from __future__ import annotations
 
 import asyncio
+import os
 import time
 import threading
 import re
@@ -489,6 +490,7 @@ def wake_renderer(timeout: float = 90.0) -> bool:
                     # application rather than from the proxy in front of a
                     # dead one.
                     if c.post(MCP_URL, json={}).status_code != 502:
+                        _settle(c, deadline)
                         return True
                 except Exception:
                     pass
@@ -496,6 +498,38 @@ def wake_renderer(timeout: float = 90.0) -> bool:
     except Exception:
         pass
     return False
+
+
+# A freshly woken instance answers /mcp long before it can survive real work.
+# Measured from the renderer's side: a request that landed 33 seconds after
+# wake killed the instance, because a free instance loses /tmp when it sleeps
+# and was still re-downloading its voice model (~126MB) when the render
+# arrived on top. The same request against the warm process rendered 28.7s of
+# video in 42.5s and left the service healthy.
+#
+# So "answering" is not the bar; "finished starting" is. /health carries
+# uptime_seconds, which is the only way to tell those apart from out here -
+# an instance up for an hour and one up for thirty seconds answer /mcp
+# identically.
+MIN_WARM_SECONDS = float(os.getenv("APE_RENDERER_MIN_WARM", "60"))
+
+
+def _settle(client, deadline: float) -> None:
+    """Give a just-woken renderer time to finish loading before we load it."""
+    try:
+        r = client.get(MCP_URL.rsplit("/", 1)[0] + "/health")
+        up = float((r.json() or {}).get("uptime_seconds", MIN_WARM_SECONDS))
+    except Exception:
+        return                      # no reading: proceed rather than stall
+    if up >= MIN_WARM_SECONDS:
+        return
+    # Never past the caller's own deadline - waiting is an optimisation, and
+    # a render attempted early still usually works.
+    nap = min(MIN_WARM_SECONDS - up, max(0.0, deadline - time.time()))
+    if nap > 0:
+        print(f"[renderer] up {up:.0f}s, still warming - waiting {nap:.0f}s",
+              flush=True)
+        time.sleep(nap)
 
 
 def keep_warm(interval: float = 600.0) -> None:
@@ -687,10 +721,15 @@ def generate_for_report(anthropic_client, model: str, report: Dict[str, Any],
                 # sleeping boxes want poking rather than patience.
                 elapsed = time.time() - t0
                 if elapsed < _COLD_START_SECONDS:
-                    # Still starting. Give it a real interval — retrying in
-                    # two seconds just collects another instant 502 and
-                    # spends an attempt for nothing.
-                    time.sleep(_COLD_RETRY_SECONDS)
+                    # Still starting. Rather than sleep a fixed interval and
+                    # hope, ask the instance how far along it is: wake_renderer
+                    # now waits until /health reports it has been up long
+                    # enough to survive a render. A fixed wait is either too
+                    # short (another instant 502, an attempt spent for
+                    # nothing) or needlessly long. This is exactly as long as
+                    # it needs to be.
+                    if not wake_renderer(timeout=_COLD_RETRY_SECONDS * 8):
+                        time.sleep(_COLD_RETRY_SECONDS)
                 else:
                     time.sleep((8, 25, 60)[min(i, 2)])
     return {"error": last, "script": script, "grounding": detail}
