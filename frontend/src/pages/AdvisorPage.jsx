@@ -144,6 +144,13 @@ export default function AdvisorPage() {
     if (!selected) { setStatus({}); return; }
     const r = reportFor(selected.client_id);
     if (!r) { setStatus({}); return; }
+    // Do not overwrite a send that just happened FOR THIS REPORT.
+    //
+    // The effect re-runs when busy flips back to false, which is precisely
+    // the moment sendReport finishes — so it was resetting "Email to
+    // client" to Pending a second after the email had actually gone out,
+    // and dropping the delivery panel with the client link in it.
+    if (status.delivery && status.report_id === r.report_id) return;
     setStatus({
       snapshot: "done",
       generate: "done",
@@ -157,7 +164,7 @@ export default function AdvisorPage() {
       email: r.sent_at ? "done" : "pending",
       report_id: r.report_id,
     });
-  }, [selected, reportFor, busy]);
+  }, [selected, reportFor, busy, status.delivery, status.report_id]);
 
   async function openClientView(reportId) {
     try {
