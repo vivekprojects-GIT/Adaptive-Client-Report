@@ -233,6 +233,27 @@ def _build() -> ApeOrchestrator:
     import threading as _threading
     _threading.Thread(target=_warm_voice, daemon=True).start()
 
+    # SAY AT BOOT WHETHER MEDIA CAN WORK AT ALL.
+    #
+    # `mcp` was missing from requirements.txt. Every render therefore died
+    # on ImportError inside a background thread, roughly eight seconds in,
+    # and the only trace was one line in a log nobody was reading; the
+    # status endpoint just went quiet and the client was told it did not
+    # work. It behaved perfectly in development, where the package happens
+    # to be installed anyway.
+    #
+    # A missing dependency should be loud at startup, not silent at the
+    # moment a client asks for something. This imports what the media path
+    # needs and says so either way.
+    try:
+        import mcp  # noqa: F401
+        import httpx  # noqa: F401
+        print("[startup] media renderer deps ok (mcp, httpx)", flush=True)
+    except Exception as _exc:
+        print(f"[startup] WARNING media generation is DISABLED — "
+              f"{type(_exc).__name__}: {_exc}. Podcasts and presentations "
+              f"will fail. Check requirements.txt.", flush=True)
+
     # Keep the podcast renderer awake. A free Render instance sleeps after
     # ~15 minutes idle and then 502s for the best part of a minute while it
     # wakes — which is what a stalled "generating..." actually was. A ping

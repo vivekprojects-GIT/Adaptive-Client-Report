@@ -23,3 +23,20 @@ faster-whisper>=1.2.1
 # Local neural TTS for the chat voice. MIT, same engine as the podcasts,
 # so the client hears one voice across the whole report.
 piper-tts>=1.7.0
+
+# The podcast and presentation renderer is reached over MCP, and the
+# readiness/keep-warm probes use httpx directly.
+#
+# THESE WERE MISSING, AND THE FAILURE THEY CAUSED IS WORTH RECORDING.
+# Both are installed on a development machine as transitive dependencies,
+# so media generation worked perfectly there and died on Render in under
+# nine seconds — `from mcp import ClientSession` raising ImportError inside
+# the background job, which is caught, logged where nobody was looking, and
+# leaves the status endpoint answering "none". The client saw a render that
+# never finished and no error anywhere.
+#
+# httpx arrives transitively via anthropic today. It is declared anyway
+# because this code imports it directly, and depending on someone else's
+# dependency graph is how the same bug happens again.
+mcp>=1.12,<2
+httpx>=0.27
