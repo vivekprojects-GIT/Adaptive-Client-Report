@@ -682,6 +682,43 @@ def synthesize(script: str, title: str,
         return None, _explain(exc)
 
 
+# THE LINE BUDGET IS A REQUEST, NOT A GUARANTEE, SO IT IS ENFORCED HERE.
+#
+# The prompt asks for "around 9 lines" and the model returns what it thinks
+# the material needs - measured at TWELVE for a real report. Nothing checked,
+# so the renderer received half again as much audio as the budget implied.
+#
+# Measured against the hosted free instance with that exact script:
+#
+#   12 lines / 1779 chars   KILLED THE INSTANCE at 51s
+#   10 lines / 1442 chars   rendered in 115.9s, 84s of audio, RSS 258 -> 147
+#
+# So ten is what it can do, and ten is what it gets asked for. This is a
+# hard trim rather than a firmer instruction because an instruction is what
+# already failed.
+MAX_LINES_HOSTED = int(os.getenv("APE_PODCAST_MAX_LINES", "10"))
+
+
+def cap_script_lines(script: str, limit: int) -> str:
+    """Trim a dialogue to `limit` lines, ending on an answer.
+
+    Cutting at the limit can leave a HOST question as the last line, which
+    sounds like the recording was interrupted. Backing up to the last GUEST
+    line costs one exchange and ends the piece on an answer instead.
+    """
+    lines = [l for l in (script or "").splitlines() if l.strip()]
+    if len(lines) <= limit:
+        return script
+    kept = lines[:limit]
+    for i in range(len(kept) - 1, -1, -1):
+        if kept[i].upper().startswith("GUEST:"):
+            kept = kept[:i + 1]
+            break
+    print(f"[podcast] script {len(lines)} -> {len(kept)} lines "
+          f"(renderer limit)", flush=True)
+    return "\n".join(kept)
+
+
 # HOW LONG A PODCAST THE RENDERER SURVIVES, MEASURED RATHER THAN GUESSED.
 #
 # Against the hosted free instance, one script per size, RSS flat at ~142MB
@@ -735,6 +772,8 @@ def generate_for_report(anthropic_client, model: str, report: Dict[str, Any],
     """
     minutes = cap_minutes(minutes)
     script, detail = build_script(anthropic_client, model, report, snap, minutes)
+    if script and not renderer_is_local():
+        script = cap_script_lines(script, MAX_LINES_HOSTED)
     if not script:
         script, detail = code_built_script(report, snap), "code-built (no script)"
 
