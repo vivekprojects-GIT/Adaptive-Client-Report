@@ -102,7 +102,13 @@ _ADDED_COLUMNS = {
     # the generated JSON means a second listen — or the same client on
     # another device, or the advisor checking what was produced — is a row
     # lookup instead of a two-minute render nobody should pay for twice.
-    "reports": {"podcast_url": "VARCHAR(400)",
+    "reports": {# The report document itself, moved off the filesystem so a
+                # client link survives a deploy - Render's disk is ephemeral
+                # and every rebuild was deleting every report. Existing rows
+                # stay NULL and fall back to the file, which is exactly what
+                # every report written before this column did.
+                "report_json": "TEXT",
+                "podcast_url": "VARCHAR(400)",
                 "podcast_script": "TEXT",
                 "podcast_at": "DATETIME",
                 # Same reasoning for the narrated slide video. The sections

@@ -1173,7 +1173,7 @@ async def generate_one_report(request: Request):
     out.mkdir(parents=True, exist_ok=True)
     rid = report["report_id"]
     (out / f"{rid}.html").write_text(render_html(report), encoding="utf-8")
-    (out / f"{rid}.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+    _save_report_doc(rid, report)
 
     # No media here. Both are built when the advisor SENDS, after they have
     # reviewed the draft — see _start_media_job.
@@ -1264,11 +1264,9 @@ async def send_report(report_id: str, request: Request):
     from .reporting.email import get_provider
     from .reporting.tokens import report_url
 
-    gen = Path(__file__).resolve().parents[1] / "data" / "generated"
-    f = gen / f"{report_id}.json"
-    if not f.is_file():
+    rep = _load_report_doc(report_id)
+    if rep is None:
         raise HTTPException(404, f"no generated report '{report_id}'")
-    rep = json.loads(f.read_text(encoding="utf-8"))
 
     try:
         body = await request.json()
@@ -1486,11 +1484,9 @@ def client_report_view(request: Request, report_id: str, token: str = ""):
             challenge_html(report_id, token, first_name=_first_name(client_id)),
             status_code=401)
 
-    gen = Path(__file__).resolve().parents[1] / "data" / "generated"
-    f = gen / f"{report_id}.json"
-    if not f.is_file():
+    report = _load_report_doc(report_id)
+    if report is None:
         raise HTTPException(404, "report not found")
-    report = json.loads(f.read_text(encoding="utf-8"))
 
     # The snapshot is loaded only so the opening chips know which charts
     # this client's data can fill. A failure here must not cost anyone
@@ -1540,12 +1536,90 @@ def _viewer_auth(report_id: str, token: str,
     return client_id
 
 
+# ── the report document: database first, file second ────────────────────
+#
+# The document used to live only at data/generated/<id>.json. On Render the
+# disk is ephemeral, so every deploy deleted every report and broke every
+# client link that had been handed out - a 404 with nothing to explain it.
+#
+# Both stores are still written. The database is what makes a link survive a
+# deploy; the file is kept because the PDF renderer, the batch tooling and a
+# developer looking at output all still expect it, and because a report that
+# exists in two places is recoverable from either.
+#
+# Reads prefer the database and fall back to the file, so every report
+# generated before this column existed keeps working untouched.
+
+def _report_doc_path(report_id: str) -> Path:
+    return (Path(__file__).resolve().parents[1] / "data" / "generated"
+            / f"{report_id}.json")
+
+
+def _save_report_doc(report_id: str, doc: Dict[str, Any]) -> None:
+    """Persist the report document to both stores. Never raises."""
+    blob = json.dumps(doc, indent=2)
+    try:
+        p = _report_doc_path(report_id)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(blob, encoding="utf-8")
+    except Exception as exc:
+        print(f"[report] {report_id}: file write failed "
+              f"{type(exc).__name__}: {exc}", flush=True)
+    try:
+        from .db.session import session_scope
+        from .db.models import Report as _R
+        with session_scope() as db:
+            row = db.get(_R, report_id)
+            if row is not None:
+                row.report_json = blob
+    except Exception as exc:
+        # A report with no row - the standalone demo fixtures, anything
+        # generated outside the normal flow - still has its file, which is
+        # exactly the pre-existing behaviour.
+        print(f"[report] {report_id}: db write skipped "
+              f"{type(exc).__name__}", flush=True)
+
+
+def _load_report_doc(report_id: str) -> Optional[Dict[str, Any]]:
+    """The report document, or None. Database first, then the file."""
+    try:
+        from .db.session import session_scope
+        from .db.models import Report as _R
+        with session_scope() as db:
+            row = db.get(_R, report_id)
+            if row is not None and row.report_json:
+                return json.loads(row.report_json)
+    except Exception:
+        pass                      # fall through to the file
+    try:
+        f = _report_doc_path(report_id)
+        if f.is_file():
+            doc = json.loads(f.read_text(encoding="utf-8"))
+            # Found only on disk: put it in the database so the NEXT deploy
+            # does not lose it. Best effort - a failure here just means the
+            # file continues to serve, as it did before.
+            try:
+                from .db.session import session_scope as _sc
+                from .db.models import Report as _R2
+                with _sc() as db2:
+                    row2 = db2.get(_R2, report_id)
+                    if row2 is not None and not row2.report_json:
+                        row2.report_json = json.dumps(doc, indent=2)
+                        print(f"[report] {report_id}: backfilled into db",
+                              flush=True)
+            except Exception:
+                pass
+            return doc
+    except Exception:
+        pass
+    return None
+
+
 def _report_json(report_id: str) -> dict:
-    f = (Path(__file__).resolve().parents[1] / "data" / "generated"
-         / f"{report_id}.json")
-    if not f.is_file():
+    doc = _load_report_doc(report_id)
+    if doc is None:
         raise HTTPException(404, "report not found")
-    return json.loads(f.read_text(encoding="utf-8"))
+    return doc
 
 
 @app.get("/reports/{report_id}/link")
@@ -1789,14 +1863,9 @@ def _render_podcast(rid: str, report: Dict[str, Any], snap, api_key: str,
             result["audio_url"] = f"/r/{rid}/podcast.mp3"
         _podcast_to_db(rid, result)
 
-    path = (_Path(__file__).resolve().parents[1] / "data" / "generated"
-            / f"{rid}.json")
-    try:
-        current = _json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        current = report
+    current = _load_report_doc(rid) or report
     current["podcast"] = result
-    path.write_text(_json.dumps(current, indent=2), encoding="utf-8")
+    _save_report_doc(rid, current)
 
     print(f"[podcast] {rid}: "
           + (result.get("audio_url") or f"failed — {result.get('error')}"),
@@ -2010,14 +2079,9 @@ def _render_video(rid: str, report: Dict[str, Any], snap, api_key: str) -> None:
             result["video_url"] = f"/r/{rid}/presentation.mp4"
         _video_to_db(rid, result)
 
-    path = (_Path(__file__).resolve().parents[1] / "data" / "generated"
-            / f"{rid}.json")
-    try:
-        current = _json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        current = report
+    current = _load_report_doc(rid) or report
     current["presentation"] = result
-    path.write_text(_json.dumps(current, indent=2), encoding="utf-8")
+    _save_report_doc(rid, current)
 
     print(f"[video] {rid}: "
           + (result.get("video_url") or f"failed — {result.get('error')}"),
@@ -2848,11 +2912,10 @@ def get_report_html(report_id: str):
 
 @app.get("/reports/{report_id}/json")
 def get_report_json(report_id: str):
-    d = Path(__file__).resolve().parents[1] / "data" / "generated"
-    f = d / f"{report_id}.json"
-    if not f.is_file():
+    doc = _load_report_doc(report_id)
+    if doc is None:
         raise HTTPException(404, f"no generated report '{report_id}'")
-    return json.loads(f.read_text(encoding="utf-8"))
+    return doc
 
 
 @app.get("/{full_path:path}")

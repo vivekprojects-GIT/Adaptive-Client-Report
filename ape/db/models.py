@@ -229,6 +229,20 @@ class Report(Base):
     reward_status:     Mapped[str] = mapped_column(String(16), default="PENDING")
     normalized_reward: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
+    # THE REPORT DOCUMENT ITSELF.
+    #
+    # It used to live only as data/generated/<id>.json. Render's disk is
+    # ephemeral, so every deploy destroyed every report on the hosted app and
+    # every client link with it - a link handed to someone on Monday was a
+    # 404 by Tuesday, for no reason they could see. Everything else the report
+    # needs was already in here: the client, the snapshot, the bandit state,
+    # the conversation. The document was the last thing on the filesystem.
+    #
+    # Kept as TEXT rather than JSON so the same column works on SQLite and
+    # Postgres without a dialect branch; it is written and read as one blob
+    # and never queried into.
+    report_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
     # The rendered podcast, once it exists. NULL means nobody has asked.
     # The script is kept beside the URL deliberately: the audio lives on a
     # third party's disk for 24 hours, and when it expires the script is
