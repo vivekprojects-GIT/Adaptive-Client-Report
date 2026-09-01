@@ -64,7 +64,29 @@ from typing import Any, Dict, List, Optional, Tuple
 from .grounding import (derived_facts, validate_block, is_money_fact,
                         report_currency, summary_facts)
 
-MCP_URL = "https://podcast-mcp-yr3m.onrender.com/mcp"
+# WHERE THE RENDERER LIVES.
+#
+# The hosted one is a free 512MB instance and that number governed almost
+# everything about this feature: it sleeps, it cold-starts into 502s, it
+# renders at 2.8x realtime, and it could not hold two voices at once. None
+# of that is true of the same server run on a normal machine - measured
+# side by side, a four-section video that killed the hosted box rendered
+# locally in 7.5s, and a second podcast took 4.7s against roughly 130s.
+#
+# Same server.py either way. APE_MCP_URL is the whole difference.
+MCP_URL = os.getenv(
+    "APE_MCP_URL", "https://podcast-mcp-yr3m.onrender.com/mcp").strip()
+
+
+def renderer_is_local() -> bool:
+    """A renderer on this machine needs none of the free-tier scaffolding.
+
+    Keeping it warm is meaningless when it never sleeps, and waiting sixty
+    seconds for a preload that took three costs the client a minute for
+    nothing. Both guards stay for the hosted case and step aside here.
+    """
+    host = MCP_URL.split("//", 1)[-1].split("/", 1)[0].split(":", 1)[0].lower()
+    return host in ("127.0.0.1", "localhost", "::1", "0.0.0.0")
 
 # Long enough for a cold start plus a two-minute render at roughly 1.5x
 # real time, and no longer.
@@ -516,6 +538,8 @@ MIN_WARM_SECONDS = float(os.getenv("APE_RENDERER_MIN_WARM", "60"))
 
 def _settle(client, deadline: float) -> None:
     """Give a just-woken renderer time to finish loading before we load it."""
+    if renderer_is_local():
+        return
     try:
         doc = client.get(MCP_URL.rsplit("/", 1)[0] + "/health").json() or {}
     except Exception:
@@ -575,6 +599,9 @@ def keep_warm(interval: float = 600.0) -> None:
     other free services. APE_RENDERER_KEEPWARM=0 turns it off; the reactive
     wake_renderer path still works without it, just more slowly.
     """
+    if renderer_is_local():
+        print("[keepwarm] renderer is local; nothing to keep awake", flush=True)
+        return
     import os
     while True:
         try:

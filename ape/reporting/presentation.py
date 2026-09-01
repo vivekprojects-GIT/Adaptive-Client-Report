@@ -75,6 +75,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from .grounding import (derived_facts, validate_block, is_money_fact,
                         report_currency, summary_facts)
 from .podcast import (MCP_URL, MCP_TIMEOUT_SECONDS, _COLD_START_SECONDS,
+                      renderer_is_local,
                       _COLD_RETRY_SECONDS,
                       _explain, _log_fetch, wake_renderer,
                       fetch_audio, language_note)
@@ -123,7 +124,12 @@ MAX_ATTEMPTS = 3
 # are more memory or smaller slides, and both belong over there; until one
 # of them lands, asking for four produces nothing at all, which is plainly
 # worse than a deck of three.
-MAX_SECTIONS = 3
+# Four where the renderer can take it, three where it cannot. Measured on
+# both: the hosted free instance dies on a fourth section (ffmpeg's encode
+# against 512MB), while the same deck renders locally in 7.5s. Deriving this
+# from the renderer rather than pinning it means the demo is not permanently
+# limited by a box it may not even be talking to.
+MAX_SECTIONS = 4 if renderer_is_local() else 3
 MAX_WORDS_PER_SECTION = 40
 MAX_TOTAL_WORDS = 150
 MAX_KEY_POINTS = 4
