@@ -682,6 +682,36 @@ def synthesize(script: str, title: str,
         return None, _explain(exc)
 
 
+# HOW LONG A PODCAST THE RENDERER SURVIVES, MEASURED RATHER THAN GUESSED.
+#
+# Against the hosted free instance, one script per size, RSS flat at ~142MB
+# throughout and the service alive between each:
+#
+#     83s of audio   OK
+#    107s of audio   OK
+#    130s of audio   OK      <- largest that survived
+#   ~154s of audio   KILLED THE INSTANCE
+#
+# Real generated scripts land at 90-108 seconds, so one minute is inside
+# that with room to spare. Two minutes is not: it would put a real script
+# past 150s, which is the far side of a cliff that takes the whole renderer
+# down rather than failing politely.
+#
+# The cap is on the HOSTED renderer only. Locally the same script renders in
+# 13 seconds and none of this applies, so asking for more there is fine.
+MAX_MINUTES_HOSTED = int(os.getenv("APE_PODCAST_MAX_MINUTES", "1"))
+
+
+def cap_minutes(minutes: int) -> int:
+    """Clamp a podcast request to what the current renderer can survive."""
+    if renderer_is_local():
+        return max(1, int(minutes))
+    capped = max(1, min(int(minutes), MAX_MINUTES_HOSTED))
+    if capped != minutes:
+        print(f"[podcast] {minutes}min -> {capped}min: the hosted renderer "
+              f"does not survive longer scripts", flush=True)
+    return capped
+
 def generate_for_report(anthropic_client, model: str, report: Dict[str, Any],
                         snap, minutes: int = 1,
                         attempts: int = 5) -> Dict[str, Any]:
@@ -703,6 +733,7 @@ def generate_for_report(anthropic_client, model: str, report: Dict[str, Any],
     failure it returns an "error" entry rather than raising, because a
     missing podcast must never fail a report that is otherwise fine.
     """
+    minutes = cap_minutes(minutes)
     script, detail = build_script(anthropic_client, model, report, snap, minutes)
     if not script:
         script, detail = code_built_script(report, snap), "code-built (no script)"
