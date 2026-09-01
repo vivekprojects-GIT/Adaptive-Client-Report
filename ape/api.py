@@ -1663,13 +1663,27 @@ _PODCAST_JOBS_LOCK = __import__("threading").Lock()
 
 
 def _pregenerate_disabled(os_module) -> bool:
-    """Whether to SKIP building audio at report-generation time.
+    """Whether to SKIP building media at report-generation time.
 
-    Only an explicit off switch counts. A client click always renders
-    regardless — this governs the head start, not the feature.
+    OFF BY DEFAULT, AND THE DEFAULT IS THE POINT.
+    ────────────────────────────────────────────────────────────────────
+    Approving a report used to fire a podcast and a video for it whether
+    or not anybody ever opened it. On a renderer that serialises every
+    render behind one lock, a batch of approvals became a queue of renders
+    nobody had asked for, each one competing with the clients who HAD
+    asked - and each one more chance to push a 512MB instance over.
+
+    The client's click is the honest signal that a medium is wanted. It
+    costs them the wait, which is the trade being made deliberately: a
+    slower first play for a renderer that is not busy making things no one
+    will listen to.
+
+    APE_PODCAST_PREGENERATE=1 restores the head start on a renderer with
+    the capacity for it. A client click always renders either way - this
+    governs the head start, never the feature.
     """
-    return (os_module.getenv("APE_PODCAST_PREGENERATE", "1").strip().lower()
-            in ("0", "false", "no", "off"))
+    return (os_module.getenv("APE_PODCAST_PREGENERATE", "0").strip().lower()
+            not in ("1", "true", "yes", "on"))
 
 
 def _start_podcast_job(rid: str, report: Dict[str, Any], snap,
