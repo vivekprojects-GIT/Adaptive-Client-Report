@@ -388,7 +388,8 @@ __DOC_CSS__
    .vx-orb,.vx-orb::after,.vx-orb.think{animation:none;transition:none}
  }
 
- .vx-state{font:600 12px/1.4 -apple-system,Segoe UI,Roboto,Arial,sans-serif;
+ .vx-dbg{margin-top:6px;font:11px ui-monospace,Menlo,Consolas,monospace;opacity:.75;letter-spacing:.02em;text-align:center}
+.vx-state{font:600 12px/1.4 -apple-system,Segoe UI,Roboto,Arial,sans-serif;
    color:#475569;letter-spacing:.03em;text-transform:uppercase}
  /* What we heard, shown back before it is sent. A voice interface that
     never shows its transcript gives the client no way to tell a bad
@@ -502,6 +503,11 @@ __DOC_CSS__
   <div class="vx" id="vx" hidden>
     <div class="vx-orb" id="vxorb"></div>
     <div class="vx-state" id="vxstate">Listening</div>
+    <!-- Live microphone reading. Hidden unless ?vdebug=1 is on the URL,
+         because a client never needs to see it - but whether the gate is
+         set right for a given microphone cannot be heard, only read, and
+         asking someone to open a browser console is not a diagnosis. -->
+    <div class="vx-dbg" id="vxdbg" hidden></div>
     <div class="vx-said" id="vxsaid"></div>
     <div class="vx-bar">
       <button class="vx-btn" id="vxmute" type="button"
@@ -1653,6 +1659,13 @@ function ask(question, onDone, onDelta){
   var recorder=null, chunks=[];
   var live=false, muted=false, speaking=false, heardAt=0, startedAt=0;
   var recStarted=0, recycling=false;
+  var dbg = null, dbgAt = 0;
+  try {
+    if (/[?&]vdebug=1/.test(location.search)){
+      dbg = document.getElementById("vxdbg");
+      if (dbg) dbg.hidden = false;
+    }
+  } catch (e) {}
 
   function diag(msg){
     try { console.log("[voice] " + msg); } catch (e) {}
@@ -1770,6 +1783,19 @@ function ask(question, onDone, onDelta){
     if (rms > peakRms) peakRms = rms;
     if (rms > windowPeak) windowPeak = rms;
     adapt(now);
+
+    // Show the three numbers that decide everything, a few times a second.
+    // "now" against "gate" is the whole diagnosis: above it and the turn is
+    // being heard, below it and nothing will ever be sent no matter how
+    // loudly someone speaks.
+    if (dbg && now - dbgAt > 200){
+      dbgAt = now;
+      dbg.textContent = "now " + rms.toFixed(4)
+        + "  gate " + speechLevel().toFixed(4)
+        + "  floor " + floorLevel.toFixed(4)
+        + (rms > speechLevel() ? "  HEARD" : "")
+        + (speaking ? "  [recording]" : "");
+    }
 
     if (rms > speechLevel()){
       if (!speaking){ speaking = true; startedAt = now; chunks = []; }
