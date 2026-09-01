@@ -1566,7 +1566,24 @@ function ask(question, onDone, onDelta){
   var ABS_MIN      = 0.010;  // a digitally-silent mic must not hear everything
   var FLOOR_MIN    = 0.002;  // the floor estimate itself cannot go below this
   var CALIBRATE_MS= 700;     // listen this long before reacting to anything
-  var QUIET_MS    = 1100;    // silence that ends a turn
+  // HOW LONG A PAUSE MEANS "FINISHED".
+  //
+  // Some pause is unavoidable: the only evidence that somebody has stopped
+  // talking is that they have stopped talking. But 1100ms was too generous
+  // and it read as the thing not responding — a full second of dead air
+  // after every question, which is exactly where a conversation feels
+  // broken even though nothing is wrong.
+  //
+  // Natural pauses WITHIN a sentence — between clauses, before a number
+  // someone is recalling — run about 200-500ms. 800 clears that with room
+  // and takes a third of a second off every single turn.
+  //
+  // Except after a very short utterance. "How much—" cut off at 800ms is a
+  // question truncated into nonsense, and a brief sound is as likely to be
+  // a false start as a finished thought, so those get the longer wait.
+  var QUIET_MS       = 800;    // silence that ends a turn
+  var QUIET_MS_SHORT = 1200;   // ...after a very brief one, wait longer
+  var SHORT_TURN_MS  = 1500;   // what counts as brief
   var MIN_SPEECH  = 350;     // ignore a cough or a door
 
   // MediaRecorder.start() WITHOUT a timeslice hands over ONE blob at stop(),
@@ -1809,7 +1826,9 @@ function ask(question, onDone, onDelta){
           recorder.stop();
         }
       }
-    } else if (speaking && (now - heardAt) > QUIET_MS){
+    } else if (speaking && (now - heardAt) >
+               ((heardAt - startedAt) < SHORT_TURN_MS ? QUIET_MS_SHORT
+                                                      : QUIET_MS)){
       speaking = false;
       if ((heardAt - startedAt) < MIN_SPEECH){ return; }   // too brief
       if (recorder.state === "recording") recorder.stop();
