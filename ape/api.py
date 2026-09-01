@@ -2429,8 +2429,21 @@ async def report_chat(report_id: str, request: Request):
         # Same door as the streaming path: a request to MAKE a medium is
         # not a question about the report, and must not be answered as one.
         from .reporting.d2 import media_request as _media_request
+        # A SELECTION DOES NOT CHANGE WHAT "MAKE ME A PODCAST" MEANS.
+        #
+        # This used to require no highlighted block, on the reasoning that a
+        # selection means the client is asking about that block. It is the
+        # wrong reasoning and it broke the feature in ordinary use: the
+        # selection persists across turns, so once anybody had clicked any
+        # section, every later media request fell through to the grounded
+        # writer and was DECLINED - "that is not something I can help with"
+        # - for a request the product supports.
+        #
+        # The detector is what makes this safe, not the context around it:
+        # it already requires an asking word beside the medium and already
+        # excludes questions about existing media.
         _want = _media_request(question)
-        if _want and not block_id and not body.get("selected_text"):
+        if _want:
             _reply, _widget = _media_chat_turn(report_id, report, snap, _want)
             return {"answer": _reply, "intent": "media_request",
                     "strategy": "", "arms": [], "author": "media_request",
@@ -2635,8 +2648,12 @@ async def report_chat_stream(report_id: str, request: Request):
             # not reach the grounded writer, which would answer it with
             # prose about the report and never start anything.
             from .reporting.d2 import media_request as _media_request
+            # Same rule as the buffered path: a highlighted block does not
+            # turn a request to MAKE a medium into a question about that
+            # block. Requiring no selection meant one click anywhere on the
+            # report silently disabled the feature for the rest of the visit.
             _want = _media_request(question)
-            if _want and not block_id and not body.get("selected_text"):
+            if _want:
                 _reply, _widget = _media_chat_turn(report_id, report, snap,
                                                    _want)
                 yield _sse("delta", {"text": _reply})
