@@ -41,7 +41,7 @@ import json
 import os
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import quote
 
 import anthropic
@@ -2405,6 +2405,17 @@ async def report_chat(report_id: str, request: Request):
                 block = next((b for b in report["blocks"]
                               if b["block_id"] == block_id), None)
 
+        # Same door as the streaming path: a request to MAKE a medium is
+        # not a question about the report, and must not be answered as one.
+        from .reporting.d2 import media_request as _media_request
+        _want = _media_request(question)
+        if _want and not block_id and not body.get("selected_text"):
+            _reply, _widget = _media_chat_turn(report_id, report, snap, _want)
+            return {"answer": _reply, "intent": "media_request",
+                    "strategy": "", "arms": [], "author": "media_request",
+                    "sources": [], "followups": [], "widget": _widget or None,
+                    "conversation_id": body.get("conversation_id") or ""}
+
         result = answer_question(
             db, snap, report_id, question, block,
             selected_text=str(body.get("selected_text", "")),
@@ -2481,6 +2492,66 @@ async def report_chat(report_id: str, request: Request):
     return result
 
 
+
+def _media_chat_turn(report_id: str, report: Dict[str, Any], snap,
+                     kind: str) -> Tuple[str, Dict[str, Any]]:
+    """Start the render a client asked for in chat, and say so.
+
+    The chat and the buttons are two doors into the same job. This goes
+    through _start_*_job exactly as a button press does - same lock, same
+    de-duplication - so asking twice, or asking in chat while a button
+    press is already running, cannot start a second render.
+
+    on_demand=True because the client asked for this one directly. The
+    pregenerate switch governs the head start nobody requested; it must
+    never suppress a render somebody typed a sentence to get.
+
+    Returns (reply, widget). THE WIDGET IS THE POINT: something asked for
+    in the conversation should arrive in the conversation. Sending a client
+    to hunt for a button when they asked here is the kind of small
+    discourtesy that makes a feature feel unfinished.
+    """
+    from .reporting.labels import t as _t
+    lang = (report.get("language") or getattr(snap, "language", "") or "en")
+
+    is_pod = kind == "podcast"
+    title = _t("Your podcast" if is_pod else "Your presentation", lang) or (
+        "Your podcast" if is_pod else "Your presentation")
+    widget = {
+        "media": kind,
+        "title": title,
+        "url": None,
+        "status": f"/r/{report_id}/{'podcast' if is_pod else 'video'}",
+        "pending": _t("Preparing it now…", lang) or "Preparing it now…",
+        "failed": _t("That did not work this time. Please try again.", lang)
+                  or "That did not work this time. Please try again.",
+    }
+
+    ready = (_podcast_from_disk(report_id) if is_pod
+             else _video_from_disk(report_id))
+    if ready:
+        widget["url"] = (f"/r/{report_id}/podcast.mp3" if is_pod
+                         else f"/r/{report_id}/presentation.mp4")
+        msg = ("Here is your podcast." if is_pod
+               else "Here is your presentation.")
+        return (_t(msg, lang) or msg), widget
+
+    api_key = os.getenv("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        msg = "I cannot make that right now. Please try the button above."
+        return (_t(msg, lang) or msg), {}
+
+    if is_pod:
+        _start_podcast_job(report_id, report, snap, on_demand=True)
+        msg = ("I am making your podcast now — it takes a minute or so, and "
+               "it will play here as soon as it is ready.")
+    else:
+        _start_video_job(report_id, report, snap, on_demand=True)
+        msg = ("I am making your presentation now — it takes a minute or so, "
+               "and it will play here as soon as it is ready.")
+    return (_t(msg, lang) or msg), widget
+
+
 @app.post("/r/{report_id}/chat/stream")
 async def report_chat_stream(report_id: str, request: Request):
     """The same turn as /chat, delivered as it forms.
@@ -2538,6 +2609,27 @@ async def report_chat_stream(report_id: str, request: Request):
                 else:
                     block = next((b for b in report["blocks"]
                                   if b["block_id"] == block_id), None)
+
+            # "make me a podcast" is a request, not a question. It must
+            # not reach the grounded writer, which would answer it with
+            # prose about the report and never start anything.
+            from .reporting.d2 import media_request as _media_request
+            _want = _media_request(question)
+            if _want and not block_id and not body.get("selected_text"):
+                _reply, _widget = _media_chat_turn(report_id, report, snap,
+                                                   _want)
+                yield _sse("delta", {"text": _reply})
+                yield _sse("final", {
+                    "answer": _reply,
+                    "intent": "media_request",
+                    # Not a bandit answer, so it reports no strategy and no
+                    # arms - crediting one for this would teach the learner
+                    # from a turn it did not choose.
+                    "strategy": "", "arms": [], "author": "media_request",
+                    "sources": [], "followups": [], "widget": _widget or None,
+                    "conversation_id": body.get("conversation_id") or "",
+                })
+                return
 
             result = None
             for kind, payload in stream_answer(

@@ -1344,3 +1344,75 @@ def answer_question(
             "message_id": a_id, "arms": table,
             "widget": widget, "widget_declined": declined,
             "grounded_in": (block or {}).get("block_id") or "whole_report"}
+
+# ───────────────────────────────────────── "make me a podcast", in the chat
+#
+# The buttons are the obvious way to ask for a podcast or a presentation,
+# and a client who is already typing should not have to go looking for them.
+#
+# TWO WORDS HAVE TO BE PRESENT, NOT ONE.
+#
+# A media noun alone is not a request: "what did the podcast say about
+# fees" and "explain the presentation" both contain one, and both are
+# ordinary questions that must go to the grounded writer like any other. So
+# a request needs an ASKING word as well - make, create, send me - and
+# anything that reads as a question about existing media is excluded
+# outright. Getting this wrong in the permissive direction is much worse
+# than in the strict one: a missed request costs a button press, while a
+# false positive silently swallows a real question about the report and
+# starts a render nobody asked for.
+
+_MEDIA_ASK = (
+    # English
+    "make", "create", "generate", "build", "produce", "record", "give me",
+    "send me", "i want", "i'd like", "can you do", "turn this into",
+    # Dutch / German
+    "maak", "genereer", "stuur", "ik wil", "erstelle", "erzeuge", "mach",
+    "schicke", "ich will", "ich mochte", "ich möchte",
+    # French / Spanish / Portuguese / Italian
+    "cree", "crée", "genere", "génère", "fais", "je veux",
+    "crea", "genera", "hazme", "quiero", "envia", "envía",
+    "cria", "gere", "quero", "fai", "voglio",
+)
+
+_MEDIA_PODCAST = (
+    "podcast", "audio", "listen to this", "read it to me", "read this to me",
+    "luisterversie", "hoorversie", "hörversion", "version audio",
+)
+
+_MEDIA_VIDEO = (
+    "video", "presentation", "slides", "slide deck", "deck",
+    "presentatie", "dia", "präsentation", "prasentation",
+    "présentation", "presentacion", "presentación", "presentazione",
+    "apresentacao", "apresentação",
+)
+
+# If any of these appear it is a question ABOUT media, not a request FOR it.
+_MEDIA_NOT_A_REQUEST = (
+    "what did", "what does", "what was", "why did", "why does", "how did",
+    "explain", "summarise the", "summarize the", "in the podcast",
+    "in the video", "in the presentation", "said in", "wat zei", "wat zegt",
+    "leg uit", "erklär", "erklar", "was sagt", "pourquoi", "explique",
+)
+
+
+def media_request(question: str) -> Optional[str]:
+    """"podcast", "video", or None — is this asking us to MAKE one?
+
+    Returns the medium so the caller can start the right job. None means
+    the turn is an ordinary question and must be answered as one.
+    """
+    q = (question or "").strip().lower()
+    if not q:
+        return None
+    if any(w in q for w in _MEDIA_NOT_A_REQUEST):
+        return None
+    if not any(w in q for w in _MEDIA_ASK):
+        return None
+    # Video first: "make a video presentation" names both, and the visual
+    # medium is the more specific request of the two.
+    if any(w in q for w in _MEDIA_VIDEO):
+        return "video"
+    if any(w in q for w in _MEDIA_PODCAST):
+        return "podcast"
+    return None

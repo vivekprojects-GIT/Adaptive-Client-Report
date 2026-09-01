@@ -295,7 +295,8 @@ __DOC_CSS__
  .fb{display:flex;gap:6px;margin-top:10px;opacity:.35;
    transition:opacity .16s ease}
  .m-a:hover .fb,.fb:focus-within{opacity:1}
- .cw-ans{margin:9px 0 2px;border:1px solid #e2e8f0;border-radius:8px;
+ .cw-media{margin-top:8px}
+.cw-ans{margin:9px 0 2px;border:1px solid #e2e8f0;border-radius:8px;
    background:#fff;padding:7px 8px 2px}
  .cw-ans>span{display:block;font-size:10px;text-transform:uppercase;
    letter-spacing:.05em;color:#94a3b8;font-weight:700;margin-bottom:2px}
@@ -573,6 +574,7 @@ setTimeout(function(){ ev("dwell_60s", {}); }, 60000);
         // reply is the reply. Follow-up chips were not, on purpose: they
         // suggested what to ask next, and next already happened.
         if (m.sources && m.sources.length) el.appendChild(sourceRow(m.sources));
+        if (m.widget && m.widget.media) el.appendChild(mediaBox(m.widget));
         if (m.widget && m.widget.svg) el.appendChild(chartBox(m.widget));
       });
       if (window.apeEnhanceWidgets) window.apeEnhanceWidgets(msgs);
@@ -1206,12 +1208,75 @@ function chartBox(w){
   return wrap;
 }
 
+function mediaBox(w){
+  // Something asked for in the conversation belongs IN the conversation.
+  // Answering "make me a podcast" with directions to a button elsewhere on
+  // the page is the kind of small discourtesy that makes a feature feel
+  // half-finished, and it is worse on a phone where the button has usually
+  // scrolled away.
+  var wrap = document.createElement("div"); wrap.className = "cw-ans";
+  var cap = document.createElement("span"); cap.textContent = w.title || "";
+  wrap.appendChild(cap);
+  var host = document.createElement("div"); host.className = "cw-media";
+  wrap.appendChild(host);
+
+  function tok(u){
+    if (!u) return u;
+    if (u.charAt(0) !== "/") return u;
+    return u + (u.indexOf("?") < 0 ? "?" : "&") + "token="
+             + encodeURIComponent(TOKEN);
+  }
+  function show(url){
+    var el = document.createElement(w.media === "podcast" ? "audio" : "video");
+    el.controls = true;
+    el.preload = "metadata";
+    el.style.width = "100%";
+    if (w.media !== "podcast"){ el.style.borderRadius = "10px"; }
+    el.src = tok(url);
+    host.innerHTML = "";
+    host.appendChild(el);
+  }
+
+  if (w.url){ show(w.url); return wrap; }
+
+  // Still rendering. The same two stops the buttons use: a ceiling, and a
+  // vanished job. A spinner that never ends is worse than being told.
+  host.textContent = w.pending || "Preparing...";
+  var t0 = Date.now(), gone = 0;
+  (function poll(){
+    if (Date.now() - t0 > MEDIA_MAX_MS){
+      host.textContent = w.failed || "That did not work this time.";
+      return;
+    }
+    fetch(tok(w.status))
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        if (j.status === "ready"){
+          show(j.audio_url || j.video_url);
+          return;
+        }
+        if (j.status === "none"){
+          if (++gone >= MEDIA_GONE_TRIES){
+            host.textContent = w.failed || "That did not work this time.";
+            return;
+          }
+        } else { gone = 0; }
+        setTimeout(poll, 5000);
+      })
+      .catch(function(){ setTimeout(poll, 8000); });
+  })();
+  return wrap;
+}
+
 function addAnswer(res){
   var d = add("m-a", "");
   d.innerHTML = md(res.answer);
   // A chart the client asked for, built server-side from the same frozen
   // snapshot the report was. Same two layers as the document: the SVG is
   // written in directly, and the runtime upgrades it if it is there.
+  if (res.widget && res.widget.media){
+    d.appendChild(mediaBox(res.widget));
+  }
   if (res.widget && res.widget.svg){
     d.appendChild(chartBox(res.widget));
     if (window.apeEnhanceWidgets) window.apeEnhanceWidgets(d);
