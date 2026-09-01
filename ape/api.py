@@ -2538,7 +2538,7 @@ def _media_chat_turn(report_id: str, report: Dict[str, Any], snap,
 
     api_key = os.getenv("ANTHROPIC_API_KEY", "")
     if not api_key:
-        msg = "I cannot make that right now. Please try the button above."
+        msg = "I cannot make that right now. Please try again in a moment."
         return (_t(msg, lang) or msg), {}
 
     if is_pod:

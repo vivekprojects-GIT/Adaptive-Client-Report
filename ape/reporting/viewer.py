@@ -459,8 +459,15 @@ __DOC_CSS__
       <div class="sub">Click any section to ask about it, or select the
         exact words you mean.</div></div>
     <div class="bar-actions">
-      <button class="btn" id="pod">&#127911; Listen</button>
-      <button class="btn" id="vid">&#127916; Presentation</button>
+      <!-- Listen and Presentation used to sit here. Both are asked for in
+           the chat now - "make me a podcast" - and the answer plays in the
+           conversation where it was asked for, so a second way in bought a
+           crowded header and nothing else.
+
+           The MARKUP is what was removed, not the code behind it: both
+           blocks below begin `if (!btn) return`, so they simply do not run.
+           Putting either button back is one line here, and it will work
+           again with no other change. -->
       <button class="btn" id="dl">Download PDF</button>
     </div>
   </div>

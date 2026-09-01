@@ -503,6 +503,13 @@ _merge_drafts(LABELS)
 from .labels_statement import merge_into as _merge_statement   # noqa: E402
 _merge_statement(LABELS)
 
+# The chat's media replies are a REPLY rather than a heading: the client
+# typed a sentence in their own language, and an English answer does not
+# read as a missing translation but as not having been understood. Same
+# standing and same never-overwrite merge as the two above.
+from .labels_media import merge_into as _merge_media   # noqa: E402
+_merge_media(LABELS)
+
 
 # Axis category lists, held as bare strings rather than {"label": ...}.
 # These feed the x-axis of the INTERACTIVE chart, which is why an Arabic
