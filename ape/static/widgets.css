@@ -36,9 +36,9 @@
   font-family: "Segoe UI", system-ui, Arial, sans-serif;
 }
 .ecw-centre.on { opacity: 1; }
-.ecw-centre b { display: block; font-size: 19px; color: #0F172A;
+.ecw-centre b { display: block; font-size: 19px; color: #171a22;
   font-variant-numeric: tabular-nums; line-height: 1.15; }
-.ecw-centre span { display: block; font-size: 10px; color: #64748B;
+.ecw-centre span { display: block; font-size: 10px; color: #595e6a;
   text-transform: uppercase; letter-spacing: .05em; max-width: 96px; }
 
 /* ---- sortable tables ------------------------------------------------------
@@ -49,18 +49,18 @@ table.sortable th {
   cursor: pointer; user-select: none; position: relative;
   padding-right: 13px; transition: color .15s ease;
 }
-table.sortable th:hover { color: #4F46E5; }
-table.sortable th:focus-visible { outline: 2px solid #4F46E5; outline-offset: 2px; }
+table.sortable th:hover { color: #1d365a; }
+table.sortable th:focus-visible { outline: 2px solid #1d365a; outline-offset: 2px; }
 table.sortable th::after {
   content: "⇅"; position: absolute; right: 2px; top: 0;
   font-size: 9px; opacity: .28;
 }
 table.sortable th.nosort { cursor: default; }
 table.sortable th.nosort::after { content: none; }
-table.sortable th[data-sort="asc"]::after  { content: "↑"; opacity: 1; color: #4F46E5; }
-table.sortable th[data-sort="desc"]::after { content: "↓"; opacity: 1; color: #4F46E5; }
+table.sortable th[data-sort="asc"]::after  { content: "↑"; opacity: 1; color: #1d365a; }
+table.sortable th[data-sort="desc"]::after { content: "↓"; opacity: 1; color: #1d365a; }
 table.sortable tbody tr:hover td,
-table.sortable tr:hover td { background: #F8FAFC; }
+table.sortable tr:hover td { background: #f8fafc; }
 
 /* ---- scroll reveal -------------------------------------------------------- */
 .reveal { opacity: 0; transform: translateY(9px);

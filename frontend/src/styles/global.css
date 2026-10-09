@@ -1,104 +1,154 @@
-/* APE - shared visual system */
-
-@import url("https://rsms.me/inter/inter.css");
+/* APE - shared visual system, on Capgemini's design system
+ *
+ * Every value below is one of capgemini.com's own "Zodiak" tokens, so the
+ * console reads as a Capgemini product rather than as a lookalike:
+ *   primary action    capgemini-blue-800  #1D365A  (hover 900, pressed 950)
+ *   active state      capgemini-blue-400  #3573C0
+ *   highlight         peacock-400         #72E7D6
+ *   ink surface       capgemini-blue-900  #121A38  (the navigation rail)
+ *   text              neutral-950 / 550   #171A22 / #595E6A
+ *   borders           neutral-350         #C7CCD3
+ * Type is Ubuntu, the brand face, light for headings as on the site. */
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  /* Surfaces — warm off-white, Claude Desktop palette */
-  --bg:                 #fafaf7;   /* main background — warm off-white */
-  --bg-strong:          #f2efe9;   /* slightly deeper warm */
-  --sidebar-bg:         #f3f0eb;   /* sidebar — warmer cream */
+  /* Ink */
+  --ink:                #171a22;
+  --ink-2:              #3c414a;
+  --muted:              #595e6a;
+  --subtle:             #6e7480;
+
+  /* Grounds */
+  --ground:             #f4f6f9;
   --surface:            #ffffff;
-  --surface-raised:     #ffffff;
-  --surface-soft:       #faf8f4;
-  --composer-bg:        #ffffff;
-  --user-bubble:        #f0ece4;   /* user message — subtle warm gray */
+  --surface-2:          #f8fafc;
+  --line:               #e6e9ed;
+  --line-soft:          #f1f4f7;
+  --line-strong:        #c7ccd3;
 
-  /* Borders */
-  --border:             #ece9e3;
-  --border-strong:      #d9d5cc;
+  /* Capgemini blue — actions, selection, focus */
+  --accent:             #1d365a;
+  --accent-hover:       #121a38;
+  --accent-pressed:     #070a16;
+  --accent-active:      #3573c0;
+  --accent-wash:        #eff0f4;
+  --accent-line:        #8ea6d5;
+  --link:               #1d365a;
+  --azur:               #0058ab;
+  --highlight:          #72e7d6;
 
-  /* Text — warm near-black */
-  --text:               #2d2a26;
-  --text-secondary:     #6b6760;
-  --muted:              #8c8980;
-  --sidebar-fg:         #2d2a26;
-  --sidebar-mut:        #8c8980;
+  /* Navigation rail — Capgemini's ink surface */
+  --rail:               #121a38;
+  --rail-hover:         #1d365a;
+  --rail-fg:            #ffffff;
+  --rail-mut:           #a6acb5;
+  --brand-vibrant:      #72e7d6;
 
-  /* Accent — Claude orange / terracotta */
-  --primary:            #c87a4c;
-  --primary-fg:         #ffffff;
-  --primary-hover:      #b76c40;
-  --accent-soft:        #f3e7dd;
-  --accent-warm:        #f7ecd9;
-  --accent-warm-strong: #c87a4c;
-  --accent-blue:        #eef0f6;   /* toned to warm-neutral */
-  --accent-violet:      #f2ecf2;
+  /* Status */
+  --pos:                #1e5631;
+  --pos-wash:           #eff7f5;
+  --pos-line:           #afe3bd;
+  --warn:               #9f500d;
+  --warn-wash:          #fff1e6;
+  --warn-line:          #fecfad;
+  --neg:                #9e0029;
+  --neg-wash:           #fbf2f3;
+  --neg-line:           #ffcaca;
 
-  /* Semantic */
-  --secondary:          #ece9e3;
-  --secondary-fg:       #2d2a26;
-  --danger:             #b54141;
-  --danger-fg:          #ffffff;
-  --pos:                #4f8a4d;
-  --neg:                #b54141;
-  --neutral:            #8c8980;
-
-  /* Code */
-  --code-bg:            #f6f3ed;
-  --code-fg:            #2d2a26;
-  --code-block-bg:      #2d2a26;
-  --code-block-fg:      #e8e4dc;
-
-  /* Effects */
-  --radius-sm:          6px;
-  --radius-md:          10px;
-  --radius-lg:          16px;
+  /* Shape */
+  /* Capgemini's cards are square and its buttons are pills; controls sit
+     between the two. */
+  --radius-sm:          2px;
+  --radius-md:          4px;
+  --radius-lg:          4px;
   --radius-pill:        999px;
-  --shadow-sm:          0 1px 2px rgba(45, 42, 38, 0.04);
-  --shadow-md:          0 4px 16px rgba(45, 42, 38, 0.06);
-  --shadow-lg:          0 8px 24px rgba(45, 42, 38, 0.08);
+  --shadow-sm:          0 1px 2px rgba(23, 26, 34, 0.06);
+  --shadow-md:          0 2px 8px rgba(23, 26, 34, 0.08);
+  --shadow-lg:          0 8px 24px rgba(23, 26, 34, 0.12);
+
+  --font-ui:  "Ubuntu", "Segoe UI Variable Text", "Segoe UI", -apple-system,
+              BlinkMacSystemFont, "SF Pro Text", system-ui, "Helvetica Neue",
+              Arial, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Mono", Consolas, Menlo, monospace;
+
+  /* Legacy names still used by admin.css — mapped onto the palette above
+     so the two pages share one system instead of two. */
+  --bg:                 var(--ground);
+  --bg-strong:          #e9edf3;
+  --sidebar-bg:         var(--surface-2);
+  --surface-raised:     var(--surface);
+  --surface-soft:       var(--surface-2);
+  --composer-bg:        var(--surface);
+  --user-bubble:        var(--accent-wash);
+  --border:             var(--line);
+  --border-strong:      var(--line-strong);
+  --text:               var(--ink);
+  --text-secondary:     var(--muted);
+  --sidebar-fg:         var(--ink);
+  --sidebar-mut:        var(--subtle);
+  --primary:            var(--accent);
+  --primary-fg:         #ffffff;
+  --primary-hover:      var(--accent-hover);
+  --accent-soft:        var(--accent-wash);
+  --accent-warm:        var(--warn-wash);
+  --accent-warm-strong: var(--warn);
+  --accent-blue:        var(--accent-wash);
+  --accent-violet:      var(--accent-wash);
+  --secondary:          var(--line-soft);
+  --secondary-fg:       var(--ink);
+  --danger:             var(--neg);
+  --danger-fg:          #ffffff;
+  --neutral:            var(--subtle);
+  --code-bg:            var(--surface-2);
+  --code-fg:            var(--ink);
+  --code-block-bg:      var(--ink);
+  --code-block-fg:      #e6eaee;
 }
 
 html, body, #root { height: 100%; }
 
 body {
-  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
-               Roboto, "Helvetica Neue", Arial, sans-serif;
-  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
-  background: var(--bg);
-  color: var(--text);
-  font-size: 15px;
-  line-height: 1.6;
+  font-family: var(--font-ui);
+  background: var(--ground);
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Figures line up in every table and count on the page. */
+table, .num, input[type="number"] { font-variant-numeric: tabular-nums; }
+
 a { color: inherit; text-decoration: none; }
-button { font-family: inherit; }
+button, input, select, textarea { font-family: inherit; }
+
+:focus-visible { outline: 2px solid var(--accent-active); outline-offset: 2px; }
 
 *::-webkit-scrollbar       { width: 10px; height: 10px; }
 *::-webkit-scrollbar-track { background: transparent; }
 *::-webkit-scrollbar-thumb {
-  background: rgba(45, 42, 38, 0.14);
+  background: rgba(23, 26, 34, 0.16);
   border-radius: 5px;
-  border: 2px solid var(--bg);
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
-*::-webkit-scrollbar-thumb:hover { background: rgba(45, 42, 38, 0.26); }
+*::-webkit-scrollbar-thumb:hover { background-color: rgba(23, 26, 34, 0.3); }
 
 .toast {
   position: fixed;
   bottom: 24px;
   left: 50%;
   transform: translateX(-50%);
-  background: var(--text);
+  background: var(--ink);
   color: #fff;
-  padding: 10px 18px;
-  border-radius: var(--radius-lg);
+  padding: 10px 16px;
+  border-radius: var(--radius-md);
   font-size: 13px;
   z-index: 200;
   box-shadow: var(--shadow-lg);
+  border-left: 3px solid var(--rail-mut);
 }
-.toast.error { background: var(--danger); }
-.toast.ok    { background: var(--pos); }
+.toast.error { border-left-color: #ff848b; }
+.toast.ok    { border-left-color: #8ad9a2; }

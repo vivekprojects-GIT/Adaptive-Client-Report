@@ -92,24 +92,68 @@ def _check_session(cookie: str) -> bool:
         return False
 
 
-_LOGIN_PAGE = """<!doctype html><meta charset="utf-8">
+_LOGIN_PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@300;400;500;700&display=swap">
 <title>Advisor sign in</title>
-<div style="font-family:'Segoe UI',system-ui,Arial;max-width:340px;
-  margin:16vh auto;color:#0f172a">
-  <h2 style="font-size:19px;margin:0 0 4px">Advisor sign in</h2>
-  <p style="color:#64748b;font-size:13.5px;margin:0 0 18px">
-    This area is for advisors. Clients open reports through their
-    personal emailed link and do not sign in.</p>
+<style>
+ *{box-sizing:border-box}
+ body{margin:0;min-height:100vh;display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);
+   font:14px/1.5 "Ubuntu","Segoe UI Variable Text","Segoe UI",-apple-system,system-ui,Arial,sans-serif;
+   color:#171a22;background:#f4f6f9}
+ .brand{background:#121a38;color:#f8fafc;padding:40px 48px;display:flex;
+   flex-direction:column;justify-content:space-between}
+ .mark{font-size:12px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;
+   color:#a6acb5;display:flex;flex-direction:column;gap:6px}
+ .mark b{color:#fff;font-weight:500;font-size:26px;letter-spacing:-.01em;text-transform:none}
+ .pitch{max-width:340px}
+ .pitch{border-left:3px solid #72e7d6;padding-left:18px}
+ .pitch h1{font-size:28px;font-weight:300;line-height:1.3;margin:0 0 10px;color:#fff;
+   letter-spacing:-.01em}
+ .pitch p{margin:0;color:#c7ccd3;font-size:13.5px}
+ .legal{font-size:11.5px;color:#6e7480}
+ .pane{display:flex;align-items:center;justify-content:center;padding:40px 24px}
+ form{width:100%;max-width:340px}
+ h2{font-size:26px;font-weight:300;margin:0 0 4px;letter-spacing:-.01em}
+ .lede{color:#595e6a;font-size:13px;margin:0 0 24px}
+ label{display:block;font-size:12px;font-weight:600;color:#3c414a;margin:0 0 6px}
+ input{width:100%;height:38px;padding:0 11px;font:inherit;color:#171a22;background:#fff;
+   border:1px solid #c7ccd3;border-radius:4px;margin:0 0 16px}
+ input:focus{outline:none;border-color:#1d365a;box-shadow:0 0 0 3px rgba(29, 54, 90,.15)}
+ button{width:100%;height:38px;background:#1d365a;color:#fff;border:0;border-radius:4px;
+   font:inherit;font-weight:600;cursor:pointer}
+ button:hover{background:#121a38}
+ button:focus-visible{outline:2px solid #1d365a;outline-offset:2px}
+ .err{margin:0 0 16px;padding:9px 11px;font-size:13px;color:#9e0029;background:#fbf2f3;
+   border-left:3px solid #9e0029;border-radius:2px}
+ @media (max-width:760px){body{grid-template-columns:1fr}
+   .brand{padding:24px}.pitch,.legal{display:none}}
+
+ .mark img{display:block;width:150px;height:auto;margin-bottom:6px}
+ button{border-radius:999px;font-weight:500}
+ input:focus{border-color:#3573c0;box-shadow:0 0 0 3px rgba(53,115,192,.16)}
+</style></head><body>
+<aside class="brand">
+  <div class="mark"><img src="/static/brand/capgeminiWhite.svg" alt="Capgemini" width="150" height="34">Adaptive Client Reporting</div>
+  <div class="pitch">
+    <h1>Quarterly reporting, in each client's own language.</h1>
+    <p>Generate, review and send client reports. Every figure is traced to
+      the portfolio data before it reaches a client.</p>
+  </div>
+  <div class="legal">For authorised advisors only. Activity is recorded.</div>
+</aside>
+<main class="pane">
   <form method="post" action="/login">
-    <input type="password" name="password" placeholder="Password" autofocus
-      style="width:100%;box-sizing:border-box;padding:10px 12px;font-size:14px;
-      border:1px solid #cbd5e1;border-radius:7px;margin-bottom:10px">
-    <button style="width:100%;padding:10px;background:#1d4ed8;color:#fff;
-      border:0;border-radius:7px;font-size:14px;font-weight:600;
-      cursor:pointer">Sign in</button>
+    <h2>Advisor sign in</h2>
+    <p class="lede">Clients open reports through their personal emailed link
+      and do not sign in here.</p>
+    __ERROR__
+    <label for="pw">Password</label>
+    <input id="pw" type="password" name="password" autocomplete="current-password" autofocus>
+    <button type="submit">Sign in</button>
   </form>
-  __ERROR__
-</div>"""
+</main>
+</body></html>"""
 
 
 def install(app) -> None:
@@ -150,7 +194,7 @@ def install(app) -> None:
         if not expected or not hmac.compare_digest(given, expected):
             return HTMLResponse(_LOGIN_PAGE.replace(
                 "__ERROR__",
-                '<p style="color:#b91c1c;font-size:13px">Wrong password.</p>'),
+                '<p class="err" role="alert">That password is not correct.</p>'),
                 status_code=401)
         resp = RedirectResponse("/", status_code=302)
         # Secure must follow the SCHEME THIS REQUEST ARRIVED ON, not

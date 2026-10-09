@@ -935,7 +935,7 @@ def _sparkline(spark: Optional[Dict[str, Any]]) -> str:
     pts = [xy(k, v) for k, v in enumerate(vals)]
     path = " ".join(f"{x:.1f},{y:.1f}" for x, y in pts)
     last_up = vals[-1] >= vals[0]
-    col = "#059669" if last_up else "#DC2626"
+    col = "#1e5631" if last_up else "#9E0029"
     dots = "".join(
         f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{2.6 if k == len(pts)-1 else 1.5}" '
         f'fill="{col}"><title>{_esc(labels[k])}: {vals[k]:.2f}%</title></circle>'
@@ -1148,9 +1148,9 @@ def _render_block(b: Dict[str, Any], number: Optional[int] = None) -> str:
             # meaning, and letting position decide them would be a lie.
             opt["series"][0]["data"] = [
                 {"value": float(r["contribution_pct"]),
-                 "itemStyle": {"color": "#059669"
+                 "itemStyle": {"color": "#1e5631"
                                if float(r["contribution_pct"]) >= 0
-                               else "#DC2626",
+                               else "#9E0029",
                                "borderRadius": [0, 4, 4, 0]
                                if float(r["contribution_pct"]) >= 0
                                else [4, 0, 0, 4]}}
@@ -1192,8 +1192,8 @@ def _render_block(b: Dict[str, Any], number: Optional[int] = None) -> str:
             for sr in opt["series"]:
                 sr.pop("stack", None)
                 sr["itemStyle"]["borderRadius"] = [3, 3, 0, 0]
-            opt["series"][1]["itemStyle"]["color"] = "#CBD5E1"
-            opt["series"][0]["itemStyle"]["color"] = "#4F46E5"
+            opt["series"][1]["itemStyle"]["color"] = "#C7CCD3"
+            opt["series"][0]["itemStyle"]["color"] = "#1D365A"
         body = _ecw(opt, body, "vs-target")
 
     elif t == "returns_table":
@@ -1255,68 +1255,68 @@ def doc_css() -> str:
     return DOC_CSS
 
 
-DOC_CSS = """ body{font-family:"Segoe UI",system-ui,Arial,sans-serif;color:#0f172a;margin:0;
+DOC_CSS = """ body{font-family:"Segoe UI",system-ui,Arial,sans-serif;color:#171a22;margin:0;
    background:#f8fafc;font-size:14px;line-height:1.5}
  .doc{max-width:760px;margin:0 auto;background:#fff;padding:32px 40px;
-   min-height:100vh;box-shadow:0 0 24px rgba(15,23,42,.06)}
- .hd{border-bottom:2px solid #0f172a;padding-bottom:14px;margin-bottom:22px}
- .hd h1{margin:0 0 4px;font-size:20px} .hd .m{color:#64748b;font-size:12.5px}
- .badge{display:inline-block;background:#eff6ff;color:#1d4ed8;font-size:11px;
+   min-height:100vh;box-shadow:0 0 24px rgba(23, 26, 34,.06)}
+ .hd{border-bottom:2px solid #171a22;padding-bottom:14px;margin-bottom:22px}
+ .hd h1{margin:0 0 4px;font-size:20px} .hd .m{color:#595e6a;font-size:12.5px}
+ .badge{display:inline-block;background:#eff0f4;color:#1d365a;font-size:11px;
    font-weight:700;padding:2px 8px;border-radius:4px;margin-left:8px}
  section{margin-bottom:22px} h3{font-size:14px;margin:0 0 8px}
  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
- .kpi{background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:9px 11px}
+ .kpi{background:#f8fafc;border:1px solid #e6e9ed;border-radius:6px;padding:9px 11px}
  .kpi span{display:block;font-size:10.5px;text-transform:uppercase;
-   letter-spacing:.05em;color:#94a3b8}
+   letter-spacing:.05em;color:#6e7480}
  .kpi b{font-size:16px}
  .alloc,.cmp>div{display:flex;align-items:center;gap:9px;margin-bottom:6px;font-size:12.5px}
- .alloc span,.cmp span{width:130px;color:#334155}
- .alloc i,.cmp i{height:9px;background:#3b82f6;border-radius:3px;display:block}
- .cmp i.bm{background:#94a3b8}
+ .alloc span,.cmp span{width:130px;color:#3c414a}
+ .alloc i,.cmp i{height:9px;background:#1d365a;border-radius:3px;display:block}
+ .cmp i.bm{background:#6e7480}
  .alloc b,.cmp b{margin-left:auto;font-variant-numeric:tabular-nums}
  table{width:100%;border-collapse:collapse;font-size:12.5px}
- th{text-align:left;font-size:10.5px;text-transform:uppercase;color:#94a3b8;
-   border-bottom:1.5px solid #cbd5e1;padding:0 8px 5px 0}
- td{padding:6px 8px 6px 0;border-bottom:1px solid #e2e8f0}
+ th{text-align:left;font-size:10.5px;text-transform:uppercase;color:#6e7480;
+   border-bottom:1.5px solid #c7ccd3;padding:0 8px 5px 0}
+ td{padding:6px 8px 6px 0;border-bottom:1px solid #e6e9ed}
  td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
- tr.tot td{font-weight:700;border-top:1.5px solid #cbd5e1}
- .callout{padding:10px 14px;border-radius:6px;background:#eff6ff;
-   border-left:3px solid #1d4ed8;font-size:13px}
- .callout.positive{background:#ecfdf5;border-color:#047857}
+ tr.tot td{font-weight:700;border-top:1.5px solid #c7ccd3}
+ .callout{padding:10px 14px;border-radius:6px;background:#eff0f4;
+   border-left:3px solid #1d365a;font-size:13px}
+ .callout.positive{background:#eff7f5;border-color:#1e5631}
  .risk,.series{display:flex;gap:10px;font-size:12.5px;align-items:baseline}
- .risk span,.series span{width:130px;color:#334155}
+ .risk span,.series span{width:130px;color:#3c414a}
  .series b{margin-right:14px;font-variant-numeric:tabular-nums}
- .num{color:#94a3b8;font-weight:600}
- .sub{color:#94a3b8;font-size:11.5px;margin:-4px 0 8px}
- td em{color:#94a3b8;font-style:normal;font-size:11px;margin-left:4px}
+ .num{color:#6e7480;font-weight:600}
+ .sub{color:#6e7480;font-size:11.5px;margin:-4px 0 8px}
+ td em{color:#6e7480;font-style:normal;font-size:11px;margin-left:4px}
  td.bar,th.bar{width:90px}
- td.bar i{display:block;height:8px;border-radius:3px;background:#059669}
- td.bar i.neg{background:#dc2626}
- td.n.up{color:#047857} td.n.dn{color:#b91c1c}
+ td.bar i{display:block;height:8px;border-radius:3px;background:#1e5631}
+ td.bar i.neg{background:#9e0029}
+ td.n.up{color:#1e5631} td.n.dn{color:#9e0029}
  .vs{display:flex;align-items:center;gap:9px;margin-bottom:7px;font-size:12.5px}
- .vs span{width:118px;color:#334155}
+ .vs span{width:118px;color:#3c414a}
  .vs .tracks{flex:1;display:flex;flex-direction:column;gap:2px}
- .vs .tracks i{height:7px;border-radius:3px;background:#3b82f6;display:block}
- .vs .tracks i.bm{background:#cbd5e1}
+ .vs .tracks i{height:7px;border-radius:3px;background:#1d365a;display:block}
+ .vs .tracks i.bm{background:#c7ccd3}
  .vs b{width:52px;text-align:right;font-variant-numeric:tabular-nums}
- .vs u{width:46px;text-align:right;text-decoration:none;font-size:11.5px;color:#94a3b8}
- .vs u.over{color:#b45309} .vs u.under{color:#0369a1}
- .lgd{font-size:11px;color:#94a3b8;margin-top:8px;display:flex;align-items:center;gap:5px}
- .lgd i{width:10px;height:7px;border-radius:2px;background:#3b82f6;display:inline-block}
- .lgd i.bm{background:#cbd5e1;margin-left:8px}
+ .vs u{width:46px;text-align:right;text-decoration:none;font-size:11.5px;color:#6e7480}
+ .vs u.over{color:#9f500d} .vs u.under{color:#1d365a}
+ .lgd{font-size:11px;color:#6e7480;margin-top:8px;display:flex;align-items:center;gap:5px}
+ .lgd i{width:10px;height:7px;border-radius:2px;background:#1d365a;display:inline-block}
+ .lgd i.bm{background:#c7ccd3;margin-left:8px}
  .takes{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
- .take{border:1px solid #e2e8f0;border-left:3px solid #3b82f6;border-radius:6px;
-   padding:10px 13px;background:#fbfdff}
- .take.positive{border-left-color:#047857;background:#f6fffb}
- .take.caution{border-left-color:#b45309;background:#fffcf5}
+ .take{border:1px solid #e6e9ed;border-left:3px solid #1d365a;border-radius:6px;
+   padding:10px 13px;background:#eff0f4}
+ .take.positive{border-left-color:#1e5631;background:#eff7f5}
+ .take.caution{border-left-color:#9f500d;background:#fff1e6}
  .take b{display:block;font-size:12.5px;margin-bottom:3px}
- .take p{margin:0;font-size:12px;color:#475569;line-height:1.5}
+ .take p{margin:0;font-size:12px;color:#3c414a;line-height:1.5}
  .expl{margin:0;font-size:12px}
- .expl dt{font-weight:700;margin-top:8px;color:#0f172a}
- .expl dd{margin:2px 0 0;color:#475569;line-height:1.5}
- .disc{border-top:1px solid #e2e8f0;padding-top:12px;font-size:11px;color:#94a3b8}
- .disc p{margin:0 0 4px} .disc .src{color:#cbd5e1}
- section[data-block-id]:hover{outline:2px solid #dbeafe;outline-offset:6px;border-radius:4px}
+ .expl dt{font-weight:700;margin-top:8px;color:#171a22}
+ .expl dd{margin:2px 0 0;color:#3c414a;line-height:1.5}
+ .disc{border-top:1px solid #e6e9ed;padding-top:12px;font-size:11px;color:#6e7480}
+ .disc p{margin:0 0 4px} .disc .src{color:#c7ccd3}
+ section[data-block-id]:hover{outline:2px solid #eff0f4;outline-offset:6px;border-radius:4px}
 
  /* ── custody statement blocks ───────────────────────────────────────
     A statement is denser than a summary: forty rows of positions with
@@ -1327,63 +1327,63 @@ DOC_CSS = """ body{font-family:"Segoe UI",system-ui,Arial,sans-serif;color:#0f17
     a caption style so a reader moving between report types recognises the
     shape, and differ in what they put in the large slot. */
  .hv-cap{display:block;font-size:10.5px;text-transform:uppercase;
-   letter-spacing:.06em;color:#94a3b8;font-weight:600}
+   letter-spacing:.06em;color:#6e7480;font-weight:600}
  .hero{padding:6px 0 2px}
  .hero .hv-num{display:block;font-size:38px;font-weight:650;
    letter-spacing:-.02em;line-height:1.1;margin:4px 0 6px;
    font-variant-numeric:tabular-nums}
  .hv-row{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
  .hv-ret{font-size:17px;font-weight:650}
- .hv-ret.up{color:#15803d} .hv-ret.dn{color:#b91c1c} .hv-ret.flat{color:#64748b}
- .hv-bm{font-size:12px;color:#64748b}
+ .hv-ret.up{color:#1e5631} .hv-ret.dn{color:#9e0029} .hv-ret.flat{color:#595e6a}
+ .hv-bm{font-size:12px;color:#595e6a}
 
  /* The verdict is a sentence, so it is set as one - the figure large, the
     claim beside it, and a colour that only ever follows the arithmetic. */
  .verdict{display:flex;align-items:baseline;gap:12px;padding:13px 16px;
-   border-radius:10px;background:#f1f5f9;flex-wrap:wrap}
+   border-radius:10px;background:#f4f6f9;flex-wrap:wrap}
  .verdict b{font-size:26px;font-weight:650;font-variant-numeric:tabular-nums}
- .verdict span{font-size:13px;color:#475569}
- .verdict.v-ahead{background:#f0fdf4} .verdict.v-ahead b{color:#15803d}
- .verdict.v-behind{background:#fef2f2} .verdict.v-behind b{color:#b91c1c}
+ .verdict span{font-size:13px;color:#3c414a}
+ .verdict.v-ahead{background:#eff7f5} .verdict.v-ahead b{color:#1e5631}
+ .verdict.v-behind{background:#fbf2f3} .verdict.v-behind b{color:#9e0029}
 
  .riskhead b{display:block;font-size:24px;font-weight:650;margin:3px 0 8px}
  .rh-scale{display:flex;gap:4px;margin-bottom:7px}
  .rh-scale i{flex:1;font-style:normal;font-size:9.5px;text-align:center;
-   padding:5px 2px;border-radius:5px;background:#f1f5f9;color:#94a3b8;
-   border:1px solid #e2e8f0}
- .rh-scale i.on{background:#1d4ed8;border-color:#1d4ed8;color:#fff;
+   padding:5px 2px;border-radius:5px;background:#f4f6f9;color:#6e7480;
+   border:1px solid #e6e9ed}
+ .rh-scale i.on{background:#1d365a;border-color:#1d365a;color:#fff;
    font-weight:700}
- .rh-vol{font-size:12px;color:#64748b}
+ .rh-vol{font-size:12px;color:#595e6a}
  /* An unmeasured figure says so. Shown as 0.0% it would read as "no
     risk" rather than "not measured". */
- .rh-none{color:#94a3b8;font-style:italic}
+ .rh-none{color:#6e7480;font-style:italic}
 
  .costhead{display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap}
  .costhead .ch-main b{display:block;font-size:30px;font-weight:650;
    margin:3px 0 4px;font-variant-numeric:tabular-nums}
- .ch-drag{font-size:12px;color:#64748b}
+ .ch-drag{font-size:12px;color:#595e6a}
  .ch-parts{list-style:none;margin:2px 0 0;padding:0;font-size:12px;min-width:180px}
  .ch-parts li{display:flex;justify-content:space-between;gap:14px;
-   padding:4px 0;border-bottom:1px solid #eef2f6}
- .ch-parts span{color:#64748b;text-transform:capitalize}
+   padding:4px 0;border-bottom:1px solid #eff0f4}
+ .ch-parts span{color:#595e6a;text-transform:capitalize}
  .ch-parts b{font-variant-numeric:tabular-nums}
 
  .flowhead{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
- .fh-cell{background:#f8fafc;border:1px solid #eef2f6;border-radius:9px;
+ .fh-cell{background:#f8fafc;border:1px solid #eff0f4;border-radius:9px;
    padding:11px 13px}
  .fh-cell span{display:block;font-size:10.5px;text-transform:uppercase;
-   letter-spacing:.05em;color:#94a3b8;font-weight:600;margin-bottom:4px}
+   letter-spacing:.05em;color:#6e7480;font-weight:600;margin-bottom:4px}
  .fh-cell b{font-size:18px;font-weight:650;font-variant-numeric:tabular-nums}
- .fh-cell b.up{color:#15803d} .fh-cell b.dn{color:#b91c1c}
+ .fh-cell b.up{color:#1e5631} .fh-cell b.dn{color:#9e0029}
 
  .trendhead svg{width:100%;height:64px;display:block;margin:6px 0 2px}
  .th-x{display:flex;justify-content:space-between;font-size:9.5px;
-   color:#94a3b8}
+   color:#6e7480}
 
  .wcover{padding:4px 0 8px}
- .wc-conf{background:#5b6b70;color:#fff;padding:9px 16px;font-size:12px;
+ .wc-conf{background:#121a38;color:#fff;padding:9px 16px;font-size:12px;
    display:inline-block;min-width:320px;border-radius:2px}
- .wc-band{background:linear-gradient(90deg,#2f6f6a,#1c6b62);color:#fff;
+ .wc-band{background:#0058ab;color:#fff;
    padding:18px 18px 22px;max-width:520px;border-radius:2px}
  .wc-band h1{font-size:30px;margin:0;font-weight:400;letter-spacing:-.01em}
  .wc-band p{margin:6px 0 0;font-size:17px;font-weight:300;opacity:.94}
@@ -1394,32 +1394,32 @@ DOC_CSS = """ body{font-family:"Segoe UI",system-ui,Arial,sans-serif;color:#0f17
  .wc-meta{display:grid;grid-template-columns:repeat(3,minmax(0,220px));
    gap:6px 18px;margin-bottom:20px}
  .wc-meta div{display:flex;flex-direction:column;gap:1px}
- .wc-meta span{font-size:10px;color:#94a3b8;text-transform:uppercase;
+ .wc-meta span{font-size:10px;color:#6e7480;text-transform:uppercase;
    letter-spacing:.05em}
  .wc-meta b{font-size:12px}
  .wc-toc{list-style:none;margin:6px 0 0;padding:0;max-width:430px}
  .wc-toc li{display:flex;align-items:baseline;gap:8px;padding:4px 0;
-   border-bottom:1px dotted #cbd5d8;font-size:12px}
+   border-bottom:1px dotted #c7ccd3;font-size:12px}
  .wc-toc li span{flex:1}
- .wc-toc li b{font-weight:600;color:#64748b}
+ .wc-toc li b{font-weight:600;color:#595e6a}
 
  /* Tables: the header band is what makes a statement legible at this
     density - it separates nine columns without nine vertical rules. */
  .wtab{width:100%;border-collapse:collapse;font-size:11px;margin-top:4px}
- .wtab th{background:#2f6f6a;color:#fff;font-weight:600;text-align:right;
+ .wtab th{background:#1d365a;color:#fff;font-weight:600;text-align:right;
    padding:6px 7px;vertical-align:bottom;line-height:1.25;font-size:9.5px;
    letter-spacing:.01em}
  .wtab th.l,.wtab td.l{text-align:left}
- .wtab td{padding:5px 7px;text-align:right;border-bottom:1px solid #eef2f4;
+ .wtab td{padding:5px 7px;text-align:right;border-bottom:1px solid #eff0f4;
    vertical-align:top;font-variant-numeric:tabular-nums}
- .wtab tr.wgrp td{background:#e8eef0;font-weight:700;
-   border-bottom:1px solid #cbd5d8}
- .wtab tr.wtot td{background:#14524b;color:#fff;font-weight:700}
- .wok{color:#15803d;font-weight:700}
- .wbad{color:#b91c1c;font-weight:700}
- .wneg{color:#b91c1c}
+ .wtab tr.wgrp td{background:#eff0f4;font-weight:700;
+   border-bottom:1px solid #c7ccd3}
+ .wtab tr.wtot td{background:#1d365a;color:#fff;font-weight:700}
+ .wok{color:#1e5631;font-weight:700}
+ .wbad{color:#9e0029;font-weight:700}
+ .wneg{color:#9e0029}
  /* The second line under a figure: FX rate, YTD, result percent. */
- .wsub{display:block;font-size:9px;color:#94a3b8;margin-top:1px;
+ .wsub{display:block;font-size:9px;color:#6e7480;margin-top:1px;
    font-weight:400}
  .wpos td.l b{font-weight:600}
  .wpos{table-layout:auto}
@@ -1442,18 +1442,18 @@ DOC_CSS = """ body{font-family:"Segoe UI",system-ui,Arial,sans-serif;color:#0f17
  }
  .riskscale{display:flex;gap:4px;margin-top:8px}
  .riskscale i{flex:1;font-style:normal;font-size:10px;text-align:center;
-   padding:5px 2px 4px;border-radius:5px;background:#f1f5f9;color:#94a3b8;
-   border:1px solid #e2e8f0;letter-spacing:.02em}
- .riskscale i.on{background:#4F46E5;border-color:#4F46E5;color:#fff;font-weight:700;
-   box-shadow:0 2px 7px rgba(79,70,229,.30)}
+   padding:5px 2px 4px;border-radius:5px;background:#f4f6f9;color:#6e7480;
+   border:1px solid #e6e9ed;letter-spacing:.02em}
+ .riskscale i.on{background:#1d365a;border-color:#1d365a;color:#fff;font-weight:700;
+   box-shadow:0 2px 7px rgba(29, 54, 90,.30)}
  .kpi{transition:border-color .18s ease,box-shadow .18s ease;
    display:flex;flex-direction:column;position:relative;overflow:hidden}
- .kpi:hover{border-color:#c7d2fe;box-shadow:0 3px 10px rgba(79,70,229,.10)}
+ .kpi:hover{border-color:#8ea6d5;box-shadow:0 3px 10px rgba(29, 54, 90,.10)}
  .kpi b{font-variant-numeric:tabular-nums;line-height:1.25}
  .kpi u{display:block;text-decoration:none;font-size:10.5px;font-weight:700;
    margin-top:3px;font-variant-numeric:tabular-nums}
- .kpi u i{font-style:normal;font-weight:500;color:#94a3b8;margin-left:3px}
- .kpi u.up{color:#047857} .kpi u.dn{color:#b91c1c} .kpi u.flat{color:#94a3b8}
+ .kpi u i{font-style:normal;font-weight:500;color:#6e7480;margin-left:3px}
+ .kpi u.up{color:#1e5631} .kpi u.dn{color:#9e0029} .kpi u.flat{color:#6e7480}
  .kpi .spark{display:block;width:100%;height:22px;margin-top:7px;overflow:visible}
  .kpi .spark circle{transition:r .12s ease}
  .kpi:hover .spark circle{r:2.4}"""

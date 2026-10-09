@@ -89,12 +89,12 @@ export default function TemplatesTab({ notify }) {
           A template is an ordered list of blocks, belonging to exactly one
           report type — its blocks assume that type's facts, so it cannot be
           used under another. Create as many per report type as you need;
-          the advisor picks one at generation time, or lets the composer
-          design a one-off from the block registry.
+          the advisor picks one at generation time, or lets the AI design a
+          one-off layout from the block library.
         </p>
         <div className="rule-box">
-          <div><strong>Nothing selects between them.</strong> A person does. No bandit, no exploration, no reward.</div>
-          <div><strong>What adapts</strong> is the wording and block order the composer produces — driven by the client's learned profile and their stated preferences, not by which template won.</div>
+          <div><strong>You choose the template.</strong> The system never switches templates on its own.</div>
+          <div><strong>What adapts</strong> is the wording and the order of sections, based on what each client has shown they prefer.</div>
         </div>
         <ul className="col-legend">
           <li><strong>Name</strong> — how this template appears in the advisor's picker. Make it say what the reader gets.</li>
@@ -190,7 +190,7 @@ export default function TemplatesTab({ notify }) {
                   <code className="code-pill">{r.template_id || r.entity_id}</code>
                 </div>
               ) },
-            { key: "strategy", label: "Arm key", width: "180px",
+            { key: "strategy", label: "Key", width: "180px",
               render: (r) => <code className="code-pill">{r.strategy}</code> },
             { key: "report_type", label: "Report type", width: "200px",
               render: (r) => <span className="ts">{r.report_type}</span> },
@@ -208,7 +208,7 @@ export default function TemplatesTab({ notify }) {
           rows={visible}
           onEdit={loadIntoForm}
           onDelete={handleDelete}
-          deleteConfirm={(row) => `Delete template "${row.template_id}"? Its arm history is kept for audit.`}
+          deleteConfirm={(row) => `Delete template "${row.template_id}"? Its history is kept for audit.`}
           emptyText="No templates configured yet."
         />
       </div>

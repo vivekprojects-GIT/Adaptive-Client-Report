@@ -27,8 +27,12 @@ function Node({ label, meta, count, children, defaultOpen = false, tone }) {
                e.preventDefault(); setOpen(!open);
              }
            } : undefined}>
-        {hasKids ? <i className="tr-caret">{open ? "▾" : "▸"}</i>
-                 : <i className="tr-leaf" />}
+        {hasKids
+          ? <svg className={`tr-caret ${open ? "open" : ""}`} width="12" height="12"
+                 viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor"
+                 strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M6 3.5 10.5 8 6 12.5" /></svg>
+          : <i className="tr-leaf" />}
         <span className="tr-label">{label}</span>
         {meta && <span className="tr-meta">{meta}</span>}
         {count !== undefined && <b className="tr-count">{count}</b>}
@@ -118,7 +122,7 @@ export function PreferenceTree({ data }) {
                     <span className="tr-label">{dim.replace(/_/g, " ")}</span>
                     <i className="tr-bar"
                        style={{ width: `${Math.max(4, v * 60)}px`,
-                                background: v > 0.5 ? "#047857" : "#b45309" }} />
+                                background: v > 0.5 ? "#1e5631" : "#9f500d" }} />
                     <b className="tr-count">{v.toFixed(2)}</b>
                   </div>
                 </li>

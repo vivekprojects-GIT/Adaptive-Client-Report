@@ -134,29 +134,30 @@ def render_viewer(report: Dict[str, Any], token: str, snapshot=None) -> str:
 VIEWER_TEMPLATE = """<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Your __PERIOD__ report</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@300;400;500;700&display=swap">
 <link rel="stylesheet" href="/static/widgets.css">
 <script defer src="/static/vendor/echarts.min.js"></script>
 <script defer src="/static/widgets.js"></script>
 <style>
 __DOC_CSS__
  html,body{height:100%;margin:0}
- body{display:flex;background:#f1f5f9}
- .side{width:200px;min-width:200px;background:#0f172a;color:#e2e8f0;
+ body{display:flex;background:#f4f6f9}
+ .side{width:200px;min-width:200px;background:#171a22;color:#e6e9ed;
    display:flex;flex-direction:column;padding:18px 0}
  .side .brand{font-weight:700;font-size:15px;padding:0 18px 16px;color:#fff;
-   border-bottom:1px solid #1e293b;margin-bottom:10px}
- .side a{display:block;color:#94a3b8;text-decoration:none;font-size:12.5px;
+   border-bottom:1px solid #1d365a;margin-bottom:10px}
+ .side a{display:block;color:#6e7480;text-decoration:none;font-size:12.5px;
    padding:8px 18px;border-left:3px solid transparent}
- .side a:hover{color:#fff;background:#1e293b;border-left-color:#3b82f6}
- .side .foot{margin-top:auto;padding:12px 18px;font-size:11px;color:#475569}
+ .side a:hover{color:#fff;background:#1d365a;border-left-color:#1d365a}
+ .side .foot{margin-top:auto;padding:12px 18px;font-size:11px;color:#3c414a}
  .mid{flex:1;overflow-y:auto;padding:22px 26px}
  .mid .bar{max-width:760px;margin:0 auto 12px;display:flex;align-items:center;
    justify-content:space-between}
- .mid .bar h2{font-size:16px;margin:0;color:#0f172a}
- .mid .bar .sub{font-size:12px;color:#64748b}
- .btn{border:1px solid #cbd5e1;background:#fff;border-radius:6px;
-   padding:7px 13px;font-size:12.5px;cursor:pointer;color:#0f172a}
- .btn:hover{border-color:#94a3b8}
+ .mid .bar h2{font-size:16px;margin:0;color:#171a22}
+ .mid .bar .sub{font-size:12px;color:#595e6a}
+ .btn{border:1px solid #c7ccd3;background:#fff;border-radius:6px;
+   padding:7px 13px;font-size:12.5px;cursor:pointer;color:#171a22}
+ .btn:hover{border-color:#6e7480}
  .btn[disabled]{opacity:.65;cursor:default}
  /* The heading must not be squeezed by the buttons. It gets the leftover
     space and a floor; the actions keep their natural width and wrap below
@@ -166,9 +167,9 @@ __DOC_CSS__
  .bar-actions{display:flex;gap:8px;align-items:center;flex:0 0 auto}
  /* One status line for both media, under the toolbar. Quiet: the client
     did not ask for a progress bar, they asked for a podcast. */
- .mediastat{max-width:760px;margin:0 auto 10px;font-size:12px;color:#64748b}
+ .mediastat{max-width:760px;margin:0 auto 10px;font-size:12px;color:#595e6a}
  .mediastat::before{content:"";display:inline-block;width:7px;height:7px;
-   margin-right:7px;border-radius:50%;background:#3b82f6;
+   margin-right:7px;border-radius:50%;background:#1d365a;
    animation:podpulse 1.4s ease-in-out infinite;vertical-align:middle}
  @keyframes podpulse{0%,100%{opacity:.25}50%{opacity:1}}
  @media (prefers-reduced-motion: reduce){
@@ -177,11 +178,11 @@ __DOC_CSS__
  /* The player sits with the document, not in the chat rail: it is a way to
     consume THIS report, not a conversation about it. */
  .podwrap{max-width:760px;margin:0 auto 14px;padding:12px 14px;
-   border:1px solid #e2e8f0;border-radius:8px;background:#fff}
+   border:1px solid #e6e9ed;border-radius:8px;background:#fff}
  .podhd{display:flex;gap:10px;align-items:baseline;margin-bottom:8px;
-   font-size:13px;color:#0f172a}
- .podhd span{font-size:12px;color:#b45309}
- .poddl{margin-left:auto;font-size:12px;color:#1d4ed8;text-decoration:none}
+   font-size:13px;color:#171a22}
+ .podhd span{font-size:12px;color:#9f500d}
+ .poddl{margin-left:auto;font-size:12px;color:#1d365a;text-decoration:none}
  .poddl:hover{text-decoration:underline}
  .podwrap audio{width:100%}
  /* The video is 1280x720 of SLIDES — text and charts, not faces. Squeezed
@@ -192,58 +193,58 @@ __DOC_CSS__
     this; the point here is that it should be legible without it. */
  #vidwrap{max-width:min(1180px, 96vw)}
  .podwrap video{width:100%;max-height:min(70vh, 660px);display:block;
-   background:#0f172a;border-radius:6px}
+   background:#171a22;border-radius:6px}
  .podwrap details{margin-top:8px}
- .podwrap summary{font-size:12px;color:#64748b;cursor:pointer}
+ .podwrap summary{font-size:12px;color:#595e6a;cursor:pointer}
  .podwrap pre{white-space:pre-wrap;font-size:12px;line-height:1.5;
-   color:#334155;margin:8px 0 0;max-height:220px;overflow:auto}
- .doc{min-height:auto;box-shadow:0 1px 4px rgba(15,23,42,.08);border-radius:8px}
+   color:#3c414a;margin:8px 0 0;max-height:220px;overflow:auto}
+ .doc{min-height:auto;box-shadow:0 1px 4px rgba(23, 26, 34,.08);border-radius:8px}
  section[data-block-id]{cursor:pointer;border-radius:4px}
- section[data-block-id].sel{outline:2px solid #2563eb;outline-offset:8px;
-   position:relative;background:#f8fbff}
+ section[data-block-id].sel{outline:2px solid #1d365a;outline-offset:8px;
+   position:relative;background:#eff0f4}
  .secx{position:absolute;top:-11px;right:-11px;width:22px;height:22px;
-   border-radius:50%;border:1.5px solid #2563eb;background:#fff;color:#2563eb;
+   border-radius:50%;border:1.5px solid #1d365a;background:#fff;color:#1d365a;
    font-size:14px;line-height:1;cursor:pointer;padding:0;z-index:4;
-   box-shadow:0 1px 4px rgba(37,99,235,.28)}
- .secx:hover{background:#2563eb;color:#fff}
- mark.selq{background:#fde68a;padding:1px 0;border-radius:2px}
+   box-shadow:0 1px 4px rgba(29, 54, 90,.28)}
+ .secx:hover{background:#1d365a;color:#fff}
+ mark.selq{background:#fecfad;padding:1px 0;border-radius:2px}
  .askhl{position:absolute;z-index:20;border:0;border-radius:14px;
-   background:#2563eb;color:#fff;font-family:inherit;font-size:11.5px;
+   background:#1d365a;color:#fff;font-family:inherit;font-size:11.5px;
    font-weight:650;padding:5px 12px;cursor:pointer;
-   box-shadow:0 3px 10px rgba(37,99,235,.35)}
- .askhl:hover{background:#1d4ed8}
+   box-shadow:0 3px 10px rgba(29, 54, 90,.35)}
+ .askhl:hover{background:#1d365a}
  .chat{width:340px;min-width:280px;max-width:70vw;background:#fff;
-   border-left:1px solid #e2e8f0;display:flex;flex-direction:column;
+   border-left:1px solid #e6e9ed;display:flex;flex-direction:column;
    position:relative;flex-shrink:0}
  .grip{position:absolute;left:-3px;top:0;bottom:0;width:6px;cursor:col-resize;
    z-index:5}
- .grip:hover,.grip.on{background:#bfdbfe}
+ .grip:hover,.grip.on{background:#8ea6d5}
  /* A quieter header. It names the panel once; it does not need to be the
     boldest thing in the column. */
- .chat .hd2{padding:13px 16px;border-bottom:1px solid #eef2f6;font-weight:600;
-   font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:#64748b;
-   background:#fcfdfe}
- .chat .ctx{display:none;margin:10px 14px 0;background:#eff6ff;
-   border:1px solid #bfdbfe;border-radius:6px;padding:7px 10px;font-size:11.5px;
-   color:#1d4ed8}
+ .chat .hd2{padding:13px 16px;border-bottom:1px solid #eff0f4;font-weight:600;
+   font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:#595e6a;
+   background:#f8fafc}
+ .chat .ctx{display:none;margin:10px 14px 0;background:#eff0f4;
+   border:1px solid #8ea6d5;border-radius:6px;padding:7px 10px;font-size:11.5px;
+   color:#1d365a}
  .chat .ctx b{display:block;font-size:11px}
- .chat .ctx button{float:right;border:0;background:none;color:#60a5fa;
+ .chat .ctx button{float:right;border:0;background:none;color:#8ea6d5;
    cursor:pointer;font-size:12px}
  /* Turns need air between them more than they need boxes around them.
     The old panel packed 10px gaps around bordered cards, which made a
     three-message exchange read as one grey mass. */
  .msgs{flex:1;overflow-y:auto;padding:16px 14px 20px;display:flex;
    flex-direction:column;gap:18px;scroll-behavior:smooth}
- .m-hint{background:#f8fafc;border:1px solid #eef2f6;border-radius:10px;
-   padding:11px 13px;font-size:12.5px;color:#64748b;line-height:1.55}
+ .m-hint{background:#f8fafc;border:1px solid #eff0f4;border-radius:10px;
+   padding:11px 13px;font-size:12.5px;color:#595e6a;line-height:1.55}
  .m-hint.resumed{background:none;border:0;text-align:center;padding:2px 0;
-   font-size:10.5px;color:#94a3b8;text-transform:uppercase;
+   font-size:10.5px;color:#6e7480;text-transform:uppercase;
    letter-spacing:.05em}
  /* The question is short and already obvious as the client's - it does
     not need to be the loudest element on screen. Softened from a solid
-    #2563eb block to something that sits behind the answer it prompted. */
- .m-q{align-self:flex-end;background:#eef2ff;color:#312e81;
-   border:1px solid #e0e7ff;border-radius:14px 14px 4px 14px;
+    #1d365a block to something that sits behind the answer it prompted. */
+ .m-q{align-self:flex-end;background:#eff0f4;color:#121a38;
+   border:1px solid #eff0f4;border-radius:14px 14px 4px 14px;
    padding:9px 13px;font-size:13px;line-height:1.45;max-width:84%;
    font-weight:500}
  /* THE ANSWER IS THE PAGE, SO IT LOSES THE BOX.
@@ -252,65 +253,65 @@ __DOC_CSS__
     size and a taller line, and is separated by space rather than by a
     border. A thin rule on the left marks where a turn begins without
     enclosing it. */
- .m-a{align-self:stretch;background:none;border:0;border-left:2px solid #e0e7ff;
+ .m-a{align-self:stretch;background:none;border:0;border-left:2px solid #eff0f4;
    border-radius:0;padding:1px 0 1px 13px;font-size:13.5px;max-width:100%;
-   color:#0f172a;line-height:1.62}
- .m-a strong{font-weight:650;color:#0b1220}
+   color:#171a22;line-height:1.62}
+ .m-a strong{font-weight:650;color:#171a22}
  .m-a table{margin:6px 0;font-size:12px;border-collapse:collapse;width:100%}
- .m-a th,.m-a td{border-bottom:1px solid #e2e8f0;padding:4px 6px;text-align:left}
- .m-a th{font-size:10.5px;text-transform:uppercase;color:#94a3b8}
+ .m-a th,.m-a td{border-bottom:1px solid #e6e9ed;padding:4px 6px;text-align:left}
+ .m-a th{font-size:10.5px;text-transform:uppercase;color:#6e7480}
  .m-a p{margin:0 0 7px} .m-a p:last-child{margin-bottom:0}
  .m-a ul,.m-a ol{margin:6px 0;padding-left:18px}
  .m-a li{margin-bottom:3px}
- .m-a code{background:#eef2f7;padding:1px 4px;border-radius:3px;font-size:11.5px}
+ .m-a code{background:#f1f4f7;padding:1px 4px;border-radius:3px;font-size:11.5px}
  .m-a strong{font-weight:600}
  .m-a h1,.m-a h2,.m-a h3{font-size:13px;margin:8px 0 4px;font-weight:600}
- .src{margin-top:8px;font-size:11px;color:#94a3b8}
- .src a{color:#2563eb;text-decoration:none;border-bottom:1px dotted #93c5fd}
- .src a:hover{color:#1d4ed8;border-bottom-style:solid}
+ .src{margin-top:8px;font-size:11px;color:#6e7480}
+ .src a{color:#1d365a;text-decoration:none;border-bottom:1px dotted #8ea6d5}
+ .src a:hover{color:#1d365a;border-bottom-style:solid}
  section.flash{animation:flash 1.4s ease}
  @keyframes flash{0%,100%{background:transparent}
-   25%{background:#fef9c3}70%{background:#fef9c3}}
+   25%{background:#fecfad}70%{background:#fecfad}}
  /* Suggestions are an offer, not a menu. Four full-width bordered bars
     under every answer competed with the answer itself; these read as
     quiet links until pointed at. */
  .chips.inline{padding:0;margin-top:12px;padding-top:10px;
-   border-top:1px dashed #e8edf3;flex-direction:column;align-items:flex-start;
+   border-top:1px dashed #eff0f4;flex-direction:column;align-items:flex-start;
    gap:2px}
  .chips.inline button{font-size:12px;padding:5px 0;width:auto;
    white-space:normal;text-align:left;line-height:1.45;border-radius:0;
-   border:0;background:none;color:#475569}
- .chips.inline button:hover{background:none;color:#1d4ed8}
+   border:0;background:none;color:#3c414a}
+ .chips.inline button:hover{background:none;color:#1d365a}
  /* No marker: the rule above the group, the indent and the hover state
     already say these are suggestions. A bullet added noise to the one
     part of the panel that most needed less of it. */
  /* A chip that DRAWS something stays distinguishable from one that only
     asks - that difference is the whole reason capability chips exist. */
- .chips button.chip-draw{border-color:#c7d2fe;background:#eef2ff;color:#4338ca}
- .chips button.chip-draw:hover{border-color:#4F46E5;background:#e0e7ff}
- .chips.inline button.chip-draw{background:none;color:#4338ca}
- .chips.inline button.chip-draw:hover{color:#3730a3}
+ .chips button.chip-draw{border-color:#8ea6d5;background:#eff0f4;color:#121a38}
+ .chips button.chip-draw:hover{border-color:#1d365a;background:#eff0f4}
+ .chips.inline button.chip-draw{background:none;color:#121a38}
+ .chips.inline button.chip-draw:hover{color:#121a38}
  /* Feedback is useful but it is not part of the answer. It fades in on
     hover, so it is there when wanted and invisible while reading. */
  .fb{display:flex;gap:6px;margin-top:10px;opacity:.35;
    transition:opacity .16s ease}
  .m-a:hover .fb,.fb:focus-within{opacity:1}
  .cw-media{margin-top:8px}
-.cw-ans{margin:9px 0 2px;border:1px solid #e2e8f0;border-radius:8px;
+.cw-ans{margin:9px 0 2px;border:1px solid #e6e9ed;border-radius:8px;
    background:#fff;padding:7px 8px 2px}
  .cw-ans>span{display:block;font-size:10px;text-transform:uppercase;
-   letter-spacing:.05em;color:#94a3b8;font-weight:700;margin-bottom:2px}
+   letter-spacing:.05em;color:#6e7480;font-weight:700;margin-bottom:2px}
  .cw-ans .ecw{height:168px;margin:0}
- .fb button{border:1px solid #e2e8f0;background:#fff;border-radius:5px;
-   padding:2px 9px;font-size:12px;cursor:pointer;color:#64748b}
- .fb button:hover{border-color:#94a3b8}
- .fb button.on{background:#eff6ff;border-color:#2563eb;color:#1d4ed8}
+ .fb button{border:1px solid #e6e9ed;background:#fff;border-radius:5px;
+   padding:2px 9px;font-size:12px;cursor:pointer;color:#595e6a}
+ .fb button:hover{border-color:#6e7480}
+ .fb button.on{background:#eff0f4;border-color:#1d365a;color:#1d365a}
  .chips{padding:0 14px 8px;display:flex;flex-direction:column;
    align-items:stretch;gap:5px}
  .chips button{white-space:normal;text-align:left;line-height:1.4}
- .chips button{border:1px solid #dbe4f0;background:#f8fafc;border-radius:14px;
-   padding:5px 11px;font-size:11.5px;color:#334155;cursor:pointer}
- .chips button:hover{border-color:#2563eb;color:#1d4ed8}
+ .chips button{border:1px solid #8ea6d5;background:#f8fafc;border-radius:14px;
+   padding:5px 11px;font-size:11.5px;color:#3c414a;cursor:pointer}
+ .chips button:hover{border-color:#1d365a;color:#1d365a}
  /* ONE CONTROL, NOT FOUR.
     The row had grown to a field plus three separate bordered buttons, all
     the same size and weight, so none of them read as the primary action.
@@ -318,12 +319,12 @@ __DOC_CSS__
     quietly at the right edge, and send is the only filled thing in the
     panel. */
  .ask{display:flex;align-items:center;gap:7px;padding:11px 13px 13px;
-   border-top:1px solid #eef2f6;background:#fff}
+   border-top:1px solid #eff0f4;background:#fff}
  .ask .field{flex:1;display:flex;align-items:center;gap:2px;
-   border:1px solid #dbe3ec;border-radius:22px;padding:3px 5px 3px 4px;
+   border:1px solid #8ea6d5;border-radius:22px;padding:3px 5px 3px 4px;
    background:#fff;transition:border-color .15s ease,box-shadow .15s ease}
- .ask .field:focus-within{border-color:#4f46e5;
-   box-shadow:0 0 0 3px rgba(79,70,229,.10)}
+ .ask .field:focus-within{border-color:#1d365a;
+   box-shadow:0 0 0 3px rgba(29, 54, 90,.10)}
  .ask input{flex:1;border:0;border-radius:18px;padding:9px 12px;
    font-size:13.5px;outline:none;background:none;min-width:0}
  /* Inside the field, so they belong to the question being typed rather
@@ -331,27 +332,27 @@ __DOC_CSS__
  .ask #mic{border:0;background:none;border-radius:50%;
    width:32px;height:32px;cursor:pointer;font-size:14px;line-height:1;padding:0;
    opacity:.62;flex:none;transition:opacity .15s ease,background .15s ease}
- .ask #mic:hover{background:#f1f5f9;opacity:1}
+ .ask #mic:hover{background:#f4f6f9;opacity:1}
  /* Recording has to be unmistakable — a live microphone that LOOKS idle is
     the one state this must never present. Colour plus motion, so it still
     reads when the colour does not (reduced motion keeps the colour). */
- .ask #mic.rec{background:#dc2626;border-color:#dc2626;color:#fff;
+ .ask #mic.rec{background:#9e0029;border-color:#9e0029;color:#fff;
    animation:micpulse 1.1s ease-in-out infinite}
  @keyframes micpulse{50%{opacity:.55}}
  @media (prefers-reduced-motion:reduce){ .ask #mic.rec{animation:none} }
  /* Transcribing: no longer listening, not yet ready. */
- .ask #mic.busy{color:#64748b;cursor:default}
+ .ask #mic.busy{color:#595e6a;cursor:default}
  .ask #voice{border:0;background:none;border-radius:50%;
    width:32px;height:32px;cursor:pointer;font-size:13px;line-height:1;padding:0;
-   color:#4f46e5;opacity:.72;flex:none;
+   color:#1d365a;opacity:.72;flex:none;
    transition:opacity .15s ease,background .15s ease}
- .ask #voice:hover{background:#eef2ff;opacity:1}
+ .ask #voice:hover{background:#eff0f4;opacity:1}
  /* The one filled control in the panel: pressing it is the action. */
- .ask #send{border:0;background:#4f46e5;color:#fff;border-radius:50%;
+ .ask #send{border:0;background:#1d365a;color:#fff;border-radius:50%;
    width:38px;height:38px;cursor:pointer;font-size:14px;line-height:1;
    padding:0;flex:none;transition:background .15s ease}
- .ask #send:hover{background:#4338ca}
- .ask #send:disabled{background:#c7d2fe;cursor:default}
+ .ask #send:hover{background:#121a38}
+ .ask #send:disabled{background:#8ea6d5;cursor:default}
 
  /* ── voice mode ─────────────────────────────────────────────────────
     A separate surface rather than a panel inside the chat: while it is
@@ -362,7 +363,7 @@ __DOC_CSS__
  .vx{position:absolute;inset:0;z-index:30;display:flex;flex-direction:column;
    align-items:center;justify-content:center;gap:18px;padding:20px;
    box-sizing:border-box;
-   background:radial-gradient(120% 90% at 50% 0%,#f8fafc 0%,#eef2f7 55%,#e6ebf3 100%);
+   background:radial-gradient(120% 90% at 50% 0%,#f8fafc 0%,#f1f4f7 55%,#eff0f4 100%);
    animation:vxin .28s ease-out}
  @keyframes vxin{from{opacity:0}to{opacity:1}}
  .vx[hidden]{display:none}
@@ -370,27 +371,27 @@ __DOC_CSS__
  /* The orb is the only moving thing, so it carries the whole state
     signal: what it is doing, and that it is still alive. */
  .vx-orb{width:min(140px,42vw);height:min(140px,42vw);border-radius:50%;position:relative;flex:none;
-   background:radial-gradient(circle at 34% 28%,#c7d2fe 0%,#6366f1 52%,#4338ca 100%);
-   box-shadow:0 14px 40px rgba(67,56,202,.30),0 0 0 9px rgba(99,102,241,.07);
+   background:radial-gradient(circle at 34% 28%,#8ea6d5 0%,#1d365a 52%,#121a38 100%);
+   box-shadow:0 14px 40px rgba(29, 54, 90,.30),0 0 0 9px rgba(99,102,241,.07);
    transform:scale(1);transition:transform .09s ease-out,background .5s ease}
  .vx-orb::after{content:"";position:absolute;inset:-3px;border-radius:50%;
    background:conic-gradient(from 0deg,transparent,rgba(255,255,255,.5),transparent 45%);
    animation:vxspin 7s linear infinite;opacity:.55}
  @keyframes vxspin{to{transform:rotate(360deg)}}
  /* Thinking: colour drains, motion slows. Nothing is being heard. */
- .vx-orb.think{background:radial-gradient(circle at 34% 28%,#e2e8f0 0%,#94a3b8 55%,#64748b 100%);
+ .vx-orb.think{background:radial-gradient(circle at 34% 28%,#e6e9ed 0%,#6e7480 55%,#595e6a 100%);
    animation:vxthink 1.5s ease-in-out infinite}
  @keyframes vxthink{50%{transform:scale(.94)}}
  /* Speaking: a different hue, so it never looks like it is listening. */
- .vx-orb.talk{background:radial-gradient(circle at 34% 28%,#99f6e4 0%,#14b8a6 52%,#0f766e 100%)}
- .vx-orb.muted{background:radial-gradient(circle at 34% 28%,#e5e7eb 0%,#9ca3af 55%,#6b7280 100%)}
+ .vx-orb.talk{background:radial-gradient(circle at 34% 28%,#afe3bd 0%,#1e5631 52%,#1e5631 100%)}
+ .vx-orb.muted{background:radial-gradient(circle at 34% 28%,#f1f4f7 0%,#6e7480 55%,#595e6a 100%)}
  @media (prefers-reduced-motion:reduce){
    .vx-orb,.vx-orb::after,.vx-orb.think{animation:none;transition:none}
  }
 
  .vx-dbg{margin-top:6px;font:11px ui-monospace,Menlo,Consolas,monospace;opacity:.75;letter-spacing:.02em;text-align:center}
 .vx-state{font:600 12px/1.4 -apple-system,Segoe UI,Roboto,Arial,sans-serif;
-   color:#475569;letter-spacing:.03em;text-transform:uppercase}
+   color:#3c414a;letter-spacing:.03em;text-transform:uppercase}
  /* What we heard, shown back before it is sent. A voice interface that
     never shows its transcript gives the client no way to tell a bad
     answer from a misheard question. */
@@ -398,30 +399,30 @@ __DOC_CSS__
     can be several sentences and the buttons must stay reachable. */
  .vx-said{width:100%;max-width:100%;text-align:center;min-height:2.4em;
    max-height:34%;overflow-y:auto;
-   font:400 15px/1.5 -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#0f172a}
- .vx-said .vx-reply{color:#475569;font-size:14px}
+   font:400 15px/1.5 -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#171a22}
+ .vx-said .vx-reply{color:#3c414a;font-size:14px}
  .vx-bar{display:flex;gap:14px;margin-top:2px}
- .vx-btn{width:46px;height:46px;border-radius:50%;border:1px solid #cbd5e1;
+ .vx-btn{width:46px;height:46px;border-radius:50%;border:1px solid #c7ccd3;
    background:#fff;cursor:pointer;font-size:16px;line-height:1;flex:none;
-   box-shadow:0 2px 8px rgba(15,23,42,.08)}
+   box-shadow:0 2px 8px rgba(23, 26, 34,.08)}
  .vx-btn:hover{background:#f8fafc}
- .vx-btn.off{background:#e2e8f0;color:#64748b}
- .vx-end{background:#0f172a;color:#fff;border-color:#0f172a}
- .vx-end:hover{background:#1e293b}
+ .vx-btn.off{background:#e6e9ed;color:#595e6a}
+ .vx-end{background:#171a22;color:#fff;border-color:#171a22}
+ .vx-end:hover{background:#1d365a}
  .vx-note{font:400 11.5px/1.45 -apple-system,Segoe UI,Roboto,Arial,sans-serif;
-   color:#94a3b8;max-width:100%;text-align:center}
+   color:#6e7480;max-width:100%;text-align:center}
 
- .ask button{border:0;background:#2563eb;color:#fff;border-radius:7px;
+ .ask button{border:0;background:#1d365a;color:#fff;border-radius:7px;
    width:38px;cursor:pointer;font-size:15px}
- .ask button:disabled{background:#93c5fd}
+ .ask button:disabled{background:#8ea6d5}
  .rfb{display:flex;align-items:center;gap:8px;padding:8px 14px;
-   border-top:1px solid #e2e8f0;font-size:12px;color:#475569}
- .rfb button{border:1px solid #e2e8f0;background:#fff;border-radius:6px;
-   padding:4px 10px;font-size:12px;cursor:pointer;color:#64748b}
- .rfb button:hover{border-color:#94a3b8}
- .rfb button.on{background:#eff6ff;border-color:#2563eb;color:#1d4ed8}
- .note{padding:0 14px 10px;font-size:10.5px;color:#94a3b8}
- .typing{align-self:flex-start;color:#94a3b8;font-size:12px;padding:4px 2px}
+   border-top:1px solid #e6e9ed;font-size:12px;color:#3c414a}
+ .rfb button{border:1px solid #e6e9ed;background:#fff;border-radius:6px;
+   padding:4px 10px;font-size:12px;cursor:pointer;color:#595e6a}
+ .rfb button:hover{border-color:#6e7480}
+ .rfb button.on{background:#eff0f4;border-color:#1d365a;color:#1d365a}
+ .note{padding:0 14px 10px;font-size:10.5px;color:#6e7480}
+ .typing{align-self:flex-start;color:#6e7480;font-size:12px;padding:4px 2px}
  /* The document must never be squeezed to an unreadable column. Below
     these widths the side panes give way rather than compete: the nav goes
     first (it is a convenience), then the chat moves under the document —
@@ -432,7 +433,7 @@ __DOC_CSS__
    body{flex-direction:column;height:auto}
    .mid{order:1;overflow:visible}
    .chat{order:2;width:auto!important;max-width:none;min-width:0;
-     border-left:0;border-top:1px solid #e2e8f0;height:70vh;
+     border-left:0;border-top:1px solid #e6e9ed;height:70vh;
      position:sticky;bottom:0}
    .grip{display:none}
    .doc{border-radius:0}
@@ -445,10 +446,149 @@ __DOC_CSS__
    section[data-block-id]{cursor:auto}
    section[data-block-id]:hover{outline:none}
  }
+
+ /* ── house style ────────────────────────────────────────────────────
+    One quiet, institutional look shared with the advisor console: cool
+    neutrals, a single navy accent, square-ish corners, rules instead of
+    shadows, and drawn icons rather than emoji. The client is reading a
+    statement from their bank, so nothing here should look like a demo. */
+ body{background:#f4f6f9;font-family:"Ubuntu","Segoe UI Variable Text","Segoe UI",
+   -apple-system,BlinkMacSystemFont,system-ui,"Helvetica Neue",Arial,sans-serif}
+ button,input,select,textarea{font-family:inherit}
+ .side{width:220px;min-width:220px;background:#fff;color:#171a22;
+   border-right:1px solid #e6e9ed;padding:20px 0 14px}
+ .side .brand .cg{display:block;font-size:17px;font-weight:500;letter-spacing:-.01em;
+   text-transform:none;color:#1d365a;margin-bottom:4px}
+ .side .brand{font-size:11px;font-weight:600;letter-spacing:.09em;
+   text-transform:uppercase;color:#595e6a;padding:0 20px 14px;
+   border-bottom:1px solid #f1f4f7;margin-bottom:8px}
+ .side a{color:#3c414a;font-size:13px;padding:7px 20px 7px 18px;
+   border-left:2px solid transparent;line-height:1.4}
+ .side a:hover{color:#171a22;background:#f8fafc;border-left-color:#1d365a}
+ .side .foot{color:#6e7480;border-top:1px solid #f1f4f7;padding-top:12px;
+   line-height:1.5}
+ .mid{padding:24px 28px}
+ .mid .bar{margin-bottom:16px}
+ .mid .bar h2{font-size:20px;font-weight:600;letter-spacing:-.01em;
+   color:#171a22;line-height:1.3}
+ .mid .bar .sub{font-size:13px;color:#595e6a;margin-top:2px}
+ .btn{display:inline-flex;align-items:center;gap:7px;height:32px;
+   border:1px solid #c7ccd3;border-radius:4px;padding:0 12px;font:inherit;
+   font-size:13px;font-weight:600;color:#171a22;background:#fff}
+ .btn:hover{background:#f8fafc;border-color:#6e7480}
+ .btn svg{flex:none}
+ .doc{box-shadow:none;border:1px solid #e6e9ed;border-radius:4px}
+ section[data-block-id].sel{outline:2px solid #1d365a;background:#f8fafc}
+ .secx{width:22px;height:22px;border-radius:3px;border:1px solid #1d365a;
+   color:#1d365a;font-size:13px;box-shadow:none}
+ .secx:hover{background:#1d365a;color:#fff}
+ mark.selq{background:#f9edbe}
+ .askhl{border-radius:3px;background:#1d365a;font-size:12px;font-weight:600;
+   padding:6px 11px;box-shadow:0 2px 8px rgba(23, 26, 34,.22)}
+ .askhl:hover{background:#121a38}
+ .chat{width:360px;border-left:1px solid #e6e9ed}
+ .grip:hover,.grip.on{background:#8ea6d5}
+ .chat .hd2{padding:14px 18px;background:#fff;border-bottom:1px solid #f1f4f7;
+   font-size:11px;letter-spacing:.09em;color:#595e6a}
+ .chat .ctx{margin:12px 16px 0;background:#eff0f4;border:0;
+   border-left:2px solid #1d365a;border-radius:0 3px 3px 0;color:#171a22;
+   padding:8px 10px;font-size:12px}
+ .chat .ctx b{font-weight:600;color:#3c414a;text-transform:uppercase;
+   letter-spacing:.06em;font-size:10.5px;margin-bottom:2px}
+ .chat .ctx button{color:#1d365a;font:inherit;font-size:12px}
+ .msgs{padding:18px 16px 20px}
+ .m-hint{border-radius:4px;background:#f8fafc;border:1px solid #f1f4f7;
+   color:#595e6a;font-size:13px}
+ .m-q{border-radius:4px;background:#eff0f4;color:#171a22;border:1px solid #dfe1eb;
+   font-weight:500;font-size:13.5px}
+ .m-a{border-left:2px solid #e6e9ed;color:#171a22;font-size:14px}
+ .m-a strong{color:#171a22}
+ .m-a th{color:#595e6a;font-weight:600;letter-spacing:.05em}
+ .src{color:#6e7480}
+ .src a{color:#1d365a;border-bottom-color:#8ea6d5}
+ @keyframes flash{0%,100%{background:transparent}25%,70%{background:#f9edbe}}
+ .chips.inline{border-top:1px solid #f1f4f7}
+ .chips.inline button{color:#1d365a;font-size:12.5px}
+ .chips.inline button:hover{color:#171a22;text-decoration:underline;
+   text-underline-offset:2px}
+ .chips.inline button.chip-draw{color:#1d365a}
+ .chips button{border-radius:3px;border-color:#e6e9ed;background:#fff;
+   color:#3c414a;font-size:12.5px;padding:6px 10px}
+ .chips button:hover{border-color:#1d365a;color:#171a22}
+ .chips button.chip-draw{border-color:#8ea6d5;background:#f8fafc;color:#1d365a}
+ .fb button,.rfb button{display:inline-flex;align-items:center;gap:5px;
+   height:26px;padding:0 9px;border-radius:3px;font:inherit;font-size:12px;
+   color:#595e6a;border:1px solid #e6e9ed;background:#fff}
+ .fb button:hover,.rfb button:hover{border-color:#6e7480;color:#171a22}
+ .fb button.on,.rfb button.on{background:#eff0f4;border-color:#1d365a;color:#1d365a}
+ .fb button:disabled:not(.on),.rfb button:disabled:not(.on){opacity:.55}
+ .cw-ans{border-radius:4px}
+ .ask{padding:12px 16px 14px;border-top:1px solid #f1f4f7}
+ .ask .field{border-radius:4px;border-color:#c7ccd3;padding:2px 4px}
+ .ask .field:focus-within{border-color:#1d365a;box-shadow:0 0 0 3px rgba(29, 54, 90,.14)}
+ .ask input{font-size:14px;padding:8px 8px}
+ .ask #mic,.ask #voice{display:inline-flex;align-items:center;justify-content:center;
+   width:30px;height:30px;border-radius:3px;color:#3c414a;opacity:.8}
+ .ask #mic:hover,.ask #voice:hover{background:#f4f6f9;opacity:1}
+ .ask #mic.rec{background:#9e0029;color:#fff;opacity:1}
+ .ask #send{display:inline-flex;align-items:center;justify-content:center;
+   width:36px;height:36px;border-radius:4px;background:#1d365a}
+ .ask #send:hover{background:#121a38}
+ .ask #send:disabled{background:#c7ccd3}
+ .rfb{padding:10px 16px;border-top:1px solid #f1f4f7;color:#3c414a;font-size:12.5px}
+ .rfb span{margin-right:auto}
+ .note{padding:0 16px 12px;color:#6e7480;font-size:11px;line-height:1.5}
+ .mediastat::before{background:#1d365a}
+ .podwrap{border-color:#e6e9ed;border-radius:4px}
+ .podhd span{color:#9f500d}
+
+ /* Voice mode: a flat ground and a solid disc. State is carried by the
+    disc's colour and a slow ring, not by gradients and spin. */
+ .vx{background:#f8fafc}
+ .vx-orb{background:#1d365a;box-shadow:0 0 0 10px rgba(29, 54, 90,.08)}
+ .vx-orb::after{background:none;border:2px solid rgba(29, 54, 90,.28);inset:-12px;
+   opacity:1;animation:vxring 2.4s ease-out infinite}
+ @keyframes vxring{0%{transform:scale(.92);opacity:.9}100%{transform:scale(1.18);opacity:0}}
+ .vx-orb.think{background:#6e7480}
+ .vx-orb.talk{background:#00ae9d}
+ .vx-orb.talk::after{border-color:rgba(0, 174, 157,.3)}
+ .vx-orb.muted{background:#c7ccd3}
+ .vx-orb.muted::after,.vx-orb.think::after{animation:none;opacity:0}
+ .vx-state{color:#3c414a;letter-spacing:.09em;font-size:11px}
+ .vx-btn{display:inline-flex;align-items:center;justify-content:center;
+   width:44px;height:44px;border-radius:50%;border-color:#c7ccd3;color:#171a22;
+   box-shadow:none}
+ .vx-btn.off{background:#f1f4f7;color:#595e6a}
+ .vx-end{background:#171a22;border-color:#171a22;color:#fff}
+ .vx-end:hover{background:#1d365a}
+ @media (prefers-reduced-motion:reduce){ .vx-orb::after{animation:none;opacity:0} }
+
+ /* ── Capgemini design language ──────────────────────────────────────
+    As on capgemini.com: the logo, light Ubuntu headings, pill-shaped
+    buttons outlined in Capgemini blue, square panels. */
+ .side .brand .cg{display:block;width:112px;height:auto;margin:0 0 12px}
+ .mid .bar h2{font-size:24px;font-weight:300;letter-spacing:.1px}
+ .btn{border-radius:999px;border-color:#1d365a;color:#1d365a;font-weight:500;
+   padding:0 16px;height:34px}
+ .btn:hover{background:#eff0f4;border-color:#121a38;color:#121a38}
+ .askhl{border-radius:999px;padding:6px 14px;background:#1d365a}
+ .askhl:hover{background:#121a38}
+ .secx{border-radius:50%}
+ .chat .hd2{font-weight:500}
+ .chips button{border-radius:999px;padding:6px 14px;border-color:#c7ccd3}
+ .chips button:hover{border-color:#1d365a;color:#1d365a}
+ .chips button.chip-draw{border-color:#8ea6d5;background:#fff;color:#1d365a}
+ .fb button,.rfb button{border-radius:999px;padding:0 12px}
+ .ask .field{border-radius:999px;padding:2px 6px 2px 10px}
+ .ask #mic,.ask #voice{border-radius:50%}
+ .ask #send{border-radius:50%;background:#1d365a}
+ .ask #send:hover{background:#121a38}
+ section[data-block-id].sel{outline-color:#3573c0}
+ .chat .ctx{border-left-color:#3573c0}
 </style></head><body>
 
 <div class="side">
-  <div class="brand">Your report</div>
+  <div class="brand"><img class="cg" src="/static/brand/capgeminiBlue.svg" alt="Capgemini" width="112" height="26">Your report</div>
   __NAV__
   <div class="foot">__RTYPE__ &middot; __PERIOD__<br>Figures are personal
     to you. Link expires automatically.</div>
@@ -469,7 +609,7 @@ __DOC_CSS__
            blocks below begin `if (!btn) return`, so they simply do not run.
            Putting either button back is one line here, and it will work
            again with no other change. -->
-      <button class="btn" id="dl">Download PDF</button>
+      <button class="btn" id="dl"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2v8M4.5 6.5 8 10l3.5-3.5M2.5 13.5h11"/></svg>Download PDF</button>
     </div>
   </div>
   <!-- Progress belongs on its OWN line, under the toolbar.
@@ -511,9 +651,9 @@ __DOC_CSS__
     <div class="vx-said" id="vxsaid"></div>
     <div class="vx-bar">
       <button class="vx-btn" id="vxmute" type="button"
-              aria-label="Mute the microphone">&#127908;</button>
+              aria-label="Mute the microphone"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true"><rect x="5.5" y="1.5" width="5" height="8" rx="2.5"/><path d="M3 7.5a5 5 0 0 0 10 0M8 12.5v2"/></svg></button>
       <button class="vx-btn vx-end" id="vxend" type="button"
-              aria-label="Leave voice mode">&#10005;</button>
+              aria-label="Leave voice mode"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
     </div>
     <div class="vx-note">Speak naturally, then pause.</div>
   </div>
@@ -532,16 +672,16 @@ __CHIPS__
     <div class="field">
       <input id="q" placeholder="Ask a follow up question..." autocomplete="off">
       <button id="mic" type="button" hidden
-              aria-label="Dictate your question">&#127908;</button>
+              aria-label="Dictate your question"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true"><rect x="5.5" y="1.5" width="5" height="8" rx="2.5"/><path d="M3 7.5a5 5 0 0 0 10 0M8 12.5v2"/></svg></button>
       <button id="voice" type="button" hidden
-              aria-label="Talk to your report">&#9673;</button>
+              aria-label="Talk to your report"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true"><path d="M2 6.5v3M5 4v8M8 2v12M11 4.5v7M14 6.5v3"/></svg></button>
     </div>
-    <button id="send" aria-label="Send">&#10148;</button>
+    <button id="send" aria-label="Send"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 13V3M3.5 7.5 8 3l4.5 4.5"/></svg></button>
   </div>
   <div class="rfb" id="rfb">
     <span>Was this report helpful?</span>
-    <button id="rfb-yes">&#128077; yes</button>
-    <button id="rfb-no">&#128078; not really</button>
+    <button id="rfb-yes"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true"><path d="M5 7v7H2V7zM5 7l3-5.5c1.2 0 2 .8 2 2V6h3.3c.9 0 1.5.8 1.3 1.6l-1.3 5.2c-.2.7-.8 1.2-1.5 1.2H5"/></svg>Yes</button>
+    <button id="rfb-no"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true"><path d="M5 9V2H2v7zM5 9l3 5.5c1.2 0 2-.8 2-2V10h3.3c.9 0 1.5-.8 1.3-1.6l-1.3-5.2C13.1 2.5 12.5 2 11.8 2H5"/></svg>Not really</button>
   </div>
   <div class="note">Answers come from your report's own figures. For advice,
     contact your adviser. Answers may contain mistakes.</div>
@@ -1305,8 +1445,8 @@ function addAnswer(res){
   if (res.followups && res.followups.length) d.appendChild(chipRow(res.followups));
 
   var fb = document.createElement("div"); fb.className = "fb";
-  var up = document.createElement("button"); up.textContent = "\\uD83D\\uDC4D helpful";
-  var dn = document.createElement("button"); dn.textContent = "\\uD83D\\uDC4E not really";
+  var up = document.createElement("button"); up.innerHTML = "<svg width='13' height='13' viewBox='0 0 16 16' fill='none' stroke='currentColor' stroke-width='1.4' stroke-linejoin='round' aria-hidden='true'><path d='M5 7v7H2V7zM5 7l3-5.5c1.2 0 2 .8 2 2V6h3.3c.9 0 1.5.8 1.3 1.6l-1.3 5.2c-.2.7-.8 1.2-1.5 1.2H5'/></svg>Helpful";
+  var dn = document.createElement("button"); dn.innerHTML = "<svg width='13' height='13' viewBox='0 0 16 16' fill='none' stroke='currentColor' stroke-width='1.4' stroke-linejoin='round' aria-hidden='true'><path d='M5 9V2H2v7zM5 9l3 5.5c1.2 0 2-.8 2-2V10h3.3c.9 0 1.5-.8 1.3-1.6l-1.3-5.2C13.1 2.5 12.5 2 11.8 2H5'/></svg>Not really";
   function vote(kind, btn){
     if (up.disabled) return; up.disabled = dn.disabled = true;
     btn.classList.add("on");
@@ -1460,7 +1600,7 @@ function ask(question, onDone, onDelta){
       s === REC ? "Stop recording"
       : s === BUSY ? "Transcribing your question"
       : "Record your question");
-    btn.textContent = (s === BUSY) ? "⋯" : "🎤";
+    if (s === BUSY) btn.textContent = "…"; else btn.innerHTML = "<svg width='16' height='16' viewBox='0 0 16 16' fill='none' stroke='currentColor' stroke-width='1.4' stroke-linecap='round' aria-hidden='true'><rect x='5.5' y='1.5' width='5' height='8' rx='2.5'/><path d='M3 7.5a5 5 0 0 0 10 0M8 12.5v2'/></svg>";
   }
 
   // The recording light must never outlive the recording.

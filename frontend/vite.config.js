@@ -5,6 +5,9 @@ import react from "@vitejs/plugin-react";
 // so the frontend at :5173 can hit /turn etc. without CORS.
 // Production: FastAPI serves the built React app from /static and routes
 // SPA paths to index.html.
+// APE_API overrides the backend target when 7860 is taken locally.
+const API = process.env.APE_API || "http://localhost:7860";
+
 export default defineConfig({
   plugins: [react()],
   server: {
@@ -14,40 +17,40 @@ export default defineConfig({
       // authenticate: every route below is gated on a cookie that only
       // /login issues, so the registry 401s forever and the client list
       // renders empty against a backend that is fine.
-      "/login":     "http://localhost:7860",
+      "/login":     API,
       // The chart runtime and vendored ECharts the client report loads,
       // plus anything else served from the backend static mount.
-      "/static":    "http://localhost:7860",
-      "/r":         "http://localhost:7860",
+      "/static":    API,
+      "/r":         API,
 
       // Exact-path API endpoints
-      "/turn":      "http://localhost:7860",
-      "/feedback":  "http://localhost:7860",
-      "/health":    "http://localhost:7860",
+      "/turn":      API,
+      "/feedback":  API,
+      "/health":    API,
 
       // Adviser notifications — /alerts and /alerts/{id}/ack
-      "/alerts":    "http://localhost:7860",
+      "/alerts":    API,
 
       // The advisor screen's own data. These were missing, so the dev
       // frontend rendered "No clients yet" against a backend that had
       // thirteen — a config gap that looks exactly like a data bug.
-      "/clients":   "http://localhost:7860",
-      "/reports":   "http://localhost:7860",
-      "/registry":  "http://localhost:7860",
-      "/ape":       "http://localhost:7860",
+      "/clients":   API,
+      "/reports":   API,
+      "/registry":  API,
+      "/ape":       API,
 
       // Prefix endpoints — sub-paths are proxied to FastAPI
-      "/sessions":  "http://localhost:7860",
-      "/users":     "http://localhost:7860",
-      "/config":    "http://localhost:7860",
+      "/sessions":  API,
+      "/users":     API,
+      "/config":    API,
 
       // /admin/* hits FastAPI, but /admin (exact) is a SPA route handled by React.
       // The "^/admin/" regex prefix matches /admin/anything but NOT /admin alone.
-      "^/admin/":   "http://localhost:7860",
+      "^/admin/":   API,
 
       // Same pattern for /analytics: /analytics/* are API endpoints, but
       // /analytics alone is the SPA page handled by React Router.
-      "^/analytics/": "http://localhost:7860",
+      "^/analytics/": API,
     },
   },
   build: {

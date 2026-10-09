@@ -52,31 +52,31 @@ def _build_message(to_email: str, client_name: str, report_url: str,
     )
     msg.add_alternative(f"""\
 <html><body style="font-family:-apple-system,Segoe UI,Arial,sans-serif;
-  background:#f1f5f9;margin:0;padding:28px">
+  background:#f4f6f9;margin:0;padding:28px">
   <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:10px;
     padding:30px 34px">
-    <h2 style="margin:0 0 4px;font-size:19px;color:#0f172a">
+    <h2 style="margin:0 0 4px;font-size:19px;color:#171a22">
       Your {period} report is ready</h2>
-    <p style="color:#64748b;font-size:14px;margin:0 0 20px">Hi {client_name},</p>
-    <p style="color:#334155;font-size:14px;line-height:1.55;margin:0 0 22px">
+    <p style="color:#595e6a;font-size:14px;margin:0 0 20px">Hi {client_name},</p>
+    <p style="color:#3c414a;font-size:14px;line-height:1.55;margin:0 0 22px">
       Your latest portfolio report covers performance, allocation, fees and
       any changes this period.
     </p>
     <p style="margin:0 0 22px">
-      <a href="{report_url}" style="background:#1d4ed8;color:#fff;
+      <a href="{report_url}" style="background:#1d365a;color:#fff;
         padding:12px 22px;text-decoration:none;border-radius:6px;
         font-weight:600;font-size:14px;display:inline-block">View my report</a>
     </p>
-    <p style="color:#64748b;font-size:13px;line-height:1.55;margin:0">
+    <p style="color:#595e6a;font-size:13px;line-height:1.55;margin:0">
       Inside the report you can highlight any section and ask questions about
       it, or download a PDF copy.
     </p>
-    <p style="color:#64748b;font-size:13px;line-height:1.55;margin:14px 0 0">
+    <p style="color:#595e6a;font-size:13px;line-height:1.55;margin:14px 0 0">
       For your security, you'll be asked to confirm your year of birth the
       first time you open it.
     </p>
-    <p style="color:#94a3b8;font-size:11.5px;margin:22px 0 0;
-      border-top:1px solid #e2e8f0;padding-top:14px">
+    <p style="color:#6e7480;font-size:11.5px;margin:22px 0 0;
+      border-top:1px solid #e6e9ed;padding-top:14px">
       This link is personal to you and expires. Forwarding it will not give
       anyone else access.
     </p>
@@ -117,21 +117,21 @@ def _build_alert(adviser_email: str, adviser_name: str, client_name: str,
     )
     msg.add_alternative(f"""\
 <html><body style="font-family:-apple-system,Segoe UI,Arial,sans-serif;
-  background:#f1f5f9;margin:0;padding:28px">
+  background:#f4f6f9;margin:0;padding:28px">
   <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:10px;
     padding:30px 34px">
     <p style="margin:0 0 6px;font-size:11px;letter-spacing:.12em;
-      text-transform:uppercase;color:#b45309;font-weight:700">Client needs help</p>
-    <h2 style="margin:0 0 16px;font-size:19px;color:#0f172a">
+      text-transform:uppercase;color:#9f500d;font-weight:700">Client needs help</p>
+    <h2 style="margin:0 0 16px;font-size:19px;color:#171a22">
       {client_name} may need a hand</h2>
-    <p style="color:#334155;font-size:14px;line-height:1.55;margin:0 0 14px">
+    <p style="color:#3c414a;font-size:14px;line-height:1.55;margin:0 0 14px">
       Hi {adviser_name}, {client_name} {reason} while reading their report.
     </p>
-    <p style="color:#334155;font-size:14px;line-height:1.55;margin:0 0 20px;
-      padding:12px 15px;background:#fef3c7;border-radius:7px">{detail}</p>
-    <p style="color:#64748b;font-size:12.5px;margin:0">Report: {report_id}</p>
-    <p style="color:#94a3b8;font-size:11.5px;margin:20px 0 0;
-      border-top:1px solid #e2e8f0;padding-top:14px">
+    <p style="color:#3c414a;font-size:14px;line-height:1.55;margin:0 0 20px;
+      padding:12px 15px;background:#fff1e6;border-radius:7px">{detail}</p>
+    <p style="color:#595e6a;font-size:12.5px;margin:0">Report: {report_id}</p>
+    <p style="color:#6e7480;font-size:11.5px;margin:20px 0 0;
+      border-top:1px solid #e6e9ed;padding-top:14px">
       Automatic notice based on how this client used their report.
       No client figures are included in this email.
     </p>

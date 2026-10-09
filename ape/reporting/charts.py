@@ -29,11 +29,11 @@ from typing import Any, Dict, List, Sequence
 W, H = 320.0, 150.0          # viewBox; CSS scales it to the column
 PAD_L, PAD_R, PAD_T, PAD_B = 34.0, 8.0, 12.0, 22.0
 
-PALETTE = ["#3b82f6", "#0f766e", "#6d28d9", "#b45309", "#be185d",
-           "#0891b2", "#4d7c0f", "#9333ea"]
-GRID = "#e2e8f0"
-AXIS = "#94a3b8"
-INK = "#0f172a"
+PALETTE = ["#0058ab", "#00ae9d", "#1d365a", "#f17817", "#5685c6",
+           "#29656f", "#f9a464", "#888f9a"]
+GRID = "#e6e9ed"
+AXIS = "#6e7480"
+INK = "#171a22"
 
 
 def _e(v: Any) -> str:
@@ -339,7 +339,7 @@ def _waterfall(d):
         top, bot = max(a, b), min(a, b)
         y = y0 + h - (top - lo) / span * h
         bh = (top - bot) / span * h
-        col = "#047857" if vals[i] >= 0 else "#b91c1c"
+        col = "#43a063" if vals[i] >= 0 else "#c00036"
         parts.append(f'<rect x="{x0+step*i+(step-bw)/2:.1f}" y="{y:.1f}" width="{bw:.1f}" '
                      f'height="{max(bh,1):.1f}" rx="1.5" fill="{col}" fill-opacity=".85"/>')
     return _svg("".join(parts))

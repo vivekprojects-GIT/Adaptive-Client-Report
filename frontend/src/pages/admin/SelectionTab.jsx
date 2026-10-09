@@ -52,38 +52,35 @@ export default function SelectionTab({ notify }) {
   }
 
   const field = (label, val, set, hint) => (
-    <label>
+    <label className="admin-field">
       {label}
       <input type="number" min="0.1" max="100" step="0.1" value={val}
-             onChange={(e) => set(e.target.value)}
-             style={{ display: "block", marginTop: 4, padding: "7px 10px",
-                      width: 140 }} />
-      <span style={{ display: "block", color: "#94a3b8", fontSize: 12,
+             onChange={(e) => set(e.target.value)} />
+      <span style={{ display: "block", color: "var(--muted)", fontSize: 12,
                      marginTop: 3 }}>{hint}</span>
     </label>
   );
 
   return (
-    <section>
+    <section className="admin-section">
       <div className="admin-explain">
-        <div><strong>Answer-format policy: contextual UCB</strong> — every arm is
-          scored mean + c·√(2 ln N / n); the highest score is served.
-          The context is the report type (D1) or the question intent (D2),
-          and the client's learned dimensions shape the prior mean.</div>
-        <div>Cold arms carry a large uncertainty bonus, so exploration needs
-          no randomness — and because counts rise at selection time, a batch
-          run spreads across arms instead of sending the whole book the same
-          template.</div>
+        <div><strong>How the system learns which answer style works.</strong> When
+          a client asks their report a question, the system chooses between
+          several answer styles and learns from their feedback which works best
+          for each kind of question.</div>
+        <div>Styles that have not been tried much are tried early, so the
+          system keeps learning without guessing at random. These settings
+          control how quickly it settles.</div>
       </div>
       {err && <div className="admin-error">{err}</div>}
       {cfg && (
         <div style={{ maxWidth: 520, display: "grid", gap: 16, marginTop: 12 }}>
-          {field("Exploration constant c", c, setC,
-                 "Bigger explores longer; smaller commits to the current best sooner.")}
-          {field("D1 prior strength (report templates)", d1, setD1,
-                 "How many reports of pretend evidence the declared style-fit is worth.")}
-          {field("D2 prior strength (answer formats)", d2, setD2,
-                 "Kept small: answer strategies make no strong declared claim.")}
+          {field("Exploration", c, setC,
+                 "Higher keeps trying alternatives for longer; lower settles on the best performer sooner.")}
+          {field("Starting confidence: report layouts", d1, setD1,
+                 "How much the layout's declared fit counts before any client feedback arrives.")}
+          {field("Starting confidence: answer styles", d2, setD2,
+                 "Kept low, so real feedback takes over quickly.")}
           <div>
             <button className="admin-btn" disabled={busy} onClick={save}>
               Save

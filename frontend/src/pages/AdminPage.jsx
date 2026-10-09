@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
 import Toast from "../components/Toast.jsx";
+import AppRail from "../components/AppRail.jsx";
 import ReportTypesTab from "./admin/ReportTypesTab.jsx";
 import TemplatesTab   from "./admin/TemplatesTab.jsx";
 import SelectionTab   from "./admin/SelectionTab.jsx";
@@ -10,11 +10,11 @@ import "../styles/app-shell.css";
 import "../styles/admin.css";
 
 const TABS = [
-  { id: "reporttypes",  label: "Report Types" },
+  { id: "reporttypes",  label: "Report types" },
   { id: "templates",    label: "Templates" },
-  { id: "selection",    label: "Selection (UCB)" },
-  { id: "d2",           label: "Learning · Answers" },
-  { id: "audit",        label: "Audit Log" },
+  { id: "d2",           label: "Answer learning" },
+  { id: "selection",    label: "Learning settings" },
+  { id: "audit",        label: "Audit log" },
 ];
 
 export default function AdminPage() {
@@ -24,32 +24,27 @@ export default function AdminPage() {
   function notify(msg, kind = "ok") { setToast({ msg, kind }); }
 
   return (
-    <div className="app-page">
-      <header className="app-header">
-        <div className="app-header-row">
-          <div className="app-brand">
-            <span className="app-brand-name">APE</span>
-            <span className="app-brand-dot">/</span>
-            <span className="app-brand-page">Configuration</span>
-          </div>
-          <div className="app-actions">
-            <Link to="/"          className="app-link">Advisor</Link>
-          </div>
-        </div>
-        <div className="app-header-row app-header-row-tabs">
-          <nav className="app-tabs" aria-label="Configuration sections">
-            {TABS.map((t) => (
-              <button
-                key={t.id}
-                className={`app-tab ${active === t.id ? "active" : ""}`}
-                onClick={() => setActive(t.id)}
-              >
-                {t.label}
-              </button>
-            ))}
-          </nav>
+    <div className="adv">
+      <AppRail active="config" />
+      <div className="app-page">
+      <header className="adv-head adm-head">
+        <div className="adv-head-title">
+          <h1>Configuration</h1>
+          <p>Report types, templates and how the system learns from clients.</p>
         </div>
       </header>
+      <nav className="app-tabs adm-tabs" aria-label="Configuration sections">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            className={`app-tab ${active === t.id ? "active" : ""}`}
+            aria-current={active === t.id ? "page" : undefined}
+            onClick={() => setActive(t.id)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </nav>
 
       <main className="app-main">
         {active === "reporttypes"  && <ReportTypesTab notify={notify} />}
@@ -64,6 +59,7 @@ export default function AdminPage() {
         kind={toast.kind}
         onClose={() => setToast({ msg: null, kind: "" })}
       />
+      </div>
     </div>
   );
 }

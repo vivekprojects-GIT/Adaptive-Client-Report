@@ -198,12 +198,12 @@ export default function TemplateCanvas({
       <div>
         <div style={hdr}>
           Document order
-          <span style={{ float: "right", color: "#94a3b8", fontWeight: 400 }}>
+          <span style={{ float: "right", color: "#6e7480", fontWeight: 400 }}>
             {blocks.length}
           </span>
         </div>
         {blocks.length === 0 && (
-          <div style={{ ...box, color: "#94a3b8", fontSize: 12 }}>
+          <div style={{ ...box, color: "#6e7480", fontSize: 12 }}>
             Click blocks on the left to build the document. Order here is the
             order the client reads.
           </div>
@@ -216,26 +216,26 @@ export default function TemplateCanvas({
                style={{ ...box, display: "flex", alignItems: "center", gap: 6,
                         cursor: "grab",
                         borderColor: preview?.enforced_blocks?.includes(spec)
-                          ? "#b45309" : "#e2e8f0" }}>
-            <span style={{ color: "#cbd5e1", fontSize: 11, width: 14 }}>{i + 1}</span>
+                          ? "#9f500d" : "#e6e9ed" }}>
+            <span style={{ color: "#c7ccd3", fontSize: 11, width: 14 }}>{i + 1}</span>
             <span style={{ flex: 1, fontSize: 12.5 }}>{labelFor(spec)}</span>
             <button type="button" onClick={() => move(i, -1)} style={mini}>↑</button>
             <button type="button" onClick={() => move(i, 1)} style={mini}>↓</button>
             <button type="button" onClick={() => remove(i)}
-                    style={{ ...mini, color: "#b91c1c" }}>×</button>
+                    style={{ ...mini, color: "#9e0029" }}>×</button>
           </div>
         ))}
 
         {preview?.enforced_blocks?.length > 0 && (
-          <div style={{ ...note, background: "#fffbeb", borderColor: "#fde68a",
-                        color: "#92400e" }}>
+          <div style={{ ...note, background: "#fff1e6", borderColor: "#f9edbe",
+                        color: "#9f500d" }}>
             <b>Added automatically:</b> {preview.enforced_blocks.join(", ")}.
             These categories are mandatory — personalisation changes how facts
             are shown, never whether the client is told them.
           </div>
         )}
         {preview?.unsupported_blocks?.length > 0 && (
-          <div style={{ ...note, background: "#f8fafc", color: "#64748b" }}>
+          <div style={{ ...note, background: "#f8fafc", color: "#595e6a" }}>
             <b>Not rendered for this client:</b>{" "}
             {preview.unsupported_blocks.join(", ")} — their data source has
             nothing to fill it with, so the block is skipped rather than faked.
@@ -247,27 +247,27 @@ export default function TemplateCanvas({
       <div>
         <div style={hdr}>
           Live preview
-          <span style={{ float: "right", fontWeight: 400, color: "#94a3b8" }}>
+          <span style={{ float: "right", fontWeight: 400, color: "#6e7480" }}>
             {busy ? "rendering…"
                   : preview ? `${preview.client_name} · ${preview.period}` : ""}
           </span>
         </div>
-        {err && <div style={{ ...note, background: "#fef2f2", color: "#b91c1c",
-                              borderColor: "#fecaca" }}>{err}</div>}
-        <div style={{ border: "1px solid #e2e8f0", borderRadius: 8,
+        {err && <div style={{ ...note, background: "#fbf2f3", color: "#9e0029",
+                              borderColor: "#ffcaca" }}>{err}</div>}
+        <div style={{ border: "1px solid #e6e9ed", borderRadius: 8,
                       overflow: "hidden", background: "#f8fafc" }}>
           {preview
             ? <iframe title="template preview" srcDoc={preview.html}
                       style={{ width: "100%", height: 620, border: 0,
                                background: "#fff" }} />
             : <div style={{ height: 620, display: "flex", alignItems: "center",
-                            justifyContent: "center", color: "#94a3b8",
+                            justifyContent: "center", color: "#6e7480",
                             fontSize: 13 }}>
                 Add a block to see the real report
               </div>}
         </div>
         {preview && (
-          <div style={{ fontSize: 11.5, color: "#94a3b8", marginTop: 6 }}>
+          <div style={{ fontSize: 11.5, color: "#6e7480", marginTop: 6 }}>
             Rendered through the live generator against {preview.client_name}'s
             frozen facts — {preview.validation_summary}.
           </div>
@@ -278,20 +278,20 @@ export default function TemplateCanvas({
 }
 
 const hdr = { fontSize: 12, fontWeight: 700, textTransform: "uppercase",
-              letterSpacing: ".05em", color: "#64748b", marginBottom: 8 };
-const grpLbl = { fontSize: 10.5, textTransform: "uppercase", color: "#94a3b8",
+              letterSpacing: ".05em", color: "#595e6a", marginBottom: 8 };
+const grpLbl = { fontSize: 10.5, textTransform: "uppercase", color: "#6e7480",
                  letterSpacing: ".05em", margin: "8px 0 4px" };
-const box = { border: "1px solid #e2e8f0", borderRadius: 6, padding: "7px 9px",
+const box = { border: "1px solid #e6e9ed", borderRadius: 6, padding: "7px 9px",
               marginBottom: 5, background: "#fff" };
-const note = { border: "1px solid #e2e8f0", borderRadius: 6, padding: "8px 10px",
+const note = { border: "1px solid #e6e9ed", borderRadius: 6, padding: "8px 10px",
                marginTop: 8, fontSize: 11.5, lineHeight: 1.5 };
-const mini = { border: "1px solid #e2e8f0", background: "#fff", borderRadius: 4,
+const mini = { border: "1px solid #e6e9ed", background: "#fff", borderRadius: 4,
                width: 20, height: 20, cursor: "pointer", fontSize: 11,
-               color: "#64748b", padding: 0 };
+               color: "#595e6a", padding: 0 };
 const chip = (on) => ({
   display: "block", width: "100%", textAlign: "left", marginBottom: 3,
-  border: "1px solid " + (on ? "#dbeafe" : "#e2e8f0"),
-  background: on ? "#eff6ff" : "#fff", color: on ? "#93c5fd" : "#334155",
+  border: "1px solid " + (on ? "#eff0f4" : "#e6e9ed"),
+  background: on ? "#eff0f4" : "#fff", color: on ? "#8ea6d5" : "#3c414a",
   borderRadius: 5, padding: "5px 8px", fontSize: 12,
   cursor: on ? "default" : "pointer",
 });

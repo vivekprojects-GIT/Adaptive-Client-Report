@@ -238,36 +238,50 @@ def challenge_html(report_id: str, token: str, first_name: str = "",
     greeting = f"Hello {_esc(first_name)}," if first_name else "Hello,"
     err = ""
     if error:
-        err = (f'<p role="alert" style="margin:0 0 16px;padding:10px 12px;'
-               f'background:#fef2f2;border:1px solid #fecaca;border-radius:8px;'
-               f'color:#b91c1c;font-size:13px;line-height:1.5">{_esc(error)}</p>')
+        err = (f'<p role="alert" style="margin:0 0 16px;padding:9px 11px;'
+               f'background:#fbf2f3;border-left:3px solid #9e0029;border-radius:2px;'
+               f'color:#9e0029;font-size:13px;line-height:1.5">{_esc(error)}</p>')
 
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@300;400;500;700&display=swap">
 <title>Confirm it's you</title>
 <style>
   :root {{ color-scheme: light; }}
-  body {{ margin:0; background:#f1f5f9; min-height:100vh;
-    display:flex; align-items:center; justify-content:center; padding:24px;
-    font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif; color:#0f172a; }}
-  .card {{ background:#fff; border-radius:14px; padding:34px 32px;
-    max-width:400px; width:100%; box-shadow:0 10px 30px rgba(15,23,42,.09); }}
-  h1 {{ font-size:19px; margin:0 0 6px; letter-spacing:-.01em; }}
-  .sub {{ color:#64748b; font-size:13.5px; line-height:1.55; margin:0 0 22px; }}
-  label {{ display:block; font-size:12.5px; font-weight:600; color:#334155;
-    margin:0 0 7px; letter-spacing:.01em; }}
-  input {{ width:100%; box-sizing:border-box; font-size:17px; padding:11px 13px;
-    border:1px solid #cbd5e1; border-radius:8px; letter-spacing:.16em;
-    font-variant-numeric:tabular-nums; }}
-  input:focus {{ outline:2px solid #4f46e5; outline-offset:1px;
-    border-color:#4f46e5; }}
-  button {{ width:100%; margin-top:16px; background:#4f46e5; color:#fff;
-    border:0; border-radius:8px; padding:12px; font-size:14.5px;
+  body {{ margin:0; background:#f4f6f9; min-height:100vh;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    padding:24px; box-sizing:border-box;
+    font-family:"Ubuntu","Segoe UI Variable Text","Segoe UI",-apple-system,system-ui,Arial,sans-serif;
+    color:#171a22; }}
+  .mark b {{ color:#1d365a; font-weight:500; letter-spacing:0;
+    text-transform:none; font-size:14px; }}
+  .mark {{ font-size:11px; font-weight:600; letter-spacing:.09em;
+    text-transform:uppercase; color:#595e6a; margin:0 0 14px; width:100%;
+    max-width:400px; }}
+  .card {{ background:#fff; border:1px solid #e6e9ed; border-top:3px solid #1d365a;
+    border-radius:4px; padding:28px 28px 22px; max-width:400px; width:100%;
+    box-sizing:border-box; }}
+  h1 {{ font-size:24px; font-weight:300; margin:0 0 6px; letter-spacing:-.01em; }}
+  .sub {{ color:#595e6a; font-size:13.5px; line-height:1.55; margin:0 0 22px; }}
+  label {{ display:block; font-size:12px; font-weight:600; color:#3c414a;
+    margin:0 0 6px; }}
+  input {{ width:100%; box-sizing:border-box; font:inherit; font-size:16px;
+    height:40px; padding:0 12px; border:1px solid #c7ccd3; border-radius:4px;
+    letter-spacing:.14em; font-variant-numeric:tabular-nums; color:#171a22; }}
+  input:focus {{ outline:none; border-color:#1d365a;
+    box-shadow:0 0 0 3px rgba(29, 54, 90,.15); }}
+  button {{ width:100%; margin-top:16px; height:40px; background:#1d365a; color:#fff;
+    border:0; border-radius:4px; font:inherit; font-size:14px;
     font-weight:600; cursor:pointer; }}
-  button:hover {{ background:#4338ca; }}
-  .foot {{ margin:20px 0 0; padding-top:15px; border-top:1px solid #e2e8f0;
-    color:#94a3b8; font-size:11.5px; line-height:1.55; }}
+  button:hover {{ background:#121a38; }}
+  button:focus-visible {{ outline:2px solid #1d365a; outline-offset:2px; }}
+  .foot {{ margin:20px 0 0; padding-top:14px; border-top:1px solid #f1f4f7;
+    color:#6e7480; font-size:11.5px; line-height:1.55; }}
+  .mark img {{ display:block; width:120px; height:auto; margin:0 0 12px; }}
+  button {{ border-radius:999px; font-weight:500; }}
+  input:focus {{ border-color:#3573c0; box-shadow:0 0 0 3px rgba(53,115,192,.16); }}
 </style></head><body>
+  <p class="mark"><img src="/static/brand/capgeminiBlue.svg" alt="Capgemini" width="120" height="27">Your quarterly report</p>
   <div class="card">
     <h1>Confirm it's you</h1>
     <p class="sub">{greeting} before we open your report, please confirm

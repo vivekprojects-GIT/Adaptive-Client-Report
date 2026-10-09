@@ -23,17 +23,15 @@ export default function D2StateTab({ notify }) {
   const contexts = Object.entries(data?.contexts || {});
 
   return (
-    <section>
+    <section className="admin-section">
       <div className="admin-explain">
-        <div><strong>What the system has learned about answer formats</strong> —
-          read-only. When a client asks their report a question, one of six
-          answer formats is chosen per question intent; this shows how each
-          is performing.</div>
-        <div><strong>Context</strong> = the question's intent (classified).
-          <strong> Arms</strong> = answer strategies. Selection is contextual UCB —
-          mean + c·√(2 ln N / n) — and a 👍 on an answer is reward 1
-          to the exact arm that wrote it, a 👎 is reward 0 — evidence, not
-          punishment.</div>
+        <div><strong>What clients' feedback has taught the system about answer
+          styles.</strong> Read-only. Each kind of question has its own table,
+          showing how often each answer style was used and how often clients
+          found it helpful.</div>
+        <div>A "helpful" rating counts in a style's favour and "not really"
+          counts against it. The settings that control this are under
+          Learning settings.</div>
       </div>
       <div style={{ margin: "10px 0" }}>
         <button className="admin-btn" onClick={load}>Refresh</button>
@@ -41,43 +39,52 @@ export default function D2StateTab({ notify }) {
       {err && <div className="admin-error">{err}</div>}
       {contexts.length === 0 && !err && (
         <div className="admin-empty">
-          No D2 evidence yet. Rows appear the first time a client asks a
-          question in the report viewer — selection until then is the
-          uniform prior.
+          Nothing learned yet. Rows appear the first time a client asks a
+          question about their report.
         </div>
       )}
       {contexts.map(([intent, arms]) => (
         <div key={intent} style={{ marginBottom: 18 }}>
           <h4 style={{ margin: "0 0 6px" }}>
-            {intent.replace(/_/g, " ")}
-            <span style={{ color: "#94a3b8", fontWeight: 400, marginLeft: 8 }}>
-              {arms.reduce((a, r) => a + r.selected, 0)} selections
+            {(() => { const t = intent.replace(/_/g, " "); return t[0].toUpperCase() + t.slice(1); })()}
+            <span style={{ color: "var(--muted)", fontWeight: 400, marginLeft: 8 }}>
+              {arms.reduce((a, r) => a + r.selected, 0)} answers
             </span>
           </h4>
           <table className="admin-table">
             <thead><tr>
-              <th>Answer strategy</th><th>Selected</th><th>Feedback</th>
-              <th>Total reward</th><th>Reward mean</th><th>Updated</th>
+              <th>Answer style</th><th>Used</th><th>Rated</th>
+              <th>Rated helpful</th><th>Helpful rate</th><th>Updated</th>
             </tr></thead>
             <tbody>
               {arms.map((a) => (
                 <tr key={a.arm}>
-                  <td><code>{a.arm}</code></td>
+                  <td>{(() => { const t = String(a.arm).replace(/_/g, " "); return t[0].toUpperCase() + t.slice(1); })()}</td>
                   <td>{a.selected}</td>
                   <td>{a.rewarded}</td>
                   <td>{a.total_reward}</td>
                   <td>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <div style={{ width: 90, height: 7, background: "#e2e8f0",
-                                    borderRadius: 3 }}>
-                        <div style={{ width: `${a.posterior_mean * 100}%`,
-                                      height: "100%", background: "#2563eb",
-                                      borderRadius: 3 }} />
+                    {/* With no ratings the stored mean is only the starting
+                        assumption, so it is not shown as if it were a result. */}
+                    {a.rewarded > 0 ? (
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <div style={{ width: 90, height: 6, background: "var(--line)",
+                                      borderRadius: 1 }}>
+                          <div style={{ width: `${(a.total_reward / a.rewarded) * 100}%`,
+                                        height: "100%", background: "var(--accent-active)",
+                                        borderRadius: 1 }} />
+                        </div>
+                        {Math.round((a.total_reward / a.rewarded) * 100)}%
                       </div>
-                      {a.posterior_mean}
-                    </div>
+                    ) : <span style={{ color: "var(--subtle)" }}>No ratings yet</span>}
                   </td>
-                  <td style={{ color: "#94a3b8" }}>{a.updated_at}</td>
+                  <td style={{ color: "var(--muted)", whiteSpace: "nowrap" }}>
+                    {a.updated_at
+                      ? new Date(a.updated_at + (/Z|[+-]\d\d:?\d\d$/.test(a.updated_at) ? "" : "Z"))
+                          .toLocaleString(undefined, { day: "numeric", month: "short",
+                                                       hour: "2-digit", minute: "2-digit" })
+                      : "—"}
+                  </td>
                 </tr>
               ))}
             </tbody>

@@ -1206,7 +1206,8 @@ async def generate_one_report(request: Request):
             {"block_id": f.block_id, "kind": f.kind, "detail": f.detail}
             for f in verdict.findings
         ],
-        "email_status": "sent (stub)",
+        # Generating does not email anyone; /send does, and records it.
+        "email_status": "not sent",
         "arms": rows,
     }
 
@@ -1468,9 +1469,9 @@ def client_report_view(request: Request, report_id: str, token: str = ""):
         return HTMLResponse(
             f'<!doctype html><meta charset="utf-8"><title>Link problem</title>'
             f'<div style="font-family:Segoe UI,system-ui,Arial;max-width:460px;'
-            f'margin:14vh auto;text-align:center;color:#0f172a">'
+            f'margin:14vh auto;text-align:center;color:#171a22">'
             f'<h2 style="font-size:19px">This link cannot be opened</h2>'
-            f'<p style="color:#64748b;font-size:14px;line-height:1.6">{shown}.'
+            f'<p style="color:#595e6a;font-size:14px;line-height:1.6">{shown}.'
             f'<br>Report links are personal and expire. Please ask your adviser '
             f'to send a fresh one.</p></div>', status_code=403)
 
@@ -2879,12 +2880,24 @@ def list_generated_reports():
     d = Path(__file__).resolve().parents[1] / "data" / "generated"
     if not d.is_dir():
         return []
+    # What actually went out, per report, as recorded by /send. The list
+    # used to say "sent (stub)" for every row whether or not anything was
+    # emailed, which made a live system look like a mock.
+    delivered: Dict[str, Dict[str, Any]] = {}
+    try:
+        for d_ in _guard_store().db["ape_report_delivery"].find(
+                {}, {"_id": 0, "report_id": 1, "status": 1,
+                     "provider": 1, "sent_at": 1}):
+            delivered[d_.get("report_id")] = d_
+    except Exception:
+        pass
     out = []
     for f in sorted(d.glob("*.json"), key=lambda x: -x.stat().st_mtime):
         try:
             r = json.loads(f.read_text(encoding="utf-8"))
         except Exception:
             continue
+        sent = delivered.get(r.get("report_id")) or {}
         out.append({
             "report_id":   r.get("report_id"),
             "client_id":   r.get("client_id"),
@@ -2896,13 +2909,27 @@ def list_generated_reports():
             "template_id": r.get("template_id"),
             "label":       r.get("template_label"),
             "blocks":      [b.get("type") for b in r.get("blocks", [])],
-            "email_status": "sent (stub)",
+            "email_status": sent.get("status") or "not sent",
+            "email_provider": sent.get("provider") or "",
+            "sent_at":     sent.get("sent_at") or "",
         })
     return out
 
 
 @app.get("/reports/{report_id}/html")
 def get_report_html(report_id: str):
+    # Rendered from the stored document on every request, so the advisor
+    # preview always uses the current stylesheet and chart palette. The
+    # HTML file written at generation time was a snapshot of whatever the
+    # styling was that day; it is only the fallback now.
+    doc = _load_report_doc(report_id)
+    if doc is not None:
+        try:
+            from .reporting.generate import render_html
+            return HTMLResponse(render_html(doc))
+        except Exception as exc:  # noqa: BLE001 - fall back to the snapshot
+            print(f"[preview] {report_id}: live render failed ({exc}); "
+                  f"serving the saved file", flush=True)
     d = Path(__file__).resolve().parents[1] / "data" / "generated"
     f = d / f"{report_id}.html"
     if not f.is_file():

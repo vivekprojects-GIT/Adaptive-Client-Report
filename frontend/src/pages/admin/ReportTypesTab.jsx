@@ -63,20 +63,19 @@ export default function ReportTypesTab({ notify }) {
           {editing ? `Editing report type: ${rid}` : "Add or update report type"}
         </h2>
         <p className="admin-section-sub">
-          A report type is D1's <strong>decision context</strong> — the situation
-          the bandit chooses under. It is <em>selected</em> when a report is
-          requested, never inferred from language, so there is no classifier and
-          no confidence score attached to it.
+          A report type is the kind of report an advisor generates, such as a
+          quarterly review or a fees report. It is chosen when the report is
+          requested, never guessed from the client's data.
         </p>
         <div className="rule-box">
-          <div><strong>Report type</strong> determines <em>which arms are eligible</em>.</div>
-          <div><strong>Client evidence</strong> shapes what the composer builds — it no longer chooses between templates.</div>
+          <div><strong>The report type</strong> decides which templates can be used.</div>
+          <div><strong>Each client's history</strong> shapes how the AI lays out and words the report, never which figures it contains.</div>
         </div>
         <ul className="col-legend">
-          <li><strong>Report type</strong> — snake_case identifier. Forms part of the bandit cell key (<code>scope#report_type</code>), so it can never change after first use.
+          <li><strong>Report type</strong> — a short ID in lowercase with underscores. It cannot change after first use, because what the system learns is stored against it.
             <em> e.g. quarterly_portfolio_review, risk_report, fees_cost_report.</em></li>
-          <li><strong>Personalisable</strong> — whether D1 may choose a shape at all. Turn this <strong>off</strong> for prescribed reports whose format is set by regulation. Those are served their single mandated template directly and raise an error if anything tries to run selection on them, so a personalised statutory document cannot be produced by accident.</li>
-          <li><strong>Cadence</strong> — how often it runs. A rare report type will never accumulate enough evidence of its own; it relies on the client preference profile, which is shared across <em>all</em> report types.</li>
+          <li><strong>Personalisable</strong> — turn this <strong>off</strong> for reports whose format is set by regulation. Those always use their single mandated template, so a personalised statutory document cannot be produced by accident.</li>
+          <li><strong>Cadence</strong> — how often it runs. A report type that runs rarely leans on each client's overall preferences, which are shared across every report type.</li>
         </ul>
         <form className="admin-form" onSubmit={handleSubmit}>
           <div className="form-row">
@@ -132,14 +131,16 @@ export default function ReportTypesTab({ notify }) {
                   <code className="code-pill">{r.report_type || r.entity_id}</code>
                 </div>
               ) },
-            { key: "personalisable", label: "D1", width: "150px",
+            { key: "personalisable", label: "Format", width: "150px",
               render: (r) => (
                 r.personalisable === false
-                  ? <span className="pill pill-danger" title="Format set by regulation — D1 refuses to select a shape">prescribed</span>
-                  : <span className="pill pill-ok">personalisable</span>
+                  ? <span className="pill pill-danger" title="Format set by regulation; never personalised">Prescribed</span>
+                  : <span className="pill pill-neutral">Personalisable</span>
               ) },
             { key: "cadence", label: "Cadence", width: "120px",
-              render: (r) => <code className="code-pill">{r.cadence}</code> },
+              render: (r) => { const t = String(r.cadence || "").replace(/_/g, " ");
+                               return <span style={{ whiteSpace: "nowrap" }}>
+                                 {t ? t[0].toUpperCase() + t.slice(1) : "—"}</span>; } },
             { key: "notes", label: "Notes",
               render: (r) => <span className="ts">{r.notes || "—"}</span> },
             { key: "status", label: "Status", width: "130px",

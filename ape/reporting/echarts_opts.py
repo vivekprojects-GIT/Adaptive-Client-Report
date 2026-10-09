@@ -46,23 +46,24 @@ from typing import Any, Dict, List, Optional, Sequence
 # ---------------------------------------------------------------------------
 # Visual system
 #
-# Eight hues that stay distinguishable next to each other and legible on
-# white, chosen to read as considered rather than as a default ramp. Gains
-# and losses get their own two colours and never borrow from the series
-# palette — in a financial document green/red carry meaning, so they must
-# not land on an asset class by position.
+# Eight hues from Capgemini's own scales (azur, peacock, marine, orange), ordered so neighbouring slices differ
+# in both hue and lightness and stay apart for colour-blind readers. Muted
+# on purpose: this is a statement from a private bank, not a dashboard.
+# Gains and losses get their own two colours and never borrow from the
+# series palette — in a financial document green/red carry meaning, so
+# they must not land on an asset class by position.
 # ---------------------------------------------------------------------------
 
-PALETTE = ["#4F46E5", "#0D9488", "#F59E0B", "#E11D48",
-           "#0891B2", "#7C3AED", "#65A30D", "#DB2777"]
-POS, NEG = "#059669", "#DC2626"
-INK, MUTED, GRID = "#0F172A", "#64748B", "#E2E8F0"
+PALETTE = ["#0058AB", "#00AE9D", "#1D365A", "#F17817",
+           "#5685C6", "#29656F", "#F9A464", "#888F9A"]
+POS, NEG = "#43A063", "#C00036"
+INK, MUTED, GRID = "#171A22", "#595E6A", "#E6E9ED"
 
-_FONT = ('"Segoe UI", system-ui, -apple-system, "Helvetica Neue", '
-         'Arial, sans-serif')
+_FONT = ('"Ubuntu", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, '
+         '"Helvetica Neue", Arial, sans-serif')
 
 
-def _grad(color: str, vertical: bool = True, to: float = 0.15) -> Dict[str, Any]:
+def _grad(color: str, vertical: bool = True, to: float = 0.88) -> Dict[str, Any]:
     """A linear gradient from the solid colour to a faded tail of itself.
 
     Kept subtle on purpose: the gradient is there to give a bar or an area
@@ -141,15 +142,15 @@ def _base(d: Dict[str, Any]) -> Dict[str, Any]:
 
 def _tooltip(trigger: str = "item", **kw) -> Dict[str, Any]:
     t = {"trigger": trigger,
-         "backgroundColor": "rgba(15,23,42,.94)",
+         "backgroundColor": "rgba(23, 26, 34,.96)",
          "borderWidth": 0,
          "padding": [7, 10],
          "textStyle": {"color": "#F8FAFC", "fontSize": 11.5,
                        "fontFamily": _FONT},
-         "extraCssText": "border-radius:7px;box-shadow:0 6px 18px rgba(15,23,42,.22)"}
+         "extraCssText": "border-radius:3px;box-shadow:0 4px 14px rgba(23, 26, 34,.2)"}
     if trigger == "axis":
         t["axisPointer"] = {"type": "line",
-                            "lineStyle": {"color": "#94A3B8", "width": 1,
+                            "lineStyle": {"color": "#595e6a", "width": 1,
                                           "type": "dashed"}}
     t.update(kw)
     return t
@@ -165,7 +166,7 @@ def _legend(labels: List[str]) -> Optional[Dict[str, Any]]:
             "itemWidth": 11, "itemHeight": 7, "icon": "roundRect",
             "textStyle": {"color": MUTED, "fontSize": 10.5,
                           "fontFamily": _FONT},
-            "inactiveColor": "#CBD5E1"}
+            "inactiveColor": "#c7ccd3"}
 
 
 def _grid(has_legend: bool, left: int = 46) -> Dict[str, Any]:
@@ -175,7 +176,7 @@ def _grid(has_legend: bool, left: int = 46) -> Dict[str, Any]:
 
 def _cat_axis(cats: List[str]) -> Dict[str, Any]:
     return {"type": "category", "data": cats,
-            "axisLine": {"lineStyle": {"color": "#CBD5E1"}},
+            "axisLine": {"lineStyle": {"color": "#c7ccd3"}},
             "axisTick": {"show": False},
             "axisLabel": {"color": MUTED, "fontSize": 10, "hideOverlap": True,
                           "fontFamily": _FONT},
@@ -199,11 +200,11 @@ def _zoom(n: int) -> List[Dict[str, Any]]:
         return []
     return [{"type": "inside", "throttle": 40},
             {"type": "slider", "height": 14, "bottom": 4,
-             "borderColor": "transparent", "backgroundColor": "#F1F5F9",
+             "borderColor": "transparent", "backgroundColor": "#f4f6f9",
              "fillerColor": _fade(PALETTE[0], .16),
              "handleStyle": {"color": PALETTE[0]},
-             "dataBackground": {"lineStyle": {"color": "#CBD5E1"},
-                                "areaStyle": {"color": "#E2E8F0"}},
+             "dataBackground": {"lineStyle": {"color": "#c7ccd3"},
+                                "areaStyle": {"color": "#F1F4F7"}},
              "textStyle": {"color": MUTED, "fontSize": 9}}]
 
 
@@ -223,7 +224,7 @@ def _o_bar(d, horizontal=False, contiguous=False):
              "itemStyle": {"color": _grad(PALETTE[i % len(PALETTE)],
                                           vertical=not horizontal)}}
             for i, v in enumerate(vals)]
-    radius = ([0, 4, 4, 0] if horizontal else [4, 4, 0, 0]) if not contiguous else 0
+    radius = ([0, 2, 2, 0] if horizontal else [2, 2, 0, 0]) if not contiguous else 0
     opt = _base(d)
     opt.update({
         "tooltip": _tooltip("axis"),
@@ -233,7 +234,7 @@ def _o_bar(d, horizontal=False, contiguous=False):
                     "barCategoryGap": "6%" if contiguous else "34%",
                     "itemStyle": {"borderRadius": radius},
                     "emphasis": {"focus": "series",
-                                 "itemStyle": {"shadowBlur": 10,
+                                 "itemStyle": {"shadowBlur": 0,
                                                "shadowColor": _fade(PALETTE[0], .45)}},
                     "animationDelay": 0}],
     })
@@ -258,7 +259,7 @@ def _o_line(d, area=False):
                 "data": s["values"], "smooth": 0.32,
                 "showSymbol": True, "symbolSize": 6,
                 "lineStyle": {"width": 2.4, "color": col,
-                              "shadowBlur": 8,
+                              "shadowBlur": 0,
                               "shadowColor": _fade(col, .30),
                               "shadowOffsetY": 3},
                 "itemStyle": {"color": col, "borderColor": "#fff",
@@ -314,7 +315,7 @@ def _o_combo(d):
             {"type": "bar", "name": bars["label"] or "Value",
              "data": bars["values"], "barMaxWidth": "48%",
              "itemStyle": {"color": _grad(PALETTE[0]),
-                           "borderRadius": [4, 4, 0, 0]},
+                           "borderRadius": [2, 2, 0, 0]},
              "emphasis": {"focus": "series"}},
             {"type": "line", "name": line["label"] or "Trend",
              "data": line["values"], "smooth": 0.32, "symbolSize": 6,
@@ -348,7 +349,7 @@ def _o_pie(d, donut=False):
                    "icon": "roundRect", "itemGap": 9,
                    "textStyle": {"color": MUTED, "fontSize": 10.5,
                                  "fontFamily": _FONT},
-                   "inactiveColor": "#CBD5E1"},
+                   "inactiveColor": "#c7ccd3"},
         "series": [{
             "type": "pie", "data": data,
             "radius": ["52%", "78%"] if donut else ["0%", "76%"],
@@ -363,8 +364,8 @@ def _o_pie(d, donut=False):
                          "label": {"show": bool(donut), "fontSize": 15,
                                    "fontWeight": 700, "color": INK,
                                    "formatter": "{b}"},
-                         "itemStyle": {"shadowBlur": 16,
-                                       "shadowColor": "rgba(15,23,42,.20)"}},
+                         "itemStyle": {"shadowBlur": 0,
+                                       "shadowColor": "rgba(23, 26, 34,.20)"}},
             "animationType": "scale", "animationEasing": "elasticOut",
         }],
     })
@@ -413,7 +414,7 @@ def _o_treemap(d):
                       "fontWeight": 600, "overflow": "truncate",
                       "formatter": "{b}"},
             "upperLabel": {"show": False},
-            "emphasis": {"itemStyle": {"borderColor": "#0F172A",
+            "emphasis": {"itemStyle": {"borderColor": "#171a22",
                                        "borderWidth": 2}},
             "data": [{"name": i["label"], "value": abs(i["value"]),
                       "itemStyle": {"color": PALETTE[n % len(PALETTE)]}}
@@ -454,11 +455,11 @@ def _o_waterfall(d):
              "barMaxWidth": "56%"},
             {"type": "bar", "stack": "wf", "name": "Added",
              "data": rise, "barMaxWidth": "56%",
-             "itemStyle": {"color": _grad(POS), "borderRadius": [4, 4, 0, 0]},
+             "itemStyle": {"color": _grad(POS), "borderRadius": [2, 2, 0, 0]},
              "emphasis": {"focus": "series"}},
             {"type": "bar", "stack": "wf", "name": "Reduced",
              "data": fall, "barMaxWidth": "56%",
-             "itemStyle": {"color": _grad(NEG), "borderRadius": [0, 0, 4, 4]},
+             "itemStyle": {"color": _grad(NEG), "borderRadius": [0, 0, 2, 2]},
              "emphasis": {"focus": "series"}},
         ],
         "legend": {"data": ["Added", "Reduced"], "top": 0, "left": 0,
@@ -505,7 +506,7 @@ def _o_scatter(d, bubble=False):
                                   "borderColor": col, "borderWidth": 1.4},
                     "emphasis": {"focus": "series",
                                  "itemStyle": {"color": col,
-                                               "shadowBlur": 12,
+                                               "shadowBlur": 0,
                                                "shadowColor": _fade(col, .5)}}})
     if not out:
         return None
@@ -546,12 +547,12 @@ def _o_gauge(d, bar=False):
             "yAxis": {"type": "category", "data": [""], "show": False},
             "series": [
                 {"type": "bar", "data": [hi], "barWidth": 18, "silent": True,
-                 "itemStyle": {"color": "#EEF2F7", "borderRadius": 9},
+                 "itemStyle": {"color": "#F1F4F7", "borderRadius": 2},
                  "z": 1, "animation": False},
                 {"type": "bar", "data": [v], "barWidth": 18,
                  "barGap": "-100%",
                  "itemStyle": {"color": _grad(PALETTE[0], vertical=False, to=.85),
-                               "borderRadius": 9},
+                               "borderRadius": 2},
                  "z": 2,
                  "label": {"show": True, "position": "insideRight",
                            "color": "#fff", "fontWeight": 700,
@@ -571,7 +572,7 @@ def _o_gauge(d, bar=False):
             "radius": "94%", "center": ["50%", "62%"],
             "progress": {"show": True, "width": 13, "roundCap": True,
                          "itemStyle": {"color": col}},
-            "axisLine": {"lineStyle": {"width": 13, "color": [[1, "#EEF2F7"]]}},
+            "axisLine": {"lineStyle": {"width": 13, "color": [[1, "#F1F4F7"]]}},
             "pointer": {"show": False},
             "axisTick": {"show": False},
             "splitLine": {"show": False},
@@ -657,14 +658,14 @@ def _o_heatmap(d):
                           "fontFamily": _FONT},
             # Diverging, because a heatmap in this document is nearly always
             # showing something that has a good and a bad direction.
-            "inRange": {"color": ["#DBEAFE", "#93C5FD", "#4F46E5", "#312E81"]},
+            "inRange": {"color": ["#EFF0F4", "#1D365A", "#1D365A", "#1D365A"]},
         },
         "series": [{
             "type": "heatmap", "data": cells,
             "itemStyle": {"borderColor": "#fff", "borderWidth": 1.5,
                           "borderRadius": 2},
-            "emphasis": {"itemStyle": {"shadowBlur": 10,
-                                       "shadowColor": "rgba(15,23,42,.35)"}},
+            "emphasis": {"itemStyle": {"shadowBlur": 0,
+                                       "shadowColor": "rgba(23, 26, 34,.35)"}},
             "progressive": 0,
         }],
     })

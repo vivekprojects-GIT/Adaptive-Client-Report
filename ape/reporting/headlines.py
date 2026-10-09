@@ -304,13 +304,13 @@ def r_trend_headline(d: Dict[str, Any]) -> str:
     dots = "".join(
         f'<circle cx="{i * step:.1f}" '
         f'cy="{h - ((v - lo) / span) * (h - 10) - 5:.1f}" r="2.5" '
-        f'fill="#2563eb"/>' for i, v in enumerate(vals))
+        f'fill="#1d365a"/>' for i, v in enumerate(vals))
     labels = "".join(
         f'<span>{_esc(p.get("period"))}</span>' for p in pts)
     return (f'<div class="trendhead"><span class="hv-cap">'
             f'{_esc(_T("Return by period"))}</span>'
             f'<svg viewBox="0 0 {w} {h}" preserveAspectRatio="none">'
-            f'<polyline points="{coords}" fill="none" stroke="#2563eb" '
+            f'<polyline points="{coords}" fill="none" stroke="#1d365a" '
             f'stroke-width="2"/>{dots}</svg>'
             f'<div class="th-x">{labels}</div></div>')
 

@@ -430,8 +430,8 @@ def r_asset_classes(d: Dict[str, Any]) -> str:
         f'<td>{_pct(d.get("total_pct", 0))}</td><td></td><td></td></tr></table>')
 
 
-_PIE = ["#1c6b62", "#4b8f88", "#7fb3ad", "#a9cbc7", "#cfe0de", "#8a9ba0",
-        "#5b6b70", "#2f3e46"]
+_PIE = ["#0058ab", "#3573c0", "#5685c6", "#8ea6d5", "#dfe1eb", "#1d365a",
+        "#888f9a", "#00ae9d"]
 
 
 def r_currency_split(d: Dict[str, Any]) -> str:
@@ -501,9 +501,9 @@ def r_sector_analysis(d: Dict[str, Any]) -> str:
     mx = max((r["weight_pct"] for r in rows), default=1) or 1
     bars = "".join(
         f'<text x="150" y="{12 + i * 20 + 8}" font-size="8" text-anchor="end" '
-        f'fill="#4b5563">{_esc(_T(r["sector"]))}</text>'
+        f'fill="#3c414a">{_esc(_T(r["sector"]))}</text>'
         f'<rect x="156" y="{12 + i * 20}" width="{r["weight_pct"] / mx * 150:.1f}" '
-        f'height="11" fill="#2f3e46"/>'
+        f'height="11" fill="#1d365a"/>'
         for i, r in enumerate(rows))
     body = "".join(
         f'<tr><td class="l">{_esc(_T(r["sector"]))}</td>'

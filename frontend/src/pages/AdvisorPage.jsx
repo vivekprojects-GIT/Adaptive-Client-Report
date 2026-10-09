@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { api } from "../api.js";
 import Toast from "../components/Toast.jsx";
 import NotificationBell from "../components/NotificationBell.jsx";
+import AppRail, { NAV } from "../components/AppRail.jsx";
 import { BlockTree, PreferenceTree, SignalTree, TemplateTree }
   from "../components/RegistryTree.jsx";
 import "../styles/advisor.css";
@@ -24,8 +25,75 @@ const PIPELINE = [
   ["Email to client", "email"],
 ];
 
+// "balanced_growth" -> "Balanced growth": identifiers are for the system,
+// sentence case is for people.
+const ACRONYMS = new Set(["esg", "uk", "us", "eu", "etf", "ucb", "isa", "sipp", "pdf", "json"]);
+function humanise(id) {
+  const t = String(id || "").replace(/_/g, " ").trim()
+    .split(" ").map((w) => ACRONYMS.has(w.toLowerCase()) ? w.toUpperCase() : w).join(" ");
+  return t ? t[0].toUpperCase() + t.slice(1) : "";
+}
+
+// Delivery, as recorded when the report was actually sent. A report that
+// has only been generated has not been emailed to anyone, and says so.
+function emailLabel(st) {
+  const v = String(st || "").toLowerCase();
+  if (v === "sent") return "Sent";
+  if (v === "written") return "Saved to file";
+  if (["failed", "bounced", "error"].includes(v)) return "Failed";
+  return "Not sent";
+}
+
+// Delivery state, as a tone the status pills understand.
+function emailTone(st) {
+  const v = String(st || "").toLowerCase();
+  if (["sent", "delivered", "opened"].includes(v)) return "ok";
+  if (["failed", "bounced", "error"].includes(v)) return "bad";
+  if (["queued", "sending"].includes(v)) return "run";
+  return "muted";
+}
+
+// Secondary row actions live behind one "more" control, so a long table
+// keeps a single visible action per row and its columns stay readable.
+function RowMenu({ label, items }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e) => { if (!ref.current?.contains(e.target)) setOpen(false); };
+    const esc = (e) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("mousedown", close);
+                   document.removeEventListener("keydown", esc); };
+  }, [open]);
+  return (
+    <span className="adv-menu" ref={ref}>
+      <button type="button" className="adv-mini ghost adv-menu-btn" aria-label={label}
+              aria-haspopup="menu" aria-expanded={open}
+              onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}>
+        <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor">
+          <circle cx="3" cy="8" r="1.4" /><circle cx="8" cy="8" r="1.4" /><circle cx="13" cy="8" r="1.4" />
+        </svg>
+      </button>
+      {open && (
+        <div className="adv-menu-list" role="menu">
+          {items.map((it) => it.href
+            ? <a key={it.label} role="menuitem" href={it.href} target="_blank" rel="noreferrer"
+                 onClick={() => setOpen(false)}>{it.label}</a>
+            : <button key={it.label} type="button" role="menuitem" disabled={it.disabled}
+                      onClick={(e) => { e.stopPropagation(); setOpen(false); it.onClick(); }}>
+                {it.label}</button>)}
+        </div>
+      )}
+    </span>
+  );
+}
+
 export default function AdvisorPage() {
-  const [view, setView]         = useState("clients");
+  // Configuration links back here naming the view to open.
+  const location = useLocation();
+  const [view, setView]         = useState(location.state?.view || "clients");
   const [clients, setClients]   = useState([]);
   const [query, setQuery]       = useState("");
   const [selected, setSelected] = useState(null);
@@ -164,14 +232,12 @@ export default function AdvisorPage() {
     // nothing had checked in this session — an unfounded green of exactly
     // the kind the pipeline exists to avoid.
     //
-    // It also read `sent_at`, which is absent, while the row's actual
-    // `email_status` reads "sent (stub)" on all 58 reports here — a value
-    // left behind by early testing and true of almost none of them. Wrong
-    // either way, so neither is trusted.
+    // Delivery is different: `email_status` and `sent_at` now come from the
+    // record /send writes when an email actually goes out, so a "sent" here
+    // is a fact, not a placeholder. Anything else stays Pending.
     //
-    // A report opened from the list therefore shows the two facts the row
-    // really supports — it exists, and it was generated — and leaves the
-    // rest Pending until this session watches them happen.
+    // A report opened from the list therefore shows what the row really
+    // supports — it exists, it was generated, and whether it was sent.
     setStatus({
       snapshot: "done",
       generate: "done",
@@ -183,8 +249,8 @@ export default function AdvisorPage() {
         ? "an unsourced figure was caught and replaced"
         : r.validation === "passed" ? "all blocks grounded"
         : "",
-      review: "pending",
-      email: "pending",
+      review: r.email_status === "sent" ? "done" : "pending",
+      email: r.email_status === "sent" ? "done" : "pending",
       report_id: r.report_id,
     });
   }, [selected, reportFor, busy, status.report_id]);
@@ -336,111 +402,125 @@ export default function AdvisorPage() {
 
   return (
     <div className="adv">
-      <aside className="adv-nav">
-        <div className="adv-brand"><span className="adv-logo">APE</span> Advisor</div>
-        <nav>
-          {[["clients", "Clients"], ["reports", "Reports"],
-            ["segments", "Segments"], ["registry", "Registries"],
-           ].map(([id, label]) => (
-            <button key={id} className={`adv-nav-item ${view === id ? "on" : ""}`}
-                    onClick={() => setView(id)}>{label}</button>
-          ))}
-          <a className="adv-nav-item" href="/admin">Configuration</a>
-        </nav>
-        <div className="adv-user">
-          <b>Advisor Admin</b><span>admin@wealth.com</span>
-        </div>
-      </aside>
+      <AppRail active={view} onSelect={setView} />
 
       <div className="adv-body">
-        {/* ── toolbar: upload + report type + batch ─────────────── */}
-        <header className="adv-bar">
-          <input ref={fileRef} type="file" accept=".csv,text/csv"
-                 onChange={onFile} style={{ display: "none" }} />
-          <button className="adv-btn" disabled={busy}
-                  onClick={() => fileRef.current?.click()}>
-            Upload client CSV
-          </button>
+        {/* ── page header: where you are, and the two book-wide actions ── */}
+        <header className="adv-head">
+          <div className="adv-head-title">
+            <h1>{(NAV.find(([id]) => id === view) || ["", "Clients"])[1]}</h1>
+            <p>{view === "reports"
+                 ? `${generated.length} report${generated.length === 1 ? "" : "s"} generated`
+                 : view === "segments"
+                 ? `${Object.keys(segments).length} segments across ${clients.length} clients`
+                 : view === "registry"
+                 ? "What the system can build, and what it has learned"
+                 : clients.length
+                 ? `${clients.length} client${clients.length === 1 ? "" : "s"} on file`
+                 : "No clients imported yet"}</p>
+          </div>
+          <div className="adv-head-actions">
+            {view === "clients" && <>
+            <input ref={fileRef} type="file" accept=".csv,text/csv"
+                   onChange={onFile} style={{ display: "none" }} />
+            <button className="adv-btn ghost" disabled={busy}
+                    onClick={() => fileRef.current?.click()}>
+              Upload client CSV
+            </button>
+            <button className="adv-btn" disabled={busy || !clients.length}
+                    onClick={generateAll}>
+              Generate for all{clients.length ? ` ${clients.length}` : ""}
+            </button>
+            </>}
+            {/* Pinned right by `margin-left:auto` on .nb-wrap, so it stays
+                in the corner even when the controls beside it wrap. */}
+            <NotificationBell />
+          </div>
+        </header>
 
-          <label className="adv-bar-lbl">Report type</label>
-          <select value={reportType} onChange={(e) => setRt(e.target.value)}>
-            {types.map((t) => (
-              <option key={t.report_type} value={t.report_type}>
-                {t.label}{t.personalisable === false ? "  (prescribed)" : ""}
-              </option>
-            ))}
-          </select>
+        {/* ── report settings: what the next generation will produce ── */}
+        {view === "clients" && <section className="adv-bar" aria-label="Report settings">
+          <div className="adv-fg">
+            <label className="adv-bar-lbl" htmlFor="f-rt">Report type</label>
+            <select id="f-rt" value={reportType} onChange={(e) => setRt(e.target.value)}>
+              {types.map((t) => (
+                <option key={t.report_type} value={t.report_type}>
+                  {t.label}{t.personalisable === false ? "  (prescribed)" : ""}
+                </option>
+              ))}
+            </select>
+          </div>
 
           {/* One control, listing every template authored for this
               report type plus the composer. No bandit is involved: the
               advisor picks, or the model builds one. Templates are per
               report type because their blocks assume that type's facts,
               so the list changes with the type above it. */}
-          <label className="adv-bar-lbl">Template</label>
-          <select value={templateId}
-                  onChange={(e) => setTemplateId(e.target.value)}>
-            {armTemplates.map((t) => (
-              <option key={t.template_id} value={t.template_id}>
-                {t.label || t.strategy}
-                {t.required_blocks?.length
-                  ? `  (${t.required_blocks.length} blocks)` : ""}
-              </option>
-            ))}
-            <option value="">AI composes a new one</option>
-          </select>
-
-          <label className="adv-bar-lbl">Period</label>
-          <select value={period} onChange={(e) => setPeriod(e.target.value)}>
-            <option value="">Latest on file</option>
-            {[...new Set(clients.flatMap((c) => c.periods || []))]
-              .sort().reverse().map((per) => (
-                <option key={per} value={per}>{per}</option>
+          <div className="adv-fg">
+            <label className="adv-bar-lbl" htmlFor="f-tpl">Template</label>
+            <select id="f-tpl" value={templateId}
+                    onChange={(e) => setTemplateId(e.target.value)}>
+              {armTemplates.map((t) => (
+                <option key={t.template_id} value={t.template_id}>
+                  {t.label || t.strategy}
+                  {t.required_blocks?.length
+                    ? `  (${t.required_blocks.length} blocks)` : ""}
+                </option>
               ))}
-          </select>
+              <option value="">AI composes a new one</option>
+            </select>
+          </div>
+
+          <div className="adv-fg">
+            <label className="adv-bar-lbl" htmlFor="f-per">Period</label>
+            <select id="f-per" value={period} onChange={(e) => setPeriod(e.target.value)}>
+              <option value="">Latest on file</option>
+              {[...new Set(clients.flatMap((c) => c.periods || []))]
+                .sort().reverse().map((per) => (
+                  <option key={per} value={per}>{per}</option>
+                ))}
+            </select>
+          </div>
 
           {/* Country preselects a language; the advisor can still override.
               Auto-selection that could not be overridden would be worse
               than none — Belgium alone reads two languages. */}
-          <label className="adv-bar-lbl">Country</label>
-          <select value={country} onChange={(e) => {
-                    const c = e.target.value;
-                    setCountry(c);
-                    const row = (locales.countries || [])
-                                  .find((x) => x.code === c);
-                    if (row) setLanguage(row.language);
-                  }}>
-            {(locales.countries || []).map((c) => (
-              <option key={c.code} value={c.code}>{c.label}</option>
-            ))}
-          </select>
+          <div className="adv-fg">
+            <label className="adv-bar-lbl" htmlFor="f-cty">Country</label>
+            <select id="f-cty" value={country} onChange={(e) => {
+                      const c = e.target.value;
+                      setCountry(c);
+                      const row = (locales.countries || [])
+                                    .find((x) => x.code === c);
+                      if (row) setLanguage(row.language);
+                    }}>
+              {(locales.countries || []).map((c) => (
+                <option key={c.code} value={c.code}>{c.label}</option>
+              ))}
+            </select>
+          </div>
 
-          <label className="adv-bar-lbl">Language</label>
-          <select value={language}
-                  onChange={(e) => setLanguage(e.target.value)}>
-            {(locales.languages || []).map((l) => (
-              <option key={l.code} value={l.code}>
-                {l.label}{l.code !== "en" ? "  (" + l.endonym + ")" : ""}
-              </option>
-            ))}
-          </select>
+          <div className="adv-fg">
+            <label className="adv-bar-lbl" htmlFor="f-lang">Language</label>
+            <select id="f-lang" value={language}
+                    onChange={(e) => setLanguage(e.target.value)}>
+              {(locales.languages || []).map((l) => (
+                <option key={l.code} value={l.code}>
+                  {l.label}{l.code !== "en" ? "  (" + l.endonym + ")" : ""}
+                </option>
+              ))}
+            </select>
+          </div>
 
-          <button className="adv-btn ghost" disabled={busy || !clients.length}
-                  onClick={generateAll}>
-            Generate for all {clients.length || ""}
-          </button>
-          <span className="adv-bar-note">
+          <p className="adv-bar-note">
             {templateId
               ? `${armTemplates.length} template`
-                + `${armTemplates.length === 1 ? "" : "s"} for this report type`
-                + ` — edit them under Configuration`
+                + `${armTemplates.length === 1 ? "" : "s"} for this report type.`
+                + ` Edit them under Configuration.`
               : "The model designs a layout from the block registry, "
                 + "guided by what this client has asked for."}
-          </span>
-
-          {/* Pinned right by `margin-left:auto` on .nb-wrap, so it stays
-              in the corner even when the controls above wrap. */}
-          <NotificationBell />
-        </header>
+          </p>
+        </section>}
 
         {importInfo && (
           <div className={`adv-import ${importInfo.rejected.length ? "warn" : "ok"}`}>
@@ -481,36 +561,41 @@ export default function AdvisorPage() {
                          value={query} onChange={(e) => setQuery(e.target.value)} />
                   <table className="adv-table">
                     <thead><tr>
-                      <th>Client</th><th>Segment</th><th>Last report</th><th></th>
+                      <th>Client</th><th>Segment</th><th>Last report</th>
+                      <th className="adv-th-actions"><span className="sr-only">Actions</span></th>
                     </tr></thead>
                     <tbody>
                       {visible.map((c) => (
                         <tr key={c.client_id}
                             className={selected?.client_id === c.client_id ? "sel" : ""}
                             onClick={() => setSelected(c)}>
-                          <td><b>{c.display_name}</b>
+                          <td><span className="adv-name">{c.display_name}</span>
                               <div className="adv-sub">{c.email}</div></td>
-                          <td>{(c.segment_id || "").replace(/_/g, " ")}</td>
+                          <td className="adv-nowrap">{humanise(c.segment_id)}</td>
                           <td>
                             {(() => {
                               const rep = reportFor(c.client_id);
+                              // A template name is a label, not a status, so it
+                              // is shown as plain text with its period, never in
+                              // a coloured "success" chip.
                               return rep
-                                ? <><span className="adv-pill ok">{rep.label || rep.strategy}</span>
+                                ? <><span className="adv-cell-main" title={rep.label || rep.strategy}>
+                                      {rep.label || rep.strategy}</span>
                                     <div className="adv-sub">{rep.period}</div></>
-                                : <span className="adv-pill wait">
-                                    {period ? `none for ${period}` : "none"}
+                                : <span className="adv-sub">
+                                    {period ? `None for ${period}` : "Not generated"}
                                   </span>;
                             })()}
                           </td>
                           <td className="adv-row-actions">
-                            <button className="adv-mini" disabled={busy}
+                            <button className="adv-mini ghost" disabled={busy}
                                     onClick={(e) => { e.stopPropagation(); generateOne(c); }}>
                               Generate
                             </button>
                             {(() => {
                               const rep = reportFor(c.client_id);
                               return rep ? (
-                                <button className="adv-mini ghost"
+                                <button className="adv-mini link"
                                         title={`${rep.period} · ${rep.label || rep.strategy}`}
                                         onClick={(e) => { e.stopPropagation();
                                                           setPreview(rep.report_id); }}>
@@ -550,9 +635,9 @@ export default function AdvisorPage() {
                       .sort((a, b) => Math.abs(b[1] - 0.5) - Math.abs(a[1] - 0.5))
                       .map(([dim, v]) => (
                         <div key={dim} className="adv-bar-row">
-                          <span>{dim.replace(/_/g, " ")}</span>
+                          <span>{humanise(dim)}</span>
                           <i style={{ width: `${Math.max(4, v * 100)}%`,
-                                      background: v > 0.5 ? "#047857" : "#b45309" }} />
+                                      background: v > 0.5 ? "var(--accent-active)" : "var(--line-strong)" }} />
                           <b>{v.toFixed(2)}</b>
                         </div>
                       ))}
@@ -562,8 +647,8 @@ export default function AdvisorPage() {
                         {insight.reports.filter((r) => r.engagement > 0).map((r) => (
                           <div key={r.report_id} className="adv-step-row">
                             <span className="adv-step-name">{r.period}
-                              <span className="adv-sub"> · {r.template_arm}</span></span>
-                            <span className="adv-pill ok">
+                              <span className="adv-sub"> · {humanise(r.template_arm)}</span></span>
+                            <span className="adv-pill muted">
                               {Math.round(r.engagement * 100)}% engaged
                               · {r.questions} question{r.questions === 1 ? "" : "s"}
                             </span>
@@ -653,13 +738,13 @@ export default function AdvisorPage() {
                       </div>
                     )}
                     {status.composer?.rejected?.length > 0 && (
-                      <div style={{ marginTop: 4, color: "#b45309" }}>
+                      <div style={{ marginTop: 4, color: "var(--warn)" }}>
                         ignored invalid block names:{" "}
                         {status.composer.rejected.join(", ")}
                       </div>
                     )}
                     {status.composer?.error && (
-                      <div style={{ marginTop: 4, color: "#b91c1c" }}>
+                      <div style={{ marginTop: 4, color: "var(--neg)" }}>
                         composer fell back — {status.composer.error}
                       </div>
                     )}
@@ -740,27 +825,34 @@ export default function AdvisorPage() {
               : (
                 <table className="adv-table">
                   <thead><tr>
-                    <th>Report</th><th>Client</th><th>Arm</th><th>Blocks</th>
-                    <th>Email</th><th></th>
+                    <th>Report</th><th>Client</th><th>Template</th>
+                    <th>Email</th>
+                    <th className="adv-th-actions"><span className="sr-only">Actions</span></th>
                   </tr></thead>
                   <tbody>
                     {generated.map((r) => (
                       <tr key={r.report_id}>
-                        <td><code className="adv-code">{r.report_id}</code>
-                            <div className="adv-sub">{r.report_type?.replace(/_/g, " ")}</div></td>
-                        <td><b>{r.client_name}</b><div className="adv-sub">{r.email}</div></td>
-                        <td><span className="adv-pill arm">{r.strategy}</span></td>
-                        <td className="adv-blocks">{(r.blocks || []).join(" · ")}</td>
-                        <td><span className="adv-pill ok">{r.email_status}</span></td>
+                        <td title={r.report_id}><span className="adv-name">{humanise(r.report_type)}</span>
+                            <div className="adv-sub">{r.period}</div></td>
+                        <td><span className="adv-name">{r.client_name}</span><div className="adv-sub">{r.email}</div></td>
+                        <td><span className="adv-cell-main" title={r.label || r.strategy}>{r.label || humanise(r.strategy)}</span>
+                            <div className="adv-sub" title={(r.blocks || []).join(" · ")}>
+                              {(r.blocks || []).length} blocks</div></td>
+                        <td><span className={`adv-pill ${emailTone(r.email_status)}`}>
+                          {emailLabel(r.email_status)}</span>
+                            {r.sent_at && <div className="adv-sub">
+                              {new Date(r.sent_at + (r.sent_at.endsWith("Z") ? "" : "Z"))
+                                .toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}
+                            </div>}</td>
                         <td className="adv-row-actions">
-                          <button className="adv-mini" onClick={() => setPreview(r.report_id)}>Preview</button>
-                          <button className="adv-mini" onClick={() => openClientView(r.report_id)}>
-                            Client view
-                          </button>
-                          <button className="adv-mini ghost" disabled={busy}
-                                  onClick={() => sendReport(r.report_id)}>Send</button>
-                          <a className="adv-mini ghost" href={`/reports/${r.report_id}/json`}
-                             target="_blank" rel="noreferrer">JSON</a>
+                          <button className="adv-mini ghost" onClick={() => setPreview(r.report_id)}>Preview</button>
+                          <RowMenu label={`More actions for ${r.client_name}`} items={[
+                            { label: "Open client view", onClick: () => openClientView(r.report_id) },
+                            { label: "Send to client", disabled: busy, onClick: () => sendReport(r.report_id) },
+                            { label: "Download JSON", href: `/reports/${r.report_id}/json` },
+                            { label: "Copy report ID", onClick: () => navigator.clipboard?.writeText(r.report_id)
+                                .then(() => notify(`Copied ${r.report_id}`)) },
+                          ]} />
                         </td>
                       </tr>
                     ))}
@@ -778,24 +870,25 @@ export default function AdvisorPage() {
               <span className="adv-count">{Object.keys(segments).length}</span>
             </div>
             <p className="adv-note">
-              Segments come from the CSV's <code>segment_id</code> column. They
-              are the middle prior in D1 — a new client with no history of their
-              own is served their segment's shape rather than the whole book's.
+              Segments come from the <code>segment_id</code> column of the client
+              CSV. A new client with no history of their own starts from their
+              segment's preferences rather than the whole book's.
             </p>
             {Object.keys(segments).length === 0
               ? <div className="adv-none">Upload a CSV to populate segments.</div>
               : (
                 <table className="adv-table">
                   <thead><tr>
-                    <th>Segment</th><th>Clients</th><th>Reported</th><th>Total value</th>
+                    <th>Segment</th><th className="num">Clients</th>
+                    <th className="num">Reported</th><th className="num">Total value</th>
                   </tr></thead>
                   <tbody>
                     {Object.entries(segments).map(([s, v]) => (
                       <tr key={s}>
-                        <td><b>{s.replace(/_/g, " ")}</b></td>
-                        <td>{v.count}</td>
-                        <td>{v.reported} / {v.count}</td>
-                        <td>£{v.value.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+                        <td><span className="adv-name">{humanise(s)}</span></td>
+                        <td className="num">{v.count}</td>
+                        <td className="num">{v.reported} / {v.count}</td>
+                        <td className="num">£{v.value.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -807,16 +900,12 @@ export default function AdvisorPage() {
         {/* ── ARMS ──────────────────────────────────────────────── */}
         {view === "registry" && (
           <section className="adv-panel">
-            <div className="adv-panel-hd">
-              <h2>Registries</h2>
-              <span className="adv-count">read-only — author under Configuration</span>
-            </div>
-            <div className="reg-tabs">
+            <div className="reg-tabs" role="tablist">
               {[["templates", "Templates by report type"],
                 ["blocks", "Widget registry"],
                 ["prefs", "Learned preferences"],
                 ["signals", "Signals received"]].map(([id, label]) => (
-                <button key={id} type="button"
+                <button key={id} type="button" role="tab" aria-selected={regTab === id}
                         className={regTab === id ? "on" : ""}
                         onClick={() => setRegTab(id)}>{label}</button>
               ))}
@@ -826,8 +915,8 @@ export default function AdvisorPage() {
               <p className="adv-note">
                 A template belongs to exactly one report type, because its
                 blocks assume that type's facts. Each one is an ordered list
-                drawn from the widget registry. No bandit picks between them —
-                you do, at generation time.
+                drawn from the widget registry. You choose which one to use when
+                you generate. Read-only here; edit templates under Configuration.
               </p>
               {reg.templates ? <TemplateTree data={reg.templates} />
                              : <div className="adv-none">Loading…</div>}
@@ -872,13 +961,21 @@ export default function AdvisorPage() {
       </div>
 
       {preview && (
-        <div className="adv-modal" onClick={() => setPreview(null)}>
-          <div className="adv-modal-inner" onClick={(e) => e.stopPropagation()}>
+        <div className="adv-modal" onClick={() => setPreview(null)}
+             onKeyDown={(e) => { if (e.key === "Escape") setPreview(null); }}>
+          <div className="adv-modal-inner" role="dialog" aria-modal="true"
+               aria-label="Report preview" onClick={(e) => e.stopPropagation()}>
             <div className="adv-modal-bar">
-              <b>{preview}</b>
-              <a href={`/reports/${preview}/html`} target="_blank" rel="noreferrer">open</a>
-              <a href={`/reports/${preview}/json`} target="_blank" rel="noreferrer">json</a>
-              <button onClick={() => setPreview(null)}>Close</button>
+              <div className="adv-modal-title">
+                <b>Report preview</b>
+                <span title={preview}>{(() => {
+                  const r = generated.find((g) => g.report_id === preview);
+                  return r ? `${r.client_name} · ${humanise(r.report_type)} · ${r.period}` : preview;
+                })()}</span>
+              </div>
+              <a href={`/reports/${preview}/html`} target="_blank" rel="noreferrer">Open in new tab</a>
+              <a href={`/reports/${preview}/json`} target="_blank" rel="noreferrer">Download JSON</a>
+              <button className="adv-mini ghost" autoFocus onClick={() => setPreview(null)}>Close</button>
             </div>
             <iframe title="report" src={`/reports/${preview}/html`} />
           </div>
