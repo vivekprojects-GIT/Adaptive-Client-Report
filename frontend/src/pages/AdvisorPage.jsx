@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { api } from "../api.js";
 import Toast from "../components/Toast.jsx";
 import NotificationBell from "../components/NotificationBell.jsx";
 import AppRail, { NAV } from "../components/AppRail.jsx";
+const TemplateGallery = lazy(() => import("../components/TemplateGallery.jsx"));
 import { BlockTree, PreferenceTree, SignalTree, TemplateTree }
   from "../components/RegistryTree.jsx";
 import "../styles/advisor.css";
@@ -117,6 +118,8 @@ export default function AdvisorPage() {
   // The template the advisor picked for this report type. "" means the
   // AI composes one instead — those are the only two routes now.
   const [templateId, setTemplateId] = useState("");
+  // A template handed over from the gallery, applied once it is listed.
+  const pendingTpl = useRef(null);
   // The three registries, loaded on demand: nothing needs them until
   // the advisor opens the view.
   const [reg, setReg] = useState({ blocks: null, templates: null, prefs: null, signals: null });
@@ -158,6 +161,11 @@ export default function AdvisorPage() {
   // the common case needs no interaction at all.
   useEffect(() => {
     const mine = templates.filter((t) => t.report_type === reportType);
+    if (pendingTpl.current && mine.some((t) => t.template_id === pendingTpl.current)) {
+      setTemplateId(pendingTpl.current);
+      pendingTpl.current = null;
+      return;
+    }
     setTemplateId((cur) =>
       mine.some((t) => t.template_id === cur) ? cur
         : (mine.length ? mine[0].template_id : ""));
@@ -409,7 +417,9 @@ export default function AdvisorPage() {
         <header className="adv-head">
           <div className="adv-head-title">
             <h1>{(NAV.find(([id]) => id === view) || ["", "Clients"])[1]}</h1>
-            <p>{view === "reports"
+            <p>{view === "templates"
+                 ? "Every report layout available, previewed with fictional demo data"
+                 : view === "reports"
                  ? `${generated.length} report${generated.length === 1 ? "" : "s"} generated`
                  : view === "segments"
                  ? `${Object.keys(segments).length} segments across ${clients.length} clients`
@@ -811,6 +821,21 @@ export default function AdvisorPage() {
                 )}
               </section>
             </div>
+          </div>
+        )}
+
+        {/* ── TEMPLATES ─────────────────────────────────────────── */}
+        {view === "templates" && (
+          <div className="tg-wrap">
+            <Suspense fallback={<section className="adv-panel"><div className="adv-none">Loading…</div></section>}>
+              <TemplateGallery onUse={(t) => {
+                pendingTpl.current = t.template_id;
+                setRt(t.report_type);
+                setTemplateId(t.template_id);
+                setView("clients");
+                notify(`"${t.label}" selected. Pick a client and generate.`);
+              }} />
+            </Suspense>
           </div>
         )}
 

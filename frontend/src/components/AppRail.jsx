@@ -10,7 +10,7 @@ import "../styles/advisor.css";
  * look, whichever page the advisor is on.
  */
 export const NAV = [
-  ["clients", "Clients"], ["reports", "Reports"],
+  ["clients", "Clients"], ["reports", "Reports"], ["templates", "Templates"],
   ["segments", "Segments"], ["registry", "Registries"],
 ];
 
@@ -21,6 +21,7 @@ const ICON_PATHS = {
   reports:  "M3.5 1.5h6l3 3v10h-9zM9.5 1.5v3h3M5.5 8h5M5.5 10.5h5M5.5 13h3",
   segments: "M8 1.5A6.5 6.5 0 1 0 14.5 8H8zM10 1.8A6.5 6.5 0 0 1 14.2 6H10z",
   registry: "M8 1.5 14.5 5 8 8.5 1.5 5zM1.5 8 8 11.5 14.5 8M1.5 11 8 14.5 14.5 11",
+  templates: "M1.5 2.5h5v5h-5zM9.5 2.5h5v5h-5zM1.5 9.5h5v4h-5zM9.5 9.5h5v4h-5z",
   config:   "M2 4h7M12 4h2M2 12h2M7 12h7M10.5 2.5v3M5.5 10.5v3",
 };
 

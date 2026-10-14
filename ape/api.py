@@ -647,38 +647,33 @@ async def preview_template(request: Request):
     """Render a DRAFT template — unsaved — through the real pipeline.
 
     This deliberately calls the same build_report / enforce_mandatory /
-    validate_report / render_html path that generation uses, against a real
-    client snapshot. A preview built any other way would be a second
+    validate_report / render_html path that generation uses, against the
+    fictional demo client (John Doe), never a real one. A preview built any other way would be a second
     renderer that drifts from the first, and the whole point is that what
     the admin sees is what the client gets.
 
     Returns the document HTML plus what the coverage gate had to add — so
     an author who forgets the fees table sees it appear and learns why.
     """
-    body = await request.json()
+    return _template_preview(await request.json())
+
+
+def _template_preview(body: dict) -> dict:
+    """The preview pipeline, shared by the template editor and the gallery."""
     report_type = body.get("report_type") or "quarterly_portfolio_review"
     blocks = body.get("required_blocks") or []
     if not blocks:
         raise HTTPException(400, "no blocks to preview")
 
-    from .db.session import init_db, session_scope
-    from .db.repository import list_clients as _sql_clients, load_snapshot
+    import re as _re
+    from .reporting.demo_client import demo_snapshot
     from .reporting.generate import (build_report, enforce_mandatory,
                                      render_html)
     from .reporting.grounding import validate_report
-    init_db()
 
-    with session_scope() as db:
-        client_id = body.get("client_id")
-        if not client_id:
-            people = _sql_clients(db)
-            if not people:
-                raise HTTPException(400, "no clients on file to preview with")
-            client_id = people[0].client_id
-        try:
-            snap = load_snapshot(db, client_id, body.get("period"))
-        except LookupError as exc:
-            raise HTTPException(404, str(exc))
+    # Always the fictional demo client, never a real one: a template
+    # preview shows a layout, and must not expose anyone's portfolio.
+    snap = demo_snapshot()
 
     template = {
         "template_id": body.get("template_id") or "__preview__",
@@ -690,32 +685,141 @@ async def preview_template(request: Request):
     report = build_report(snap, template, report_type)
     # Stamped HERE, before prose is written and before validation runs.
     # Both of those read it: the writer to choose the language, the
-    # validator to choose the number convention. Setting it later meant the
-    # gate checked a Dutch callout with English rules and dropped it, and
-    # the only trace was "1 rejected".
+    # validator to choose the number convention.
     report["language"] = getattr(snap, "language", "") or ""
     enforced = enforce_mandatory(report, snap)
     verdict = validate_report(report, snap.numeric_facts(), snap.label_terms())
     if verdict.rejected:
         report["blocks"] = verdict.accepted
 
-    # Blocks the source cannot support return None and simply do not appear;
-    # naming them is how the author learns this client has no holdings
-    # detail rather than wondering where the block went.
+    # Blocks the source cannot support return None and simply do not appear.
+    # A block can render under another type (performance_history draws a
+    # performance_line), so its block_id prefix counts as built too.
     built = {b["type"] for b in report["blocks"]}
+    ids = [str(b.get("block_id", "")) for b in report["blocks"]]
     unsupported = [b for b in blocks
                    if b.split(":")[0] not in built
+                   and not any(i.startswith(b.split(":")[0] + "_") for i in ids)
                    and b.split(":")[0] != "chart"]
 
+    html = render_html(report, internal=False)
+    # Marked on the page itself, so a screenshot of a preview can never be
+    # taken for a real client's report.
+    banner = ('<div style="background:#eff0f4;color:#1d365a;border-bottom:1px solid #c7ccd3;'
+              'font:600 12px/1 Ubuntu,Segoe UI,sans-serif;letter-spacing:.04em;text-align:center;'
+              'padding:8px 12px">SAMPLE REPORT · FICTIONAL DEMO DATA</div>')
+    html = _re.sub(r'(<body[^>]*>)', lambda m: m.group(1) + banner, html, count=1)
     return {
-        "html": render_html(report, internal=False),
-        "client_id": client_id, "client_name": snap.display_name,
+        "html": html,
+        "client_id": snap.client_id, "client_name": snap.display_name,
+        "demo": True,
         "period": snap.period,
         "blocks_rendered": [b["type"] for b in report["blocks"]],
         "enforced_blocks": enforced,
         "unsupported_blocks": unsupported,
         "validation_summary": verdict.summary(),
     }
+
+
+# ── Template gallery ───────────────────────────────────────────────────
+# Every layout an adviser can pick, shown as the document it produces. The
+# render goes through _template_preview, the same path generation uses, with
+# the fictional demo client, so a thumbnail is the template, not a mock-up.
+
+_SECTION_LABELS = {
+    "kpi_grid": "Key figures", "hero_value": "Portfolio value headline",
+    "verdict_banner": "Ahead / behind benchmark banner", "trend_headline": "Return trend headline",
+    "risk_headline": "Risk headline", "risk_card": "Risk level card", "cost_headline": "Cost headline",
+    "flow_headline": "Cash-flow headline", "wealth_cover": "Statement cover", "fees_table": "Fees table",
+    "returns_table": "Returns by period table", "performance_history": "Performance history chart",
+    "performance_line": "This period's return", "comparison_chart": "Return vs benchmark chart",
+    "allocation_donut": "Allocation chart", "allocation_vs_target": "Allocation vs target",
+    "holdings_table": "Allocation detail table", "asset_class_table": "Asset classes vs mandate",
+    "currency_split": "Currency split", "holdings_by_sector": "Holdings by sector",
+    "sector_analysis": "Sector analysis", "comparison_table": "Return drivers table",
+    "top_contributors": "Top contributors", "top_detractors": "Top detractors",
+    "risk_statistics": "Risk statistics", "narrative": "Written summary", "callout": "Highlight banner",
+    "key_takeaways": "Key takeaways", "explainer": "Plain-English explainer",
+    "disclosures": "Disclosures", "chart": "Chart",
+}
+
+
+def _section_label(block: str) -> str:
+    base, _, kind = block.partition(":")
+    if base == "chart" and kind:
+        return f"{kind.replace('_', ' ').capitalize()} chart"
+    return _SECTION_LABELS.get(base) or base.replace("_", " ").capitalize()
+
+
+def _template_usage() -> dict:
+    """How often each template has actually been used, from real reports."""
+    from sqlalchemy import func
+    from .db.models import Report
+    from .db.session import init_db, session_scope
+    init_db()
+    with session_scope() as db:
+        rows = (db.query(Report.template_id, func.count(Report.report_id),
+                         func.count(func.distinct(Report.client_id)),
+                         func.max(Report.created_at))
+                  .group_by(Report.template_id).all())
+    return {tid: {"reports": n, "clients": c,
+                  "last_used": last.isoformat() if last else None}
+            for tid, n, c, last in rows if tid}
+
+
+@app.get("/config/templates/gallery")
+def template_gallery():
+    cfg = _guard_cfg()
+    types = {(t.get("report_type") or t.get("entity_id")): t
+             for t in cfg.list_report_types()}
+    try:
+        usage = _template_usage()
+    except Exception:                                   # usage is a nicety
+        usage = {}
+    out = []
+    for t in cfg.list_templates():
+        tid = t.get("template_id") or t.get("entity_id")
+        rt = t.get("report_type") or ""
+        blocks = t.get("required_blocks") or []
+        out.append({
+            "template_id": tid,
+            "label": t.get("label") or t.get("strategy") or tid,
+            "description": t.get("description") or "",
+            "brief": t.get("brief") or "",
+            "report_type": rt,
+            "report_type_label": (types.get(rt) or {}).get("label") or rt,
+            "prescribed": (types.get(rt) or {}).get("personalisable") is False,
+            "status": t.get("status") or "ACTIVE",
+            "sections": [{"block": b, "label": _section_label(b)} for b in blocks],
+            "usage": usage.get(tid, {"reports": 0, "clients": 0, "last_used": None}),
+        })
+    order = list(types)
+    out.sort(key=lambda r: (order.index(r["report_type"]) if r["report_type"] in order
+                            else len(order), r["label"].lower()))
+    return {
+        "report_types": [{"report_type": k, "label": v.get("label") or k,
+                          "prescribed": v.get("personalisable") is False,
+                          "count": sum(1 for r in out if r["report_type"] == k)}
+                         for k, v in types.items()],
+        "templates": out,
+    }
+
+
+@app.get("/config/templates/{template_id}/render")
+def render_template(template_id: str):
+    t = next((x for x in _guard_cfg().list_templates()
+              if (x.get("template_id") or x.get("entity_id")) == template_id), None)
+    if t is None:
+        raise HTTPException(404, f"template '{template_id}' not found")
+    result = _template_preview({
+        "template_id": template_id, "report_type": t.get("report_type"),
+        "strategy": t.get("strategy"), "label": t.get("label"),
+        "brief": t.get("brief") or "", "required_blocks": t.get("required_blocks") or [],
+    })
+    result["sections_rendered"] = [_section_label(b) for b in result["blocks_rendered"]]
+    result["enforced_labels"] = [_section_label(b if isinstance(b, str) else b.get("type", ""))
+                                 for b in result.get("enforced_blocks") or []]
+    return result
 
 
 @app.delete("/config/templates/{template_id}")

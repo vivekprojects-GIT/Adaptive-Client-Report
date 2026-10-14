@@ -249,7 +249,7 @@ export default function TemplateCanvas({
           Live preview
           <span style={{ float: "right", fontWeight: 400, color: "#6e7480" }}>
             {busy ? "rendering…"
-                  : preview ? `${preview.client_name} · ${preview.period}` : ""}
+                  : preview ? `Demo client: ${preview.client_name} · ${preview.period}` : ""}
           </span>
         </div>
         {err && <div style={{ ...note, background: "#fbf2f3", color: "#9e0029",
@@ -263,13 +263,13 @@ export default function TemplateCanvas({
             : <div style={{ height: 620, display: "flex", alignItems: "center",
                             justifyContent: "center", color: "#6e7480",
                             fontSize: 13 }}>
-                Add a block to see the real report
+                Add a block to see the report
               </div>}
         </div>
         {preview && (
           <div style={{ fontSize: 11.5, color: "#6e7480", marginTop: 6 }}>
-            Rendered through the live generator against {preview.client_name}'s
-            frozen facts — {preview.validation_summary}.
+            Rendered through the live generator with {preview.client_name}, a fictional
+            demo client, so no real portfolio is shown. {preview.validation_summary}.
           </div>
         )}
       </div>

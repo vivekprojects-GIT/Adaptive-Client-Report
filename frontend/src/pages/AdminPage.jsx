@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useUrlState } from "../hooks/useUrlState.js";
 import Toast from "../components/Toast.jsx";
 import AppRail from "../components/AppRail.jsx";
 import ReportTypesTab from "./admin/ReportTypesTab.jsx";
@@ -18,7 +19,9 @@ const TABS = [
 ];
 
 export default function AdminPage() {
-  const [active, setActive] = useState("reporttypes");
+  // The open tab lives in the URL, so links can open one directly.
+  const [active, setActive] = useUrlState("tab", "reporttypes",
+                                          { push: true, allowed: TABS.map((t) => t.id) });
   const [toast, setToast]   = useState({ msg: null, kind: "" });
 
   function notify(msg, kind = "ok") { setToast({ msg, kind }); }

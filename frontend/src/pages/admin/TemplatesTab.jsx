@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useUrlState } from "../../hooks/useUrlState.js";
 import { api } from "../../api.js";
 import AdminTable from "./AdminTable.jsx";
 import StatusPill from "./StatusPill.jsx";
@@ -18,6 +19,8 @@ export default function TemplatesTab({ notify }) {
   const [required, setRequired] = useState([]);
   const [editing, setEditing]   = useState(false);
   const [busy, setBusy]         = useState(false);
+  // "Edit in Configuration" from the template gallery names the template.
+  const [editParam, setEditParam] = useUrlState("edit", "");
 
   async function refresh() {
     try {
@@ -27,6 +30,12 @@ export default function TemplatesTab({ notify }) {
     } catch (err) { notify("Load failed: " + err.message, "error"); }
   }
   useEffect(() => { refresh(); }, []);
+  useEffect(() => {
+    if (!editParam || !rows.length) return;
+    const row = rows.find((r) => (r.template_id || r.entity_id) === editParam);
+    if (row) { setFilter(row.report_type || ""); loadIntoForm(row); }
+    setEditParam("");
+  }, [editParam, rows]);
 
   const visible = useMemo(
     () => (filter ? rows.filter((r) => r.report_type === filter) : rows),

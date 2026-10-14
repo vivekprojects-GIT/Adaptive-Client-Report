@@ -457,3 +457,112 @@
   text-underline-offset: 3px; text-decoration-color: var(--accent-line); white-space: nowrap; }
 .adv-modal-bar a:hover { text-decoration-color: currentColor; }
 .adv-modal-bar button { margin-left: 0; }
+
+/* ── Template gallery ────────────────────────────────────────────────
+   Each card is the real document, scaled down; the detail view is the
+   same document at full size beside what it is made of. */
+.tg { display: flex; flex-direction: column; gap: 18px; }
+.tg-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.tg-search { flex: 1 1 240px; width: auto; margin: 0; }
+.tg-select { height: 32px; padding: 0 8px; font: inherit; font-size: 13px; color: var(--ink);
+  border: 1px solid var(--line-strong); border-radius: var(--radius-md); background: var(--surface); max-width: 100%; }
+.tg-with { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); }
+.tg-summary { flex-basis: 100%; margin: 2px 0 0; font-size: 12.5px; color: var(--muted); }
+
+.tg-group-hd { display: flex; align-items: baseline; gap: 10px; margin: 0 0 10px; }
+.tg-group-hd h2 { margin: 0; font-size: 15px; font-weight: 500; color: var(--ink); }
+.tg-count { font-size: 12px; color: var(--subtle); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tg-grid { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+
+.tg-card { display: flex; flex-direction: column; width: 100%; height: 100%; padding: 0; text-align: left;
+  font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius-md); cursor: pointer; overflow: hidden;
+  transition: border-color .12s ease, box-shadow .12s ease, transform .12s ease; }
+.tg-card:hover { border-color: var(--accent-line); box-shadow: var(--shadow-md); transform: translateY(-1px); }
+.tg-card:focus-visible { outline: 2px solid var(--accent-active); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .tg-card, .tg-card:hover { transition: none; transform: none; } }
+
+.tg-thumb { position: relative; aspect-ratio: 4 / 3; overflow: hidden; background: var(--ground);
+  border-bottom: 1px solid var(--line); }
+.tg-thumb iframe { position: absolute; top: 0; left: 0; border: 0; background: #fff;
+  transform-origin: 0 0; pointer-events: none; }
+.tg-thumb::after { content: ""; position: absolute; inset: auto 0 0 0; height: 28px;
+  background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,.9)); pointer-events: none; }
+.tg-thumb-msg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  padding: 16px; text-align: center; font-size: 12.5px; color: var(--muted); }
+.tg-skel { position: absolute; inset: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+.tg-skel i { display: block; height: 12px; border-radius: 2px; background: var(--line);
+  animation: tgpulse 1.2s ease-in-out infinite; }
+.tg-skel i:first-child { height: 26px; width: 60%; background: var(--accent-wash); }
+.tg-skel i:nth-child(3) { width: 80%; }
+.tg-skel i:last-child { height: 60px; }
+@keyframes tgpulse { 50% { opacity: .45; } }
+@media (prefers-reduced-motion: reduce) { .tg-skel i { animation: none; } }
+
+.tg-card-body { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px 13px; flex: 1; }
+.tg-card-top { display: flex; align-items: flex-start; gap: 8px; }
+.tg-card-top h3 { margin: 0; flex: 1; font-size: 14px; font-weight: 500; color: var(--ink); line-height: 1.35; }
+.tg-desc { margin: 0; font-size: 12.5px; color: var(--muted); line-height: 1.45;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.tg-meta { margin-top: auto; padding-top: 4px; display: flex; flex-wrap: wrap; gap: 4px 12px;
+  font-size: 11.5px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.tg-muted { color: var(--subtle); }
+
+/* Detail */
+.tg-overlay { position: fixed; inset: 0; z-index: 70; background: rgba(18, 26, 56, .45);
+  display: flex; align-items: stretch; justify-content: center; padding: 24px; animation: tgfade .15s ease; }
+.tg-dialog { width: min(1280px, 100%); background: var(--surface); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg); display: flex; flex-direction: column; overflow: hidden; outline: none; }
+.tg-dhd { display: flex; align-items: center; gap: 16px; padding: 14px 18px 12px 22px; border-bottom: 1px solid var(--line); }
+.tg-dhd-title { flex: 1; min-width: 0; }
+.tg-eyebrow { font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.tg-dhd h2 { margin: 2px 0 0; font-size: 20px; font-weight: 300; color: var(--ink);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tg-dhd-nav { display: flex; align-items: center; gap: 6px; }
+.tg-icon { width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--line-strong); background: var(--surface);
+  color: var(--ink-2); font: inherit; font-size: 16px; line-height: 1; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; }
+.tg-icon:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.tg-icon:disabled { opacity: .4; cursor: default; }
+.tg-icon:focus-visible { outline: 2px solid var(--accent-active); outline-offset: 2px; }
+
+.tg-dbody { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 340px; }
+.tg-doc { position: relative; background: var(--ground); min-height: 0; }
+.tg-doc iframe { width: 100%; height: 100%; border: 0; background: #fff; display: block; }
+.tg-side { overflow: auto; padding: 18px 20px 24px; border-left: 1px solid var(--line);
+  display: flex; flex-direction: column; gap: 18px; }
+.tg-lede { margin: 0; font-size: 13.5px; line-height: 1.55; color: var(--ink-2); }
+.tg-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.tg-actions .adv-btn { margin-top: 0; text-decoration: none; border-radius: 999px; }
+.tg-field { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: var(--muted); }
+.tg-field select { height: 32px; padding: 0 8px; font: inherit; font-size: 13px; color: var(--ink);
+  border: 1px solid var(--line-strong); border-radius: var(--radius-md); background: var(--surface); }
+.tg-field small { font-size: 11.5px; color: var(--subtle); }
+.tg-facts { margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line);
+  border: 1px solid var(--line); border-radius: var(--radius-md); overflow: hidden; }
+.tg-facts div { background: var(--surface); padding: 9px 11px; }
+.tg-facts dt { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.tg-facts dd { margin: 3px 0 0; font-size: 14px; color: var(--ink); font-variant-numeric: tabular-nums; }
+.tg-h { margin: 0 0 8px; font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.tg-sections { margin: 0; padding: 0; list-style: none; counter-reset: s; }
+.tg-sections li { counter-increment: s; display: flex; gap: 10px; align-items: baseline; padding: 6px 0;
+  border-bottom: 1px solid var(--line-soft); font-size: 13px; color: var(--ink); }
+.tg-sections li::before { content: counter(s); min-width: 18px; font-size: 11.5px; color: var(--subtle);
+  font-variant-numeric: tabular-nums; }
+.tg-note { margin: 8px 0 0; font-size: 12px; line-height: 1.5; color: var(--muted); }
+.tg-brief { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--ink-2); background: var(--surface-2);
+  border-left: 2px solid var(--accent-line); padding: 8px 10px; }
+
+@media (max-width: 900px) {
+  .tg-overlay { padding: 0; }
+  .tg-dbody { grid-template-columns: 1fr; grid-template-rows: 60vh auto; overflow: auto; }
+  .tg-side { border-left: 0; border-top: 1px solid var(--line); overflow: visible; }
+}
+
+@keyframes tgfade { from { opacity: 0; } to { opacity: 1; } }
+.tg-wrap { margin: 16px 24px; }
+.tg-link { border: 0; background: none; padding: 0; font: inherit; font-weight: 500; color: var(--link);
+  cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.tg-demo { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--ink-2); background: var(--accent-wash);
+  border-radius: var(--radius-md); padding: 9px 11px; }
